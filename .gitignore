@@ -1,0 +1,8 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+*.key
+.DS_Store
+assets/*.png
