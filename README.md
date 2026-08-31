@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/神秘牛油果.png" width="200" alt="LAVOCADO logo">
+  <img src="assets/神秘牛油果.png" length="300" width="300" alt="LAVOCADO logo">
 </p>
 
 
