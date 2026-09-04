@@ -31,4 +31,13 @@ class Detector:
           if is_block_part and is_over_threshold:
              return {
                 "blocked": True,
+                "reason": f"{body_part} (score {score:.2f})",
+                "check_points": check_points
              }
+
+       return {
+         "blocked": False,
+         "reason": "",
+         "check_points": check_points
+       }
+   
