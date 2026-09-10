@@ -17,7 +17,7 @@ class Detector:
           image: photo path
        """
        check_points = self.model.detect(image) # return the list of dictionaries ,each dict is body parts
-
+       
        for element in check_points:
           body_part = element["class"]
           score = element["score"]
