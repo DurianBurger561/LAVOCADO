@@ -136,6 +136,30 @@ On a headless machine, inspect recent local events in the terminal:
 python main.py events --limit 20
 ```
 
+## Build desktop applications
+
+Install the separate build dependency and build on the target operating system:
+
+```bash
+python -m pip install -r requirements.txt -r requirements-build.txt
+python -m PyInstaller --noconfirm --clean lavocado.spec
+```
+
+The output is written under `dist/`. PyInstaller applications must be built on
+each target operating system; a Windows executable or macOS application cannot
+be produced directly from WSL/Linux.
+
+The **Package** workflow can build downloadable Windows, macOS, and Linux
+artifacts without requiring three local machines. Open the repository's
+**Actions** tab, select **Package**, choose **Run workflow**, and download the
+three artifacts when all matrix jobs finish. It also runs automatically for
+tags beginning with `v`.
+
+Packaged applications open the dashboard when launched without arguments. The
+Windows and macOS artifacts are currently unsigned, so development machines may
+show the normal unknown-publisher warning. Do not distribute them as a trusted
+release until code signing is configured.
+
 ## Run tests
 
 ```bash

@@ -1,8 +1,10 @@
 """Tests for the command-line entry point."""
 
 import io
+import sys
 import threading
 import unittest
+from unittest.mock import patch
 
 import main
 from app.intervention.recorder import RecordedEvent
@@ -11,6 +13,11 @@ from app.intervention.recorder import RecordedEvent
 class MainTests(unittest.TestCase):
     def test_parser_keeps_protection_as_default(self) -> None:
         self.assertIsNone(main.build_parser().parse_args([]).command)
+        self.assertEqual(main.default_command(), "protect")
+
+    def test_packaged_app_opens_dashboard_by_default(self) -> None:
+        with patch.object(sys, "frozen", True, create=True):
+            self.assertEqual(main.default_command(), "dashboard")
 
     def test_parser_accepts_dashboard_and_event_limit(self) -> None:
         dashboard = main.build_parser().parse_args(["dashboard"])

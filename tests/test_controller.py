@@ -1,7 +1,9 @@
 """Tests for dashboard-owned protection process control."""
 
+import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app.ui.controller import (
     ProtectionController,
@@ -88,6 +90,15 @@ class ProtectionControllerTests(unittest.TestCase):
 
         self.assertTrue(Path(command[1]).is_absolute())
         self.assertEqual(command[-2:], ("protect", "--control-stdin"))
+
+    def test_frozen_command_restarts_the_packaged_executable(self) -> None:
+        with patch.object(sys, "frozen", True, create=True):
+            command = default_protection_command()
+
+        self.assertEqual(
+            command,
+            (sys.executable, "protect", "--control-stdin"),
+        )
 
 
 if __name__ == "__main__":

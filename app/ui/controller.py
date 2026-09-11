@@ -20,6 +20,9 @@ class ProtectionStatus(str, Enum):
 def default_protection_command() -> tuple[str, ...]:
     """Return a command that works from any current working directory."""
 
+    if getattr(sys, "frozen", False):
+        return (sys.executable, "protect", "--control-stdin")
+
     project_root = Path(__file__).resolve().parents[2]
     return (
         sys.executable,

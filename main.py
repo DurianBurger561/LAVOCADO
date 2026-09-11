@@ -34,6 +34,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def default_command() -> str:
+    """Open the dashboard when packaged, while preserving the source default."""
+
+    if getattr(sys, "frozen", False):
+        return "dashboard"
+    return "protect"
+
+
 def _listen_for_stop(stop_event, input_stream) -> None:
     """Translate a dashboard pipe message or closed pipe into a clean stop."""
 
@@ -101,7 +109,7 @@ def show_events(limit: int) -> None:
 
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
-    command = args.command or "protect"
+    command = args.command or default_command()
     if command == "dashboard":
         from app.ui.dashboard import run_dashboard
 
