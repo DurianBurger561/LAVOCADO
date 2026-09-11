@@ -83,6 +83,13 @@ class EventRecorderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "limit must be at least 1"):
             self.recorder.recent(0)
 
+    def test_close_releases_the_database_file(self) -> None:
+        self.recorder.close()
+
+        self.database_path.unlink()
+
+        self.assertFalse(self.database_path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
