@@ -3,6 +3,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from app.intervention.recorder import EventRecorder, ProtectionEvent
@@ -39,7 +40,7 @@ class EventRecorderTests(unittest.TestCase):
         self.assertTrue(stored[0].intervention_shown)
 
     def test_database_schema_has_no_captured_content_fields(self) -> None:
-        with sqlite3.connect(self.database_path) as connection:
+        with closing(sqlite3.connect(self.database_path)) as connection:
             columns = {
                 row[1]
                 for row in connection.execute(
