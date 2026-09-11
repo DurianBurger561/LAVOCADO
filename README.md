@@ -111,6 +111,31 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
+## Use LAVOCADO
+
+Start protection directly (the existing default):
+
+```bash
+python main.py
+```
+
+Or open the local dashboard to start and stop protection and view recent
+privacy-safe events:
+
+```bash
+python main.py dashboard
+```
+
+The dashboard launches protection as a separate process so the overlay remains
+on the GUI main thread on Windows, macOS, and Linux. Closing the dashboard asks
+the protection process to stop cleanly.
+
+On a headless machine, inspect recent local events in the terminal:
+
+```bash
+python main.py events --limit 20
+```
+
 ## Run tests
 
 ```bash

@@ -84,6 +84,20 @@ class EventRecorderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "limit must be at least 1"):
             self.recorder.recent(0)
 
+    def test_count_returns_total_recorded_events(self) -> None:
+        for hour in range(3):
+            self.recorder.record(
+                ProtectionEvent(
+                    occurred_at=f"2026-09-12T0{hour}:00:00+00:00",
+                    trigger_type="vision",
+                    label=None,
+                    confidence=None,
+                    monitor_index=1,
+                )
+            )
+
+        self.assertEqual(self.recorder.count(), 3)
+
     def test_close_releases_the_database_file(self) -> None:
         self.recorder.close()
 

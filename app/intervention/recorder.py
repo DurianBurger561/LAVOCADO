@@ -171,6 +171,18 @@ class EventRecorder:
             for row in rows
         ]
 
+    def count(self) -> int:
+        """Return the total number of locally recorded events."""
+
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) FROM protection_events"
+            ).fetchone()
+
+        if row is None:
+            return 0
+        return int(row[0])
+
     def close(self) -> None:
         """Flush queued writes and release the background worker."""
 

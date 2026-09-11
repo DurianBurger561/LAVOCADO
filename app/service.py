@@ -8,6 +8,7 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from datetime import datetime, timezone
 from enum import Enum
+from threading import Event
 
 from app import config
 from app.blocklist.watcher import BlocklistResult, WindowWatcher
@@ -78,16 +79,16 @@ class LavocadoService:
     def state(self) -> State:
         return self._state
 
-    def start(self) -> None:
+    def start(self, stop_event: Event | None = None) -> None:
         """Run monitoring until stop is requested or Ctrl+C is received."""
 
         self._running = True
         self._state = State.MONITORING
 
         try:
-            while self._running:
+            while self._running and not (stop_event and stop_event.is_set()):
                 self.check_once()
-                if self._running:
+                if self._running and not (stop_event and stop_event.is_set()):
                     self._sleeper(self.check_interval)
         finally:
             try:
