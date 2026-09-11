@@ -3,14 +3,20 @@
 import unittest
 from concurrent.futures import Future
 
+from app.blocklist.watcher import BlocklistResult, WindowInfo
 from app.intervention.recorder import ProtectionEvent
 from app.service import LavocadoService, State
 from app.vision.temporal import TemporalVerifier
 
 
 class FakeCapturer:
-    def __init__(self, monitor_indexes: tuple[int, ...] = (1,)) -> None:
+    def __init__(
+        self,
+        monitor_indexes: tuple[int, ...] = (1,),
+        point_monitor_index: int | None = 1,
+    ) -> None:
         self.monitor_indexes = monitor_indexes
+        self.point_monitor_index = point_monitor_index
         self.grabbed_indexes: list[int] = []
         self.closed = False
 
@@ -20,6 +26,9 @@ class FakeCapturer:
 
     def close(self) -> None:
         self.closed = True
+
+    def monitor_index_at(self, _x: int, _y: int) -> int | None:
+        return self.point_monitor_index
 
 
 class FakeDetector:
@@ -86,6 +95,14 @@ class FakeIntervention:
 
     def close(self) -> None:
         self.closed = True
+
+
+class FakeWatcher:
+    def __init__(self, result: BlocklistResult) -> None:
+        self.result = result
+
+    def check(self) -> BlocklistResult:
+        return self.result
 
 
 class ServiceTests(unittest.TestCase):
@@ -198,6 +215,45 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(recorder.closed)
         self.assertTrue(intervention.closed)
         self.assertEqual(service.state, State.STOPPED)
+
+    def test_blocklist_match_immediately_blocks_the_window_monitor(self) -> None:
+        capturer = FakeCapturer(
+            monitor_indexes=(1, 2),
+            point_monitor_index=2,
+        )
+        overlay = FakeOverlay()
+        recorder = FakeRecorder()
+        intervention = FakeIntervention()
+        watcher = FakeWatcher(
+            BlocklistResult(
+                blocked=True,
+                matched_term="blocked.example",
+                window=WindowInfo(
+                    title="blocked.example - Browser",
+                    left=2000,
+                    top=100,
+                    width=1000,
+                    height=800,
+                ),
+            )
+        )
+        service = LavocadoService(
+            capturer=capturer,
+            detector=FakeDetector({1: [], 2: []}),
+            overlay=overlay,
+            recorder=recorder,
+            intervention=intervention,
+            watcher=watcher,
+        )
+
+        result = service.check_once()
+
+        self.assertEqual(capturer.grabbed_indexes, [])
+        self.assertEqual(overlay.shown_on, [2])
+        self.assertEqual(result[0]["label"], "blocked.example")
+        self.assertEqual(recorder.events[0].trigger_type, "blocklist")
+        self.assertIsNone(recorder.events[0].confidence)
+        self.assertEqual(intervention.generate_count, 1)
 
 
 if __name__ == "__main__":

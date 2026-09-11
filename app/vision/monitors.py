@@ -49,6 +49,23 @@ def monitor_geometry(monitor: Monitor) -> str:
     return f"{width}x{height}{_signed(left)}{_signed(top)}"
 
 
+def monitor_index_at_point(
+    monitors: Sequence[Monitor],
+    x: int,
+    y: int,
+) -> int | None:
+    """Return the physical monitor containing a virtual-desktop point."""
+
+    for index, monitor in enumerate(monitors[1:], start=1):
+        left = _coordinate(monitor, "left")
+        top = _coordinate(monitor, "top")
+        width = _coordinate(monitor, "width")
+        height = _coordinate(monitor, "height")
+        if left <= x < left + width and top <= y < top + height:
+            return index
+    return None
+
+
 def _coordinate(monitor: Monitor, name: str) -> int:
     value = monitor.get(name)
     if not isinstance(value, int):

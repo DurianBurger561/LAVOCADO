@@ -2,7 +2,11 @@
 
 import unittest
 
-from app.vision.monitors import monitor_geometry, select_monitor_index
+from app.vision.monitors import (
+    monitor_geometry,
+    monitor_index_at_point,
+    select_monitor_index,
+)
 
 
 class MonitorTests(unittest.TestCase):
@@ -40,6 +44,13 @@ class MonitorTests(unittest.TestCase):
             monitor_geometry(self.monitors[1]),
             "2560x1440+2560+164",
         )
+
+    def test_maps_virtual_desktop_point_to_physical_monitor(self) -> None:
+        self.assertEqual(monitor_index_at_point(self.monitors, 3000, 500), 1)
+        self.assertEqual(monitor_index_at_point(self.monitors, 1000, 500), 2)
+
+    def test_returns_none_for_point_outside_all_monitors(self) -> None:
+        self.assertIsNone(monitor_index_at_point(self.monitors, -100, -100))
 
 
 if __name__ == "__main__":

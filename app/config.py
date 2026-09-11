@@ -37,7 +37,8 @@ INTERVENTION_MODEL = os.environ.get("LAVOCADO_OPENAI_MODEL", "gpt-5.6-luna")
 INTERVENTION_API_TIMEOUT_SECONDS = 6.0
 INTERVENTION_MAX_OUTPUT_TOKENS = 80
 
-# Blocked applications and websites.
+# Case-insensitive terms matched against the foreground app name and window title.
+# Examples: ["Steam", "reddit.com"]. Empty disables foreground-window inspection.
 BLOCKED_APPS: list[str] = []
 
 # Blocking interface colours.

@@ -51,6 +51,23 @@ labels, confidence values, monitor numbers, URLs, and window titles are never
 included. API response storage is disabled for this request. Set
 `LAVOCADO_OPENAI_MODEL` to override the default model.
 
+## Foreground-window blocklist
+
+Add case-insensitive application or title terms in `app/config.py`:
+
+```python
+BLOCKED_APPS = ["Steam", "reddit.com"]
+```
+
+When a term matches, LAVOCADO uses the foreground window's center to cover only
+the display containing that window. Window metadata is checked in memory and is
+not stored or sent to the AI service. An empty list disables window inspection.
+
+On macOS, foreground-window details require Accessibility permission for the
+terminal or packaged application. On X11 Linux, install `xprop` and `xwininfo`
+(provided by `x11-utils` on Ubuntu). WSL can only inspect window metadata that
+WSLg exposes; use a native Windows build to match all Windows applications.
+
 ## Supported platforms
 
 - Windows 10/11
@@ -87,7 +104,7 @@ Security → Screen & System Audio Recording**, then restart the application.
 ### Ubuntu, Linux, or WSL
 
 ```bash
-sudo apt install python3-tk
+sudo apt install python3-tk x11-utils
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt

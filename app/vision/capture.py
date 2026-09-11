@@ -15,7 +15,7 @@ from app.platform_support import (
     prepare_desktop_environment,
     screen_capture_help,
 )
-from app.vision.monitors import select_monitor_index
+from app.vision.monitors import monitor_index_at_point, select_monitor_index
 
 
 class Capturer:
@@ -69,6 +69,14 @@ class Capturer:
         # NudeNet/OpenCV-style arrays use BGR channel order.
         rgb_frame = np.asarray(image, dtype=np.uint8)
         return np.ascontiguousarray(rgb_frame[:, :, ::-1])
+
+    def monitor_index_at(self, x: int, y: int) -> int | None:
+        """Map a virtual-desktop point to a monitored physical screen."""
+
+        monitor_index = monitor_index_at_point(self._capture.monitors, x, y)
+        if monitor_index not in self.monitor_indexes:
+            return None
+        return monitor_index
 
     def close(self) -> None:
         """Release screen-capture resources."""
