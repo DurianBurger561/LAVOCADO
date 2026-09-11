@@ -11,6 +11,21 @@ only the display that triggered protection.
 
 Screenshots are processed locally and are not stored or sent to an LLM.
 
+## Local data and privacy
+
+When protection is triggered, LAVOCADO stores only the UTC time, detector
+label, confidence, monitor number, and whether the intervention was shown. It
+does not store screenshots, URLs, or window titles.
+
+The SQLite event database is stored in the current user's application-data
+directory:
+
+- Windows: `%LOCALAPPDATA%\\LAVOCADO\\events.db`
+- macOS: `~/Library/Application Support/LAVOCADO/events.db`
+- Linux or WSL: `${XDG_DATA_HOME:-~/.local/share}/lavocado/events.db`
+
+Set `LAVOCADO_DATA_DIR` before starting the app to use a different directory.
+
 ## Supported platforms
 
 - Windows 10/11

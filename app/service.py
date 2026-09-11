@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
+from concurrent.futures import Future
+from datetime import datetime, timezone
 from enum import Enum
 
 from app import config
+from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platform_support import prepare_desktop_environment
 from app.vision.capture import Capturer
 from app.vision.detector import Detector
 from app.vision.overlay import Overlay
 from app.vision.temporal import TemporalVerifier
+
+LOGGER = logging.getLogger(__name__)
 
 
 class State(str, Enum):
@@ -30,6 +36,7 @@ class LavocadoService:
         capturer: Capturer | None = None,
         detector: Detector | None = None,
         overlay: Overlay | None = None,
+        recorder: EventRecorder | None = None,
         *,
         verifier_factory: Callable[[], TemporalVerifier] | None = None,
         check_interval: float = config.CHECK_INTERVAL,
@@ -41,6 +48,7 @@ class LavocadoService:
         self.capturer = capturer if capturer is not None else Capturer()
         self.detector = detector if detector is not None else Detector()
         self.overlay = overlay if overlay is not None else Overlay()
+        self.recorder = recorder if recorder is not None else EventRecorder()
         self._verifier_factory = (
             verifier_factory
             if verifier_factory is not None
@@ -74,9 +82,14 @@ class LavocadoService:
                 if self._running:
                     self._sleeper(self.check_interval)
         finally:
-            self.capturer.close()
-            self._state = State.STOPPED
-            self._running = False
+            try:
+                try:
+                    self.capturer.close()
+                finally:
+                    self.recorder.close()
+            finally:
+                self._state = State.STOPPED
+                self._running = False
 
     def stop(self) -> None:
         """Request a clean stop after the current operation finishes."""
@@ -114,7 +127,14 @@ class LavocadoService:
 
             if verifier.update(is_candidate):
                 self._state = State.BLOCKED
+                record_future = self._record_trigger(result, monitor_index)
                 self.overlay.show(monitor_index=monitor_index)
+                if record_future is not None:
+                    try:
+                        event_id = record_future.result()
+                        self.recorder.mark_intervention_shown(event_id)
+                    except Exception:
+                        LOGGER.exception("Could not finish recording protection event")
                 self._reset_verifiers()
                 self._cooldown_until = self._clock() + self.cooldown_seconds
                 self._state = State.COOLDOWN
@@ -126,3 +146,24 @@ class LavocadoService:
     def _reset_verifiers(self) -> None:
         for verifier in self._verifiers.values():
             verifier.reset()
+
+    def _record_trigger(
+        self,
+        result: dict[str, object],
+        monitor_index: int,
+    ) -> Future[int] | None:
+        label = result.get("label")
+        confidence = result.get("confidence")
+        event = ProtectionEvent(
+            occurred_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            trigger_type="vision",
+            label=None if label is None else str(label),
+            confidence=None if confidence is None else float(confidence),
+            monitor_index=monitor_index,
+        )
+
+        try:
+            return self.recorder.record_async(event)
+        except Exception:
+            LOGGER.exception("Could not queue protection event recording")
+            return None
