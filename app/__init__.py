@@ -1,0 +1,1 @@
+"""LAVOCADO application package."""
