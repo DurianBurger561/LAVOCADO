@@ -2,31 +2,55 @@
 
 from __future__ import annotations
 
-import mss
+from typing import Self
+
 import numpy as np
+from mss import MSS
+from mss.exception import ScreenShotError
 from PIL import Image
 
 from app import config
+from app.platform_support import (
+    ScreenCaptureError,
+    prepare_desktop_environment,
+    screen_capture_help,
+)
+from app.vision.monitors import select_monitor_index
 
 
 class Capturer:
-    """Capture the primary monitor as a BGR NumPy array."""
+    """Capture physical monitors as BGR NumPy arrays."""
 
-    def __init__(self, monitor_index: int = 1) -> None:
-        self._capture = mss.mss()
-        self._monitor_index = monitor_index
+    def __init__(self, monitor_index: int | None = config.MONITOR_INDEX) -> None:
+        prepare_desktop_environment()
+        self._capture = MSS()
+        self._configured_monitor_index = monitor_index
+        self._monitor_index = select_monitor_index(
+            self._capture.monitors,
+            monitor_index,
+        )
 
-    def grab(self) -> np.ndarray:
-        """Capture and resize one screen frame."""
+    @property
+    def monitor_indexes(self) -> tuple[int, ...]:
+        """Return every monitored physical screen index."""
 
-        if not 0 < self._monitor_index < len(self._capture.monitors):
-            raise ValueError(
-                f"Monitor {self._monitor_index} is unavailable. "
-                f"Found {len(self._capture.monitors) - 1} monitor(s)."
-            )
+        if self._configured_monitor_index is not None:
+            return (self._monitor_index,)
+        return tuple(range(1, len(self._capture.monitors)))
 
-        monitor = self._capture.monitors[self._monitor_index]
-        screenshot = self._capture.grab(monitor)
+    def grab(self, monitor_index: int | None = None) -> np.ndarray:
+        """Capture and resize one frame from the requested screen."""
+
+        selected_index = (
+            self._monitor_index
+            if monitor_index is None
+            else select_monitor_index(self._capture.monitors, monitor_index)
+        )
+        monitor = self._capture.monitors[selected_index]
+        try:
+            screenshot = self._capture.grab(monitor)
+        except ScreenShotError as error:
+            raise ScreenCaptureError(screen_capture_help()) from error
 
         # MSS provides BGRA bytes. Convert them into a PIL RGB image.
         image = Image.frombytes(
@@ -51,7 +75,7 @@ class Capturer:
 
         self._capture.close()
 
-    def __enter__(self) -> "Capturer":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_: object) -> None:
