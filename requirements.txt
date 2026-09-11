@@ -2,3 +2,4 @@ mss
 numpy
 Pillow
 nudenet>=3.4.2,<4
+openai>=2,<3

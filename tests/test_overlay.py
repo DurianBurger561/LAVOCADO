@@ -1,6 +1,7 @@
 """Tests for safe overlay dismissal."""
 
 import unittest
+from concurrent.futures import Future
 
 from app.intervention.sequence import InterventionSequence, InterventionStep
 from app.vision.overlay import Overlay
@@ -121,6 +122,22 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(button.options["text"], "Continue")
         self.assertEqual(button.options["state"], "normal")
         self.assertEqual(button.focus_count, 1)
+
+    def test_ready_stage_displays_completed_support_message(self) -> None:
+        overlay = Overlay()
+        root = FakeRoot()
+        body = FakeWidget()
+        message: Future[str] = Future()
+        message.set_result("Take a short walk away from the screen.")
+        overlay._root = root
+        overlay._support_message = message
+
+        overlay._show_support_message(body)
+
+        self.assertEqual(
+            body.options["text"],
+            "Take a short walk away from the screen.",
+        )
 
 
 if __name__ == "__main__":

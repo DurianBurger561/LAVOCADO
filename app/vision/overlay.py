@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import CancelledError, Future
 from typing import Any
 
 from mss import MSS
@@ -30,12 +31,17 @@ class Overlay:
         self._monitor_index = monitor_index
         self._sequence_factory = sequence_factory
         self._sequence: InterventionSequence | None = None
+        self._support_message: Future[str] | None = None
 
     @property
     def is_visible(self) -> bool:
         return self._root is not None
 
-    def show(self, monitor_index: int | None = None) -> None:
+    def show(
+        self,
+        monitor_index: int | None = None,
+        support_message: Future[str] | None = None,
+    ) -> None:
         """Block the requested screen until the user dismisses the window."""
 
         if self.is_visible:
@@ -58,6 +64,7 @@ class Overlay:
         root = tk.Tk()
         self._root = root
         self._sequence = self._sequence_factory()
+        self._support_message = support_message
 
         root.withdraw()
         root.title("LAVOCADO Protection")
@@ -132,6 +139,7 @@ class Overlay:
         finally:
             self._root = None
             self._sequence = None
+            self._support_message = None
 
     def request_dismiss(self) -> bool:
         """Dismiss only after the guided stages have completed."""
@@ -177,6 +185,7 @@ class Overlay:
         )
 
         if step.can_dismiss:
+            self._show_support_message(body_label)
             self._bring_to_front(dismiss_button)
         elif step.duration_seconds is not None:
             delay_ms = max(1, round(step.duration_seconds * 1000))
@@ -199,6 +208,22 @@ class Overlay:
             return
         if self._sequence.advance():
             self._render_step(title_label, body_label, dismiss_button)
+
+    def _show_support_message(self, body_label: Any) -> None:
+        if self._root is None or self._support_message is None:
+            return
+
+        if not self._support_message.done():
+            self._root.after(100, lambda: self._show_support_message(body_label))
+            return
+
+        try:
+            message = self._support_message.result()
+        except CancelledError:
+            return
+
+        if message:
+            body_label.configure(text=message)
 
     def _bring_to_front(self, dismiss_button: Any | None = None) -> None:
         if self._root is None:

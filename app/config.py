@@ -1,5 +1,7 @@
 """Central configuration for LAVOCADO."""
 
+import os
+
 # Seconds between screen checks.
 CHECK_INTERVAL = 0.75
 
@@ -31,6 +33,9 @@ COOLDOWN_SECONDS = 8.0
 # A short, deterministic intervention before the dismiss button is enabled.
 INTERVENTION_PAUSE_SECONDS = 3.0
 INTERVENTION_BREATHE_SECONDS = 6.0
+INTERVENTION_MODEL = os.environ.get("LAVOCADO_OPENAI_MODEL", "gpt-5.6-luna")
+INTERVENTION_API_TIMEOUT_SECONDS = 6.0
+INTERVENTION_MAX_OUTPUT_TOKENS = 80
 
 # Blocked applications and websites.
 BLOCKED_APPS: list[str] = []

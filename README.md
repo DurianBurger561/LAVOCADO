@@ -30,6 +30,27 @@ directory:
 
 Set `LAVOCADO_DATA_DIR` before starting the app to use a different directory.
 
+## Optional AI support message
+
+LAVOCADO works without an API key and uses a built-in local message by default.
+To enable a short AI-generated message in the final intervention stage, set an
+OpenAI API key before starting the application:
+
+```powershell
+# Windows PowerShell
+$env:OPENAI_API_KEY="your-api-key"
+```
+
+```bash
+# macOS, Linux, or WSL
+export OPENAI_API_KEY="your-api-key"
+```
+
+Only a fixed request for a supportive message is sent. Screenshots, detector
+labels, confidence values, monitor numbers, URLs, and window titles are never
+included. API response storage is disabled for this request. Set
+`LAVOCADO_OPENAI_MODEL` to override the default model.
+
 ## Supported platforms
 
 - Windows 10/11

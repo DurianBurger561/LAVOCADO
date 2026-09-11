@@ -43,9 +43,15 @@ class FakeDetector:
 class FakeOverlay:
     def __init__(self) -> None:
         self.shown_on: list[int] = []
+        self.support_messages: list[Future[str] | None] = []
 
-    def show(self, monitor_index: int) -> None:
+    def show(
+        self,
+        monitor_index: int,
+        support_message: Future[str] | None = None,
+    ) -> None:
         self.shown_on.append(monitor_index)
+        self.support_messages.append(support_message)
 
 
 class FakeRecorder:
@@ -67,17 +73,34 @@ class FakeRecorder:
         self.closed = True
 
 
+class FakeIntervention:
+    def __init__(self) -> None:
+        self.generate_count = 0
+        self.closed = False
+
+    def generate_async(self) -> Future[str]:
+        self.generate_count += 1
+        future: Future[str] = Future()
+        future.set_result("Support message")
+        return future
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class ServiceTests(unittest.TestCase):
     def test_blocks_after_two_candidate_frames_in_three_checks(self) -> None:
         current_time = [0.0]
         capturer = FakeCapturer()
         overlay = FakeOverlay()
         recorder = FakeRecorder()
+        intervention = FakeIntervention()
         service = LavocadoService(
             capturer=capturer,
             detector=FakeDetector({1: [False, True, True]}),
             overlay=overlay,
             recorder=recorder,
+            intervention=intervention,
             verifier_factory=lambda: TemporalVerifier(3, 2),
             cooldown_seconds=8.0,
             clock=lambda: current_time[0],
@@ -96,6 +119,8 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(recorder.events[0].label, "TEST")
         self.assertEqual(recorder.events[0].monitor_index, 1)
         self.assertEqual(recorder.shown_event_ids, [1])
+        self.assertEqual(intervention.generate_count, 1)
+        self.assertEqual(overlay.support_messages[0].result(), "Support message")
 
     def test_cooldown_temporarily_skips_capture(self) -> None:
         current_time = [0.0]
@@ -105,6 +130,7 @@ class ServiceTests(unittest.TestCase):
             detector=FakeDetector({1: [False, True, True, False]}),
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
             verifier_factory=lambda: TemporalVerifier(3, 2),
             cooldown_seconds=8.0,
             clock=lambda: current_time[0],
@@ -138,6 +164,7 @@ class ServiceTests(unittest.TestCase):
             ),
             overlay=overlay,
             recorder=recorder,
+            intervention=FakeIntervention(),
             verifier_factory=lambda: TemporalVerifier(3, 2),
         )
 
@@ -155,11 +182,13 @@ class ServiceTests(unittest.TestCase):
     def test_start_closes_capture_and_recorder(self) -> None:
         capturer = FakeCapturer()
         recorder = FakeRecorder()
+        intervention = FakeIntervention()
         service = LavocadoService(
             capturer=capturer,
             detector=FakeDetector({1: [False]}),
             overlay=FakeOverlay(),
             recorder=recorder,
+            intervention=intervention,
             sleeper=lambda _: service.stop(),
         )
 
@@ -167,6 +196,7 @@ class ServiceTests(unittest.TestCase):
 
         self.assertTrue(capturer.closed)
         self.assertTrue(recorder.closed)
+        self.assertTrue(intervention.closed)
         self.assertEqual(service.state, State.STOPPED)
 
 

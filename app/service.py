@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from app import config
+from app.intervention.intervene import InterventionGenerator
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platform_support import prepare_desktop_environment
 from app.vision.capture import Capturer
@@ -37,6 +38,7 @@ class LavocadoService:
         detector: Detector | None = None,
         overlay: Overlay | None = None,
         recorder: EventRecorder | None = None,
+        intervention: InterventionGenerator | None = None,
         *,
         verifier_factory: Callable[[], TemporalVerifier] | None = None,
         check_interval: float = config.CHECK_INTERVAL,
@@ -49,6 +51,9 @@ class LavocadoService:
         self.detector = detector if detector is not None else Detector()
         self.overlay = overlay if overlay is not None else Overlay()
         self.recorder = recorder if recorder is not None else EventRecorder()
+        self.intervention = (
+            intervention if intervention is not None else InterventionGenerator()
+        )
         self._verifier_factory = (
             verifier_factory
             if verifier_factory is not None
@@ -86,7 +91,10 @@ class LavocadoService:
                 try:
                     self.capturer.close()
                 finally:
-                    self.recorder.close()
+                    try:
+                        self.recorder.close()
+                    finally:
+                        self.intervention.close()
             finally:
                 self._state = State.STOPPED
                 self._running = False
@@ -128,7 +136,11 @@ class LavocadoService:
             if verifier.update(is_candidate):
                 self._state = State.BLOCKED
                 record_future = self._record_trigger(result, monitor_index)
-                self.overlay.show(monitor_index=monitor_index)
+                support_message = self._generate_intervention()
+                self.overlay.show(
+                    monitor_index=monitor_index,
+                    support_message=support_message,
+                )
                 if record_future is not None:
                     try:
                         event_id = record_future.result()
@@ -166,4 +178,11 @@ class LavocadoService:
             return self.recorder.record_async(event)
         except Exception:
             LOGGER.exception("Could not queue protection event recording")
+            return None
+
+    def _generate_intervention(self) -> Future[str] | None:
+        try:
+            return self.intervention.generate_async()
+        except Exception:
+            LOGGER.exception("Could not queue supportive intervention")
             return None
