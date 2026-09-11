@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from mss import MSS
 
 from app import config
+from app.intervention.sequence import (
+    InterventionSequence,
+    default_intervention_sequence,
+)
 from app.platform_support import prepare_desktop_environment, tkinter_help
 from app.vision.monitors import monitor_geometry, select_monitor_index
 
@@ -14,9 +19,17 @@ from app.vision.monitors import monitor_geometry, select_monitor_index
 class Overlay:
     """Show one blocking, always-on-top intervention window."""
 
-    def __init__(self, monitor_index: int | None = config.MONITOR_INDEX) -> None:
+    def __init__(
+        self,
+        monitor_index: int | None = config.MONITOR_INDEX,
+        sequence_factory: Callable[
+            [], InterventionSequence
+        ] = default_intervention_sequence,
+    ) -> None:
         self._root: Any | None = None
         self._monitor_index = monitor_index
+        self._sequence_factory = sequence_factory
+        self._sequence: InterventionSequence | None = None
 
     @property
     def is_visible(self) -> bool:
@@ -44,6 +57,7 @@ class Overlay:
 
         root = tk.Tk()
         self._root = root
+        self._sequence = self._sequence_factory()
 
         root.withdraw()
         root.title("LAVOCADO Protection")
@@ -53,7 +67,7 @@ class Overlay:
         root.attributes("-topmost", True)
         root.protocol("WM_DELETE_WINDOW", self.dismiss)
         root.bind("<Escape>", self._dismiss_from_event)
-        root.bind("<Return>", self._dismiss_from_event)
+        root.bind("<Return>", self._request_dismiss_from_event)
 
         container = tk.Frame(root, background=config.OVERLAY_BG)
         container.place(relx=0.5, rely=0.5, anchor="center")
@@ -66,28 +80,27 @@ class Overlay:
             font=("Arial", 18, "bold"),
         ).pack(pady=(0, 28))
 
-        tk.Label(
+        title_label = tk.Label(
             container,
-            text=config.OVERLAY_TITLE_TEXT,
             background=config.OVERLAY_BG,
             foreground=config.OVERLAY_TITLE_COLOR,
             font=("Arial", 38, "bold"),
-        ).pack(pady=(0, 20))
+        )
+        title_label.pack(pady=(0, 20))
 
-        tk.Label(
+        body_label = tk.Label(
             container,
-            text=config.OVERLAY_BODY_TEXT,
             background=config.OVERLAY_BG,
             foreground=config.OVERLAY_TEXT_COLOR,
             font=("Arial", 17),
             justify="center",
             wraplength=700,
-        ).pack(pady=(0, 36))
+        )
+        body_label.pack(pady=(0, 36))
 
         dismiss_button = tk.Button(
             container,
-            text=config.OVERLAY_BUTTON_LABEL,
-            command=self.dismiss,
+            command=self.request_dismiss,
             background=config.OVERLAY_BUTTON_BG,
             foreground=config.OVERLAY_BUTTON_TEXT_COLOR,
             activebackground=config.OVERLAY_TITLE_COLOR,
@@ -100,7 +113,7 @@ class Overlay:
             takefocus=True,
         )
         dismiss_button.pack()
-        dismiss_button.bind("<ButtonRelease-1>", self._dismiss_from_event)
+        dismiss_button.bind("<ButtonRelease-1>", self._request_dismiss_from_event)
 
         tk.Label(
             container,
@@ -111,12 +124,22 @@ class Overlay:
         ).pack(pady=(28, 0))
 
         root.deiconify()
-        root.after_idle(lambda: self._bring_to_front(dismiss_button))
+        self._render_step(title_label, body_label, dismiss_button)
+        root.after_idle(self._bring_to_front)
 
         try:
             root.mainloop()
         finally:
             self._root = None
+            self._sequence = None
+
+    def request_dismiss(self) -> bool:
+        """Dismiss only after the guided stages have completed."""
+
+        if self._sequence is not None and not self._sequence.can_dismiss:
+            return False
+        self.dismiss()
+        return True
 
     def dismiss(self) -> None:
         """Close the overlay and return control to the monitoring service."""
@@ -131,6 +154,51 @@ class Overlay:
     def _dismiss_from_event(self, _event: object) -> str:
         self.dismiss()
         return "break"
+
+    def _request_dismiss_from_event(self, _event: object) -> str:
+        self.request_dismiss()
+        return "break"
+
+    def _render_step(
+        self,
+        title_label: Any,
+        body_label: Any,
+        dismiss_button: Any,
+    ) -> None:
+        if self._root is None or self._sequence is None:
+            return
+
+        step = self._sequence.current
+        title_label.configure(text=step.title)
+        body_label.configure(text=step.body)
+        dismiss_button.configure(
+            text=step.button_label,
+            state="normal" if step.can_dismiss else "disabled",
+        )
+
+        if step.can_dismiss:
+            self._bring_to_front(dismiss_button)
+        elif step.duration_seconds is not None:
+            delay_ms = max(1, round(step.duration_seconds * 1000))
+            self._root.after(
+                delay_ms,
+                lambda: self._advance_step(
+                    title_label,
+                    body_label,
+                    dismiss_button,
+                ),
+            )
+
+    def _advance_step(
+        self,
+        title_label: Any,
+        body_label: Any,
+        dismiss_button: Any,
+    ) -> None:
+        if self._root is None or self._sequence is None:
+            return
+        if self._sequence.advance():
+            self._render_step(title_label, body_label, dismiss_button)
 
     def _bring_to_front(self, dismiss_button: Any | None = None) -> None:
         if self._root is None:

@@ -28,6 +28,10 @@ CONFIRMATION_REQUIRED_HITS = 2
 # Time given to close the triggering content after dismissing the overlay.
 COOLDOWN_SECONDS = 8.0
 
+# A short, deterministic intervention before the dismiss button is enabled.
+INTERVENTION_PAUSE_SECONDS = 3.0
+INTERVENTION_BREATHE_SECONDS = 6.0
+
 # Blocked applications and websites.
 BLOCKED_APPS: list[str] = []
 
@@ -39,8 +43,11 @@ OVERLAY_BUTTON_BG = "#313244"
 OVERLAY_BUTTON_TEXT_COLOR = "#a6e3a1"
 
 # Blocking interface text.
-OVERLAY_TITLE_TEXT = "Take a moment"
-OVERLAY_BODY_TEXT = (
-    "Pause and take a breath. When you are ready, close the triggering page."
-)
-OVERLAY_BUTTON_LABEL = "Give me a moment"
+OVERLAY_PAUSE_TITLE = "Pause for a moment"
+OVERLAY_PAUSE_BODY = "Look away from the triggering content and let the urge pass."
+OVERLAY_BREATHE_TITLE = "Take one slow breath"
+OVERLAY_BREATHE_BODY = "Breathe in gently, then breathe out a little more slowly."
+OVERLAY_READY_TITLE = "Choose your next action"
+OVERLAY_READY_BODY = "Close the triggering page before returning to your screen."
+OVERLAY_WAIT_BUTTON_LABEL = "Stay with the pause"
+OVERLAY_READY_BUTTON_LABEL = "I'm ready to continue"

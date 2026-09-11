@@ -22,10 +22,12 @@ class ConfigTests(unittest.TestCase):
                 self.assertRegex(value, re.compile(r"^#[0-9a-fA-F]{6}$"))
 
     def test_button_label_is_not_used_as_its_colour(self) -> None:
-        self.assertNotEqual(
-            config.OVERLAY_BUTTON_LABEL,
-            config.OVERLAY_BUTTON_TEXT_COLOR,
-        )
+        for label in (
+            config.OVERLAY_WAIT_BUTTON_LABEL,
+            config.OVERLAY_READY_BUTTON_LABEL,
+        ):
+            with self.subTest(label=label):
+                self.assertNotEqual(label, config.OVERLAY_BUTTON_TEXT_COLOR)
 
 
 if __name__ == "__main__":

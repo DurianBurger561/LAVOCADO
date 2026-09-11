@@ -11,6 +11,10 @@ only the display that triggered protection.
 
 Screenshots are processed locally and are not stored or sent to an LLM.
 
+When a risk is confirmed, the affected display moves through a short pause,
+one guided breath, and a ready stage before enabling the continue button.
+`Esc` remains available as an emergency exit.
+
 ## Local data and privacy
 
 When protection is triggered, LAVOCADO stores only the UTC time, detector
