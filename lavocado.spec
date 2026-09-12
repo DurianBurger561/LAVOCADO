@@ -29,7 +29,10 @@ elif sys.platform == "darwin":
         "objc",
     ]
 else:
-    platform_hidden_imports = []
+    platform_hidden_imports = [
+        "mss.linux.xgetimage",
+        "mss.linux.xshmgetimage",
+    ]
 
 analysis = Analysis(
     ["main.py"],

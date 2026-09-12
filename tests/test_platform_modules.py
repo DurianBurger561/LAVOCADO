@@ -53,9 +53,30 @@ class PlatformModuleTests(unittest.TestCase):
             "macos_screencapturekit",
         )
 
-    def test_linux_remains_on_mss_during_migration(self) -> None:
+    def test_linux_x11_creates_xshm_capture_with_mss_fallback(self) -> None:
+        capture = LinuxPlatform(
+            environ={"XDG_SESSION_TYPE": "x11", "DISPLAY": ":0"},
+            release="generic-linux",
+        ).create_screen_capture()
+
+        self.assertIsInstance(capture, FallbackCaptureBackend)
+        self.assertEqual(capture.status().preferred_backend, "linux_xshm")
+
+    def test_linux_unknown_session_remains_on_mss(self) -> None:
         capture = LinuxPlatform(
             environ={},
+            release="generic-linux",
+        ).create_screen_capture()
+
+        self.assertIsInstance(capture, MSSCapture)
+
+    def test_linux_wayland_remains_on_mss_until_portal_phase(self) -> None:
+        capture = LinuxPlatform(
+            environ={
+                "XDG_SESSION_TYPE": "wayland",
+                "WAYLAND_DISPLAY": "wayland-0",
+                "DISPLAY": ":0",
+            },
             release="generic-linux",
         ).create_screen_capture()
 

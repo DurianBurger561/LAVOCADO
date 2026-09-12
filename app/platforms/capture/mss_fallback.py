@@ -47,7 +47,7 @@ class MSSCapture:
                 f"MSS initialization failed: {error}"
             ) from error
 
-        monitors = self._normalize_monitors(raw_monitors)
+        monitors = normalize_mss_monitors(raw_monitors)
         if not monitors:
             capture.close()
             raise CaptureUnavailableError("MSS found no physical displays")
@@ -115,42 +115,47 @@ class MSSCapture:
             raise CaptureFatalError("MSS capture has not been started")
         return self._capture
 
-    @staticmethod
-    def _normalize_monitors(raw_monitors: list[dict[str, Any]]) -> list[MonitorInfo]:
-        if len(raw_monitors) < 2:
-            return []
+
+
+def normalize_mss_monitors(
+    raw_monitors: list[dict[str, Any]],
+) -> list[MonitorInfo]:
+    """Normalize MSS's aggregate-plus-physical monitor collection."""
+
+    if len(raw_monitors) < 2:
+        return []
+    monitors = [
+        MonitorInfo(
+            id=str(index),
+            index=index,
+            left=int(raw.get("left", 0)),
+            top=int(raw.get("top", 0)),
+            width=int(raw.get("width", 0)),
+            height=int(raw.get("height", 0)),
+            is_primary=bool(raw.get("is_primary", False)),
+        )
+        for index, raw in enumerate(raw_monitors[1:], start=1)
+        if int(raw.get("width", 0)) > 0 and int(raw.get("height", 0)) > 0
+    ]
+    if monitors and not any(monitor.is_primary for monitor in monitors):
+        primary = next(
+            (
+                monitor
+                for monitor in monitors
+                if monitor.left == 0 and monitor.top == 0
+            ),
+            monitors[0],
+        )
         monitors = [
             MonitorInfo(
-                id=str(index),
-                index=index,
-                left=int(raw.get("left", 0)),
-                top=int(raw.get("top", 0)),
-                width=int(raw.get("width", 0)),
-                height=int(raw.get("height", 0)),
-                is_primary=bool(raw.get("is_primary", False)),
+                id=monitor.id,
+                index=monitor.index,
+                left=monitor.left,
+                top=monitor.top,
+                width=monitor.width,
+                height=monitor.height,
+                is_primary=monitor.id == primary.id,
             )
-            for index, raw in enumerate(raw_monitors[1:], start=1)
-            if int(raw.get("width", 0)) > 0 and int(raw.get("height", 0)) > 0
+            for monitor in monitors
         ]
-        if monitors and not any(monitor.is_primary for monitor in monitors):
-            primary = next(
-                (
-                    monitor
-                    for monitor in monitors
-                    if monitor.left == 0 and monitor.top == 0
-                ),
-                monitors[0],
-            )
-            monitors = [
-                MonitorInfo(
-                    id=monitor.id,
-                    index=monitor.index,
-                    left=monitor.left,
-                    top=monitor.top,
-                    width=monitor.width,
-                    height=monitor.height,
-                    is_primary=monitor.id == primary.id,
-                )
-                for monitor in monitors
-            ]
-        return monitors
+    return monitors

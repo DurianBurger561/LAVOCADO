@@ -1,4 +1,4 @@
-mss
+mss>=10.2,<11
 dxcam>=0.3,<0.4; sys_platform == "win32"
 numpy
 Pillow

@@ -112,9 +112,12 @@ class LinuxPlatform:
         return self._window_provider.active_window()
 
     def create_screen_capture(self):
-        from app.platforms.capture import MSSCapture
+        from app.platforms.capture import create_linux_capture
 
-        return MSSCapture()
+        return create_linux_capture(
+            self.desktop_session(),
+            display=self._environ.get("DISPLAY"),
+        )
 
     def desktop_session(self) -> LinuxSessionInfo:
         """Return the runtime route input used by Linux native capture factories."""
