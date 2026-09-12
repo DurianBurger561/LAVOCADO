@@ -10,6 +10,48 @@ import numpy as np
 Region = tuple[int, int, int, int]
 
 
+def tile_regions(
+    image_shape: Sequence[int],
+    rows: int,
+    columns: int,
+) -> tuple[Region, ...]:
+    """Split an image into complete row-major tiles, including odd edges."""
+
+    if len(image_shape) < 2 or rows <= 0 or columns <= 0:
+        return ()
+    image_height, image_width = int(image_shape[0]), int(image_shape[1])
+    if image_height <= 0 or image_width <= 0:
+        return ()
+
+    regions: list[Region] = []
+    for row in range(rows):
+        top = row * image_height // rows
+        bottom = (row + 1) * image_height // rows
+        for column in range(columns):
+            left = column * image_width // columns
+            right = (column + 1) * image_width // columns
+            if right > left and bottom > top:
+                regions.append((left, top, right, bottom))
+    return tuple(regions)
+
+
+def crop_region(image: np.ndarray, region: Region) -> np.ndarray | None:
+    """Copy a clamped XYXY region from an in-memory image."""
+
+    if image.ndim < 2:
+        return None
+    image_height, image_width = image.shape[:2]
+    left, top, right, bottom = region
+    left = max(0, min(image_width, left))
+    top = max(0, min(image_height, top))
+    right = max(0, min(image_width, right))
+    bottom = max(0, min(image_height, bottom))
+    if right <= left or bottom <= top:
+        return None
+    crop = np.ascontiguousarray(image[top:bottom, left:right])
+    return crop if crop.size else None
+
+
 def map_box_to_original(
     box: Sequence[int | float],
     model_shape: Sequence[int],
@@ -89,8 +131,7 @@ def make_context_crop(
     context_region = expand_region(mapped_region, original_frame.shape, expansion)
     if context_region is None:
         return None
-    left, top, right, bottom = context_region
-    crop = np.ascontiguousarray(original_frame[top:bottom, left:right])
-    if crop.size == 0:
+    crop = crop_region(original_frame, context_region)
+    if crop is None:
         return None
     return crop, context_region

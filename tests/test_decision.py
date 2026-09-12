@@ -9,13 +9,43 @@ from app.vision.decision import DecisionEngine
 
 
 class FakeContextClassifier:
-    def __init__(self, scores: dict[str, float] | None) -> None:
+    def __init__(
+        self,
+        scores: dict[str, float] | None,
+        scores_by_mean: dict[int, dict[str, float]] | None = None,
+    ) -> None:
         self.scores = scores
+        self.scores_by_mean = scores_by_mean
         self.received_shapes: list[tuple[int, ...]] = []
+        self.received_means: list[int] = []
 
     def classify(self, image: np.ndarray) -> dict[str, float] | None:
         self.received_shapes.append(image.shape)
+        image_mean = int(image.mean())
+        self.received_means.append(image_mean)
+        if self.scores_by_mean is not None:
+            return self.scores_by_mean[image_mean]
         return self.scores
+
+
+class FakeLocalDetector:
+    inference_resolution = 640
+
+    def __init__(self, candidates: list[bool]) -> None:
+        self._candidates = iter(candidates)
+        self.received_means: list[int] = []
+
+    def check(self, image: np.ndarray) -> dict[str, object]:
+        self.received_means.append(int(image.mean()))
+        candidate = next(self._candidates)
+        return {
+            "blocked": candidate,
+            "reason": "local" if candidate else "",
+            "label": "FEMALE_BREAST_EXPOSED" if candidate else None,
+            "confidence": 0.80 if candidate else 0.0,
+            "box": [0, 0, 1, 1] if candidate else None,
+            "check_points": [],
+        }
 
 
 def captured_frame() -> CapturedFrame:
@@ -42,7 +72,117 @@ def result_with_detection(score: float) -> dict[str, object]:
     }
 
 
+def rescue_frame() -> CapturedFrame:
+    original = np.zeros((4, 4, 3), dtype=np.uint8)
+    original[0:2, 0:2] = 10
+    original[0:2, 2:4] = 20
+    original[2:4, 0:2] = 30
+    original[2:4, 2:4] = 40
+    return CapturedFrame(
+        original_frame=original,
+        model_frame=np.zeros((4, 4, 3), dtype=np.uint8),
+    )
+
+
+def empty_result() -> dict[str, object]:
+    return {
+        "blocked": False,
+        "reason": "",
+        "label": None,
+        "confidence": 0.0,
+        "box": None,
+        "check_points": [],
+    }
+
+
 class DecisionEngineTests(unittest.TestCase):
+    def test_rescue_rotates_one_tile_per_scan(self) -> None:
+        low_context = {"normal": 0.99, "porn": 0.01}
+        context = FakeContextClassifier(low_context)
+        local_detector = FakeLocalDetector([])
+        engine = DecisionEngine(context, local_detector)
+
+        for _ in range(5):
+            result = engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
+            self.assertFalse(result["blocked"])
+
+        self.assertEqual(context.received_means, [10, 20, 30, 40, 10])
+        self.assertEqual(local_detector.received_means, [])
+
+    def test_high_porn_needs_local_nudenet_candidate(self) -> None:
+        context = FakeContextClassifier({"porn": 0.99})
+        local_detector = FakeLocalDetector([False])
+
+        result = DecisionEngine(context, local_detector).evaluate(
+            empty_result(),
+            rescue_frame(),
+            monitor_index=1,
+        )
+
+        self.assertFalse(result["blocked"])
+        self.assertEqual(local_detector.received_means, [10])
+
+    def test_local_nudenet_candidate_enters_rescue_temporal_path(self) -> None:
+        context = FakeContextClassifier({"porn": 0.99})
+        local_detector = FakeLocalDetector([True])
+
+        result = DecisionEngine(context, local_detector).evaluate(
+            empty_result(),
+            rescue_frame(),
+            monitor_index=2,
+        )
+
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["source"], "rescue_tile")
+        self.assertEqual(result["label"], "FEMALE_BREAST_EXPOSED")
+        self.assertEqual(result["region"], (0, 0, 2, 2))
+        self.assertEqual(result["rescue_tile_index"], 0)
+
+    def test_rescue_candidate_pins_tile_for_followup_checks(self) -> None:
+        context = FakeContextClassifier({"porn": 0.99})
+        local_detector = FakeLocalDetector([True, False, False, False])
+        engine = DecisionEngine(context, local_detector)
+
+        for _ in range(4):
+            engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
+
+        self.assertEqual(context.received_means, [10, 10, 10, 20])
+        self.assertEqual(local_detector.received_means, [10, 10, 10, 20])
+
+    def test_sexy_cannot_request_local_rescue_check(self) -> None:
+        context = FakeContextClassifier({"porn": 0.0, "sexy": 0.99})
+        local_detector = FakeLocalDetector([])
+
+        result = DecisionEngine(context, local_detector).evaluate(
+            empty_result(),
+            rescue_frame(),
+            monitor_index=1,
+        )
+
+        self.assertFalse(result["blocked"])
+        self.assertEqual(local_detector.received_means, [])
+
+    def test_rescue_rotation_is_independent_per_monitor(self) -> None:
+        context = FakeContextClassifier({"normal": 0.99, "porn": 0.01})
+        engine = DecisionEngine(context, FakeLocalDetector([]))
+
+        engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
+        engine.evaluate(empty_result(), rescue_frame(), monitor_index=2)
+        engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
+
+        self.assertEqual(context.received_means, [10, 10, 20])
+
+    def test_reset_clears_rescue_rotation_and_pinning(self) -> None:
+        context = FakeContextClassifier({"normal": 0.99, "porn": 0.01})
+        engine = DecisionEngine(context, FakeLocalDetector([]))
+
+        engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
+        engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
+        engine.reset()
+        engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
+
+        self.assertEqual(context.received_means, [10, 20, 10])
+
     def test_strong_nudenet_candidate_does_not_need_context(self) -> None:
         context = FakeContextClassifier({"porn": 1.0})
 

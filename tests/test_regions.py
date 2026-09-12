@@ -4,10 +4,40 @@ import unittest
 
 import numpy as np
 
-from app.vision.regions import expand_region, make_context_crop, map_box_to_original
+from app.vision.regions import (
+    crop_region,
+    expand_region,
+    make_context_crop,
+    map_box_to_original,
+    tile_regions,
+)
 
 
 class RegionTests(unittest.TestCase):
+    def test_two_by_two_tiles_cover_odd_sized_image(self) -> None:
+        regions = tile_regions((5, 7, 3), rows=2, columns=2)
+
+        self.assertEqual(
+            regions,
+            (
+                (0, 0, 3, 2),
+                (3, 0, 7, 2),
+                (0, 2, 3, 5),
+                (3, 2, 7, 5),
+            ),
+        )
+        self.assertEqual(sum((r - l) * (b - t) for l, t, r, b in regions), 35)
+
+    def test_crop_region_returns_requested_pixels(self) -> None:
+        image = np.arange(4 * 4 * 3, dtype=np.uint8).reshape((4, 4, 3))
+
+        crop = crop_region(image, (2, 0, 4, 2))
+
+        self.assertIsNotNone(crop)
+        assert crop is not None
+        np.testing.assert_array_equal(crop, image[0:2, 2:4])
+        self.assertTrue(crop.flags.c_contiguous)
+
     def test_maps_xywh_box_from_model_to_original_frame(self) -> None:
         region = map_box_to_original(
             [100, 50, 200, 100],

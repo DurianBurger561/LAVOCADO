@@ -123,7 +123,10 @@ class FakeDecisionEngine:
         self,
         result: dict[str, object],
         captured: FakeCapturedFrame,
+        *,
+        monitor_index: int,
     ) -> dict[str, object]:
+        del monitor_index
         self.original_frames.append(captured.original_frame)
         return result
 
@@ -136,7 +139,10 @@ class SequenceDecisionEngine:
         self,
         result: dict[str, object],
         _captured: FakeCapturedFrame,
+        *,
+        monitor_index: int,
     ) -> dict[str, object]:
+        del monitor_index
         candidate = next(self._candidates)
         promoted = dict(result)
         promoted.update(

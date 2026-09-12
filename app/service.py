@@ -56,13 +56,23 @@ class LavocadoService:
         self.capturer = capturer if capturer is not None else Capturer()
         uses_default_detector = detector is None
         self.detector = detector if detector is not None else Detector()
-        self.decision_engine = (
-            decision_engine
-            if decision_engine is not None
-            else DecisionEngine(
+        if decision_engine is not None:
+            self.decision_engine = decision_engine
+        else:
+            context_classifier = (
                 load_context_classifier() if uses_default_detector else None
             )
-        )
+            local_rescue_detector = (
+                self.detector
+                if uses_default_detector
+                and self.detector.inference_resolution
+                == config.NUDENET_INFERENCE_RESOLUTION
+                else None
+            )
+            self.decision_engine = DecisionEngine(
+                context_classifier,
+                local_rescue_detector,
+            )
         self.overlay = overlay if overlay is not None else Overlay()
         self.recorder = recorder if recorder is not None else EventRecorder()
         self.intervention = (
@@ -149,7 +159,11 @@ class LavocadoService:
         for monitor_index in self.capturer.monitor_indexes:
             captured_frame = self.capturer.grab(monitor_index)
             nudenet_result = dict(self.detector.check(captured_frame.model_frame))
-            result = self.decision_engine.evaluate(nudenet_result, captured_frame)
+            result = self.decision_engine.evaluate(
+                nudenet_result,
+                captured_frame,
+                monitor_index=monitor_index,
+            )
             result["monitor_index"] = monitor_index
             results.append(result)
 
@@ -170,6 +184,9 @@ class LavocadoService:
     def _reset_verifiers(self) -> None:
         for verifier in self._verifiers.values():
             verifier.reset()
+        reset_decisions = getattr(self.decision_engine, "reset", None)
+        if callable(reset_decisions):
+            reset_decisions()
 
     def _record_trigger(
         self,

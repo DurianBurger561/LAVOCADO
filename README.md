@@ -147,6 +147,13 @@ only numbered results rather than input paths. If the dependencies or model are
 unavailable, LAVOCADO remains able to run in NudeNet-only mode. The existing
 2-of-3 temporal confirmation still applies after the fused candidate decision.
 
+For small-content rescue, each monitor is divided into four tiles and only one
+tile is context-classified per scan. A very high local `porn` score merely asks
+the same NudeNet 640m instance to recheck that tile; Viddexa never creates a
+candidate by itself. A rescued tile is pinned for the next two checks so the
+existing 2-of-3 temporal verifier can confirm or reject the same region. Rescue
+is disabled automatically when only the NudeNet 320n fallback is available.
+
 ## Use LAVOCADO
 
 Start protection directly (the existing default):

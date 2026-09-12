@@ -21,8 +21,13 @@ class ConfigTests(unittest.TestCase):
     def test_context_fusion_defaults_are_conservative(self) -> None:
         self.assertEqual(config.NUDENET_BORDERLINE_MARGIN, 0.10)
         self.assertEqual(config.CONTEXT_PORN_CONFIRM_THRESHOLD, 0.90)
+        self.assertEqual(config.CONTEXT_PORN_RESCUE_THRESHOLD, 0.97)
         self.assertFalse(config.CONTEXT_SEXY_CAN_BLOCK)
         self.assertFalse(config.CONTEXT_HENTAI_CAN_BLOCK)
+        self.assertEqual(
+            config.RESCUE_TILE_ROWS * config.RESCUE_TILE_COLUMNS,
+            4,
+        )
 
     def test_overlay_colours_are_hex_values(self) -> None:
         colour_names = (
