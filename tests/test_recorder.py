@@ -39,6 +39,21 @@ class EventRecorderTests(unittest.TestCase):
         self.assertAlmostEqual(stored[0].confidence or 0.0, 0.91)
         self.assertTrue(stored[0].intervention_shown)
 
+    def test_marks_intervention_shown_asynchronously(self) -> None:
+        event_id = self.recorder.record(
+            ProtectionEvent(
+                occurred_at="2026-09-12T00:00:00+00:00",
+                trigger_type="vision",
+                label=None,
+                confidence=None,
+                monitor_index=1,
+            )
+        )
+
+        self.recorder.mark_intervention_shown_async(event_id).result(timeout=2)
+
+        self.assertTrue(self.recorder.recent()[0].intervention_shown)
+
     def test_database_schema_has_no_captured_content_fields(self) -> None:
         with closing(sqlite3.connect(self.database_path)) as connection:
             columns = {

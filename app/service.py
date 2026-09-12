@@ -305,12 +305,7 @@ class LavocadoService:
             monitor_index=monitor_index,
             support_message=support_message,
         )
-        if record_future is not None:
-            try:
-                event_id = record_future.result()
-                self.recorder.mark_intervention_shown(event_id)
-            except Exception:
-                LOGGER.exception("Could not finish recording protection event")
+        self._mark_intervention_shown_after_record(record_future)
         self._reset_verifiers()
         self._cooldown_until = self._clock() + self.cooldown_seconds
         self._transition(State.COOLDOWN)
@@ -342,3 +337,36 @@ class LavocadoService:
         except Exception:
             LOGGER.exception("Could not queue supportive intervention")
             return None
+
+    def _mark_intervention_shown_after_record(
+        self,
+        record_future: Future[int] | None,
+    ) -> None:
+        if record_future is None:
+            return
+
+        record_future.add_done_callback(self._queue_intervention_shown_marker)
+
+    def _queue_intervention_shown_marker(self, record_future: Future[int]) -> None:
+        try:
+            event_id = record_future.result()
+        except Exception:
+            LOGGER.exception("Could not finish recording protection event")
+            return
+
+        try:
+            marker = getattr(self.recorder, "mark_intervention_shown_async", None)
+            if callable(marker):
+                marker_future = marker(event_id)
+                marker_future.add_done_callback(self._log_recording_failure)
+            else:
+                self.recorder.mark_intervention_shown(event_id)
+        except Exception:
+            LOGGER.exception("Could not queue intervention-shown marker")
+
+    @staticmethod
+    def _log_recording_failure(future: Future[object]) -> None:
+        try:
+            future.result()
+        except Exception:
+            LOGGER.exception("Could not finish recording protection event")
