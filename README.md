@@ -189,6 +189,18 @@ retain or upload frames. See the
 [capture benchmark guide](docs/capture-benchmark.md) for individual backend
 commands, permission behaviour, and the resolution/monitor test matrix.
 
+For release stability validation, run the capture soak tool for at least one
+hour per platform and backend mode:
+
+```bash
+python scripts/soak_capture.py --backend auto --duration-seconds 3600
+```
+
+It detects stalled sequences, unhealthy backends, memory/resource growth,
+fallback transitions, and incomplete cleanup without retaining frames. See the
+[capture soak-testing guide](docs/capture-soak-testing.md) for the eight-hour
+command, failure thresholds, and platform matrix.
+
 ### Optional context-model benchmark
 
 The Viddexa five-class context model is currently an optional development
