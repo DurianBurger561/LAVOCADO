@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
-from app.paths import default_database_path
-
 
 @dataclass(frozen=True, slots=True)
 class ProtectionEvent:
@@ -41,8 +39,8 @@ class RecordedEvent:
 class EventRecorder:
     """Store minimal event metadata on one background worker."""
 
-    def __init__(self, database_path: str | Path | None = None) -> None:
-        self.database_path = Path(database_path or default_database_path())
+    def __init__(self, database_path: str | Path) -> None:
+        self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._executor = ThreadPoolExecutor(
             max_workers=1,

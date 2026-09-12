@@ -89,9 +89,7 @@ Runtime platform integration is isolated under `app/platforms/`:
 
 Each process creates one `PlatformAdapter` and passes it to capture, blocklist,
 overlay, storage, and dashboard composition. Business modules therefore do not
-select an operating system or import a concrete platform implementation. The
-older `app/platform_support.py` and `app/paths.py` modules remain temporarily
-until their dedicated cleanup phase.
+select an operating system or import a concrete platform implementation.
 
 ## Setup
 

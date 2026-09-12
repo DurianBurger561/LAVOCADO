@@ -33,11 +33,11 @@ def event_to_row(event) -> tuple[str, ...]:
 class Dashboard:
     """Tk dashboard that owns a separate protection process."""
 
-    def __init__(self, root, tk, ttk, recorder=None, controller=None) -> None:
+    def __init__(self, root, tk, ttk, recorder, controller=None) -> None:
         self.root = root
         self.tk = tk
         self.ttk = ttk
-        self.recorder = recorder or EventRecorder()
+        self.recorder = recorder
         self.controller = controller or ProtectionController()
         self._closed = False
         self._message = ""
