@@ -13,6 +13,12 @@ MODEL_FRAME_MAX_EDGE = 640
 NUDENET_INFERENCE_RESOLUTION = 640
 NUDENET_FALLBACK_INFERENCE_RESOLUTION = 320
 
+# Optional local context classifier. Its weights are downloaded by Transformers
+# during development and are never sent screenshots over the network.
+CONTEXT_MODEL_ENABLED = True
+CONTEXT_MODEL_NAME = "viddexa/nsfw-detection-2-mini"
+CONTEXT_MODEL_REVISION = "15f61cddc0a1a2a9176f018fb6838ef92c8163cc"
+
 # None selects the primary monitor automatically. Set an integer to override it.
 MONITOR_INDEX: int | None = None
 

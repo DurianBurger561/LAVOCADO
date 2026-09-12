@@ -11,6 +11,13 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.MODEL_FRAME_MAX_EDGE, 640)
         self.assertEqual(config.NUDENET_INFERENCE_RESOLUTION, 640)
 
+    def test_context_model_is_revision_pinned(self) -> None:
+        self.assertEqual(
+            config.CONTEXT_MODEL_NAME,
+            "viddexa/nsfw-detection-2-mini",
+        )
+        self.assertRegex(config.CONTEXT_MODEL_REVISION, re.compile(r"^[0-9a-f]{40}$"))
+
     def test_overlay_colours_are_hex_values(self) -> None:
         colour_names = (
             "OVERLAY_BG",

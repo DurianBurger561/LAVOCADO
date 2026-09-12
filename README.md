@@ -128,6 +128,22 @@ To compare 320n and 640m locally without saving any analysis output:
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 ```
 
+### Optional context-model benchmark
+
+The Viddexa five-class context model is currently an optional development
+dependency. It is not yet connected to blocking decisions or release packages.
+Install and benchmark it separately before the fusion policy is enabled:
+
+```bash
+python -m pip install -r requirements-context.txt
+python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+```
+
+The pinned model files are downloaded from Hugging Face, then inference runs
+locally. Benchmark images are not uploaded or saved, and the command prints
+only numbered results rather than input paths. If the dependencies or model are
+unavailable, LAVOCADO remains able to run in NudeNet-only mode.
+
 ## Use LAVOCADO
 
 Start protection directly (the existing default):
