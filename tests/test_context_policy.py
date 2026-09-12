@@ -151,6 +151,25 @@ class ContextPolicyTests(unittest.TestCase):
         self.assertEqual(policy.evaluate(foreground(hostname="a.example.com").website), Action.FORCE_BLOCK)
         self.assertEqual(policy.evaluate(foreground(hostname="b.example.com").website), Action.FULL_BYPASS)
 
+    def test_website_policy_compares_canonical_idn_and_multi_label_domains(self) -> None:
+        policy = WebsitePolicy([
+            site_rule("bücher.example", Action.FORCE_BLOCK),
+            site_rule("example.co.uk", Action.FULL_BYPASS),
+        ])
+
+        self.assertEqual(
+            policy.evaluate(foreground(hostname="xn--bcher-kva.example").website),
+            Action.FORCE_BLOCK,
+        )
+        self.assertEqual(
+            policy.evaluate(foreground(hostname="shop.example.co.uk").website),
+            Action.FULL_BYPASS,
+        )
+        self.assertEqual(
+            policy.evaluate(foreground(hostname="example.co.uk.evil.test").website),
+            Action.NORMAL,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

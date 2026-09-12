@@ -11,6 +11,7 @@ from app.context.models import (
     WebsiteMatchMode,
     WebsiteRule,
 )
+from app.context.website.normalization import normalize_hostname
 
 
 class WebsitePolicy:
@@ -20,13 +21,15 @@ class WebsitePolicy:
     def match(self, context: WebsiteContext) -> WebsiteRule | None:
         if context.state is not WebsiteContextState.KNOWN or not context.hostname:
             return None
-        host = context.hostname.rstrip(".").casefold()
+        host = normalize_hostname(context.hostname)
+        if host is None:
+            return None
         bypass_rule = None
         for rule in self.rules:
             if not rule.enabled:
                 continue
-            domain = rule.domain.rstrip(".").casefold()
-            if not domain:
+            domain = normalize_hostname(rule.domain)
+            if domain is None:
                 continue
             matches = host == domain or (
                 rule.match_mode is WebsiteMatchMode.DOMAIN_AND_SUBDOMAINS
@@ -43,4 +46,3 @@ class WebsitePolicy:
     def evaluate(self, context: WebsiteContext) -> ContextPolicyAction:
         rule = self.match(context)
         return ContextPolicyAction.NORMAL if rule is None else rule.action
-
