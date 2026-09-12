@@ -216,7 +216,7 @@ class PlatformModuleTests(unittest.TestCase):
                     ".",
                     "overlay",
                     ("canJoinAllSpaces", "nonActivating"),
-                )
+                ),
             ],
         )
         self.assertEqual(root.bindings[0][0], "<Map>")

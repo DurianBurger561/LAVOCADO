@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-import select
 import subprocess
 import sys
 import time
 from concurrent.futures import Future
 from pathlib import Path
+from queue import Empty, SimpleQueue
 from threading import Event, Thread
 from typing import TextIO
 
@@ -61,13 +61,24 @@ def show_overlay_process(
     )
     message_sent = False
     output_stream = getattr(process, "stdout", None)
+    heartbeat_events: SimpleQueue[bool] = SimpleQueue()
+    heartbeat_reader: Thread | None = None
     started_at = clock()
     last_heartbeat = started_at
     received_heartbeat = False
 
     try:
+        if output_stream is not None:
+            heartbeat_reader = Thread(
+                target=_read_heartbeat_stream,
+                args=(output_stream, heartbeat_events),
+                daemon=True,
+                name="lavocado-overlay-heartbeat-reader",
+            )
+            heartbeat_reader.start()
+
         while process.poll() is None:
-            if _consume_heartbeat(output_stream):
+            if _consume_heartbeat(heartbeat_events):
                 last_heartbeat = clock()
                 received_heartbeat = True
             now = clock()
@@ -85,7 +96,6 @@ def show_overlay_process(
             sleeper(POLL_INTERVAL_SECONDS)
     finally:
         _close_stdin(process.stdin)
-        _close_output(output_stream)
         if process.poll() is None:
             process.terminate()
             try:
@@ -93,6 +103,9 @@ def show_overlay_process(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+        _close_output(output_stream)
+        if heartbeat_reader is not None:
+            heartbeat_reader.join(timeout=1.0)
 
     if process.returncode:
         LOGGER.warning("macOS overlay process exited with status %s", process.returncode)
@@ -166,20 +179,28 @@ def _ready_message(support_message: Future[str] | None) -> str | None:
         return LOCAL_FALLBACK_MESSAGE
 
 
-def _consume_heartbeat(output_stream: TextIO | None) -> bool:
-    if output_stream is None:
-        return False
-    received = False
+def _read_heartbeat_stream(
+    output_stream: TextIO,
+    heartbeat_events: SimpleQueue[bool],
+) -> None:
+    """Read child output without blocking the overlay process monitor."""
+
     try:
-        while select.select([output_stream], [], [], 0)[0]:
-            line = output_stream.readline()
-            if not line:
-                break
+        for line in output_stream:
             if line.strip() == HEARTBEAT_TOKEN:
-                received = True
-    except (OSError, TypeError, ValueError):
-        return False
-    return received
+                heartbeat_events.put(True)
+    except (OSError, ValueError):
+        return
+
+
+def _consume_heartbeat(heartbeat_events: SimpleQueue[bool]) -> bool:
+    received = False
+    while True:
+        try:
+            heartbeat_events.get_nowait()
+        except Empty:
+            return received
+        received = True
 
 
 def _write_heartbeat() -> None:

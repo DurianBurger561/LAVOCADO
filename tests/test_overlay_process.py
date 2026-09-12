@@ -7,6 +7,8 @@ import subprocess
 import sys
 import unittest
 from concurrent.futures import Future
+from pathlib import Path
+from queue import SimpleQueue
 from threading import Event
 from unittest.mock import patch
 
@@ -14,6 +16,7 @@ from app.intervention.intervene import LOCAL_FALLBACK_MESSAGE
 from app.vision.overlay_process import (
     HEARTBEAT_TOKEN,
     _consume_heartbeat,
+    _read_heartbeat_stream,
     _read_parent_messages,
     overlay_process_command,
     show_overlay_process,
@@ -57,7 +60,7 @@ class OverlayProcessTests(unittest.TestCase):
             command = overlay_process_command(3)
 
         self.assertEqual(command[0], "/python")
-        self.assertTrue(command[1].endswith("/main.py"))
+        self.assertEqual(Path(command[1]).name, "main.py")
         self.assertEqual(
             command[2:],
             ["--overlay-process", "--monitor-index", "3"],
@@ -141,11 +144,14 @@ class OverlayProcessTests(unittest.TestCase):
 
     def test_ui_heartbeat_is_detected_through_the_child_pipe(self) -> None:
         read_fd, write_fd = os.pipe()
+        heartbeat_events: SimpleQueue[bool] = SimpleQueue()
+        with os.fdopen(write_fd, "w", encoding="utf-8") as writer:
+            writer.write(f"{HEARTBEAT_TOKEN}\n")
+            writer.flush()
         with os.fdopen(read_fd, "r", encoding="utf-8") as reader:
-            with os.fdopen(write_fd, "w", encoding="utf-8") as writer:
-                writer.write(f"{HEARTBEAT_TOKEN}\n")
-                writer.flush()
-                self.assertTrue(_consume_heartbeat(reader))
+            _read_heartbeat_stream(reader, heartbeat_events)
+
+        self.assertTrue(_consume_heartbeat(heartbeat_events))
 
 
 if __name__ == "__main__":
