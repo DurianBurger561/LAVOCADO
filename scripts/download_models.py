@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,26 @@ from app.vision.model_assets import (
 DEFAULT_DESTINATION = PROJECT_ROOT / "models" / NUDENET_640M_FILENAME
 
 
+def build_download_request(
+    environ: Mapping[str, str] | None = None,
+) -> urllib.request.Request:
+    """Build the GitHub asset request with optional Actions authentication."""
+
+    environment = os.environ if environ is None else environ
+    headers = {
+        "Accept": "application/octet-stream",
+        "User-Agent": "LAVOCADO-model-downloader",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    token = environment.get("GITHUB_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return urllib.request.Request(
+        NUDENET_640M_DOWNLOAD_URL,
+        headers=headers,
+    )
+
+
 def download_model(destination: Path, *, force: bool = False) -> Path:
     """Download the pinned NudeNet model atomically and verify its digest."""
 
@@ -38,14 +59,7 @@ def download_model(destination: Path, *, force: bool = False) -> Path:
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = destination.with_suffix(destination.suffix + ".part")
-    request = urllib.request.Request(
-        NUDENET_640M_DOWNLOAD_URL,
-        headers={
-            "Accept": "application/octet-stream",
-            "User-Agent": "LAVOCADO-model-downloader",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
+    request = build_download_request()
 
     print(
         f"Downloading NudeNet 640m ({NUDENET_640M_SIZE / 1024 / 1024:.1f} MiB)..."
