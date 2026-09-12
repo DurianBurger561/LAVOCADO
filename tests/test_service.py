@@ -2,11 +2,18 @@
 
 import unittest
 from concurrent.futures import Future
+from dataclasses import dataclass
 
 from app.blocklist.watcher import BlocklistResult, WindowInfo
 from app.intervention.recorder import ProtectionEvent
 from app.service import LavocadoService, State
 from app.vision.temporal import TemporalVerifier
+
+
+@dataclass(frozen=True)
+class FakeCapturedFrame:
+    original_frame: int
+    model_frame: int
 
 
 class FakeCapturer:
@@ -20,9 +27,12 @@ class FakeCapturer:
         self.grabbed_indexes: list[int] = []
         self.closed = False
 
-    def grab(self, monitor_index: int) -> int:
+    def grab(self, monitor_index: int) -> FakeCapturedFrame:
         self.grabbed_indexes.append(monitor_index)
-        return monitor_index
+        return FakeCapturedFrame(
+            original_frame=monitor_index,
+            model_frame=monitor_index,
+        )
 
     def close(self) -> None:
         self.closed = True

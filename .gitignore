@@ -7,3 +7,5 @@ __pycache__/
 .DS_Store
 /build/
 /dist/
+/models/*.onnx
+/models/*.part

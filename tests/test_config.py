@@ -7,6 +7,10 @@ from app import config
 
 
 class ConfigTests(unittest.TestCase):
+    def test_detection_baseline_uses_640_pixels(self) -> None:
+        self.assertEqual(config.MODEL_FRAME_MAX_EDGE, 640)
+        self.assertEqual(config.NUDENET_INFERENCE_RESOLUTION, 640)
+
     def test_overlay_colours_are_hex_values(self) -> None:
         colour_names = (
             "OVERLAY_BG",

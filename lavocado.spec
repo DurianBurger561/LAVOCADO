@@ -1,17 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import sys
+from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
 
 
 nudenet_data = collect_data_files("nudenet", includes=["*.onnx"])
+model_path = Path(SPECPATH) / "models" / "640m.onnx"
+if not model_path.is_file():
+    raise SystemExit(
+        "models/640m.onnx is required for packaging; "
+        "run: python scripts/download_models.py"
+    )
+model_data = [(str(model_path), "models")]
 
 analysis = Analysis(
     ["main.py"],
     pathex=[],
     binaries=[],
-    datas=nudenet_data,
+    datas=nudenet_data + model_data,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

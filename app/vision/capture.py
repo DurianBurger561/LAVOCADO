@@ -1,7 +1,8 @@
-"""Capture and resize the primary screen."""
+"""Capture full-resolution screens and prepare NudeNet model frames."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Self
 
 import numpy as np
@@ -18,8 +19,16 @@ from app.platform_support import (
 from app.vision.monitors import monitor_index_at_point, select_monitor_index
 
 
+@dataclass(frozen=True, slots=True)
+class CapturedFrame:
+    """One in-memory screen capture and its bounded model input."""
+
+    original_frame: np.ndarray
+    model_frame: np.ndarray
+
+
 class Capturer:
-    """Capture physical monitors as BGR NumPy arrays."""
+    """Capture physical monitors without discarding the original pixels."""
 
     def __init__(self, monitor_index: int | None = config.MONITOR_INDEX) -> None:
         prepare_desktop_environment()
@@ -38,8 +47,8 @@ class Capturer:
             return (self._monitor_index,)
         return tuple(range(1, len(self._capture.monitors)))
 
-    def grab(self, monitor_index: int | None = None) -> np.ndarray:
-        """Capture and resize one frame from the requested screen."""
+    def grab(self, monitor_index: int | None = None) -> CapturedFrame:
+        """Capture one screen and return original and model-sized BGR frames."""
 
         selected_index = (
             self._monitor_index
@@ -61,14 +70,22 @@ class Capturer:
             "BGRX",
         )
 
-        image.thumbnail(
-            (config.THUMBNAIL_SIZE, config.THUMBNAIL_SIZE),
+        original_rgb = np.asarray(image, dtype=np.uint8)
+        original_frame = np.ascontiguousarray(original_rgb[:, :, ::-1])
+
+        model_image = image.copy()
+        model_image.thumbnail(
+            (config.MODEL_FRAME_MAX_EDGE, config.MODEL_FRAME_MAX_EDGE),
             Image.Resampling.LANCZOS,
         )
 
         # NudeNet/OpenCV-style arrays use BGR channel order.
-        rgb_frame = np.asarray(image, dtype=np.uint8)
-        return np.ascontiguousarray(rgb_frame[:, :, ::-1])
+        model_rgb = np.asarray(model_image, dtype=np.uint8)
+        model_frame = np.ascontiguousarray(model_rgb[:, :, ::-1])
+        return CapturedFrame(
+            original_frame=original_frame,
+            model_frame=model_frame,
+        )
 
     def monitor_index_at(self, x: int, y: int) -> int | None:
         """Map a virtual-desktop point to a monitored physical screen."""

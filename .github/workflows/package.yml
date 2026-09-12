@@ -46,6 +46,9 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Download and verify NudeNet 640m
+        run: python scripts/download_models.py
+
       - name: Build native application
         run: python -m PyInstaller --noconfirm --clean lavocado.spec
 

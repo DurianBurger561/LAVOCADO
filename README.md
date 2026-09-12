@@ -10,6 +10,8 @@ display independently, confirms visual risk across multiple frames, and covers
 only the display that triggered protection.
 
 Screenshots are processed locally and are not stored or sent to an LLM.
+The primary whole-screen detector uses NudeNet 640m at 640-pixel inference.
+The full-resolution capture remains only in memory for later local rechecks.
 
 When a risk is confirmed, the affected display moves through a short pause,
 one guided breath, and a ready stage before enabling the continue button.
@@ -86,6 +88,7 @@ Use Python 3.12 and create a virtual environment.
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+python scripts/download_models.py
 python main.py
 ```
 
@@ -95,6 +98,7 @@ python main.py
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+python scripts/download_models.py
 python main.py
 ```
 
@@ -108,7 +112,20 @@ sudo apt install python3-tk x11-utils
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+python scripts/download_models.py
 python main.py
+```
+
+The pinned 640m model is about 99 MiB and is downloaded from NudeNet's official
+GitHub release with byte-size and SHA-256 verification. It is excluded from Git.
+If it is absent during a source run, LAVOCADO logs a warning and falls back to
+NudeNet 320n; packaged builds require the verified 640m file.
+Set `LAVOCADO_NUDENET_MODEL` to use a local 640m file at another path.
+
+To compare 320n and 640m locally without saving any analysis output:
+
+```bash
+python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 ```
 
 ## Use LAVOCADO
@@ -142,6 +159,7 @@ Install the separate build dependency and build on the target operating system:
 
 ```bash
 python -m pip install -r requirements.txt -r requirements-build.txt
+python scripts/download_models.py
 python -m PyInstaller --noconfirm --clean lavocado.spec
 ```
 

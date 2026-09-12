@@ -5,8 +5,13 @@ import os
 # Seconds between screen checks.
 CHECK_INTERVAL = 0.75
 
-# Maximum width/height passed to the vision detector.
-THUMBNAIL_SIZE = 320
+# Maximum width/height retained for the whole-screen NudeNet pass.
+MODEL_FRAME_MAX_EDGE = 640
+
+# NudeNet model input sizes. The 320 value is used only when the optional
+# 640m model asset is unavailable or cannot be loaded.
+NUDENET_INFERENCE_RESOLUTION = 640
+NUDENET_FALLBACK_INFERENCE_RESOLUTION = 320
 
 # None selects the primary monitor automatically. Set an integer to override it.
 MONITOR_INDEX: int | None = None

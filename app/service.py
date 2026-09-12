@@ -136,8 +136,8 @@ class LavocadoService:
         has_candidate = False
 
         for monitor_index in self.capturer.monitor_indexes:
-            frame = self.capturer.grab(monitor_index)
-            result = dict(self.detector.check(frame))
+            captured_frame = self.capturer.grab(monitor_index)
+            result = dict(self.detector.check(captured_frame.model_frame))
             result["monitor_index"] = monitor_index
             results.append(result)
 
