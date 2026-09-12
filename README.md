@@ -120,6 +120,8 @@ python main.py
 
 On first launch, allow Terminal or LAVOCADO under **System Settings → Privacy &
 Security → Screen & System Audio Recording**, then restart the application.
+Browser address-bar discovery also requires **Privacy & Security → Accessibility**;
+without that permission, website context remains UNKNOWN.
 
 ### Ubuntu, Linux, or WSL
 
@@ -129,7 +131,9 @@ sudo apt install \
   gstreamer1.0-tools gstreamer1.0-pipewire \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
-  libxcb-render-util0 libxcb-util1 libxcb-xkb1
+  libxcb-render-util0 libxcb-util1 libxcb-xkb1 \
+  gcc libcairo2-dev pkg-config python3-dev \
+  libgirepository-2.0-dev gir1.2-atspi-2.0
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -137,8 +141,10 @@ python scripts/download_models.py
 python main.py
 ```
 
-Linux explicitly selects pywebview's Qt backend, so a missing optional GTK
-`gi` module is not treated as a startup failure. Under WSLg, LAVOCADO defaults
+Linux explicitly selects pywebview's Qt backend. PyGObject/AT-SPI is used only
+for foreground browser address-bar discovery; if desktop accessibility is
+unavailable, the website remains UNKNOWN and visual protection continues.
+Under WSLg, LAVOCADO defaults
 Qt WebEngine to software rendering to avoid Mesa/Zink failures when no DRM
 render node is exposed. User-provided Qt or Mesa environment values are not
 overwritten.

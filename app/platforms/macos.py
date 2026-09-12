@@ -123,6 +123,11 @@ class MacOSPlatform:
     def get_foreground_application(self) -> ApplicationContext | None:
         return application_from_window(self.get_foreground_window())
 
+    def create_website_reader(self):
+        from app.platforms.website.macos_ax import MacOSAXWebsiteReader
+
+        return MacOSAXWebsiteReader()
+
     def create_screen_capture(self):
         from app.platforms.capture import (
             create_macos_capture,

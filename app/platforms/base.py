@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from app.context.models import ApplicationContext
+    from app.context.website.provider import WebsiteReader
     from app.platforms.capture import ScreenCaptureBackend
 
 
@@ -61,6 +62,8 @@ class PlatformAdapter(Protocol):
     def get_foreground_window(self) -> WindowInfo | None: ...
 
     def get_foreground_application(self) -> ApplicationContext | None: ...
+
+    def create_website_reader(self) -> WebsiteReader: ...
 
     def create_screen_capture(self) -> ScreenCaptureBackend: ...
 

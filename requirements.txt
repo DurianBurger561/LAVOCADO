@@ -8,7 +8,11 @@ nudenet>=3.4.2,<4
 openai>=2,<3
 pywebview>=6.2,<7; sys_platform != "linux"
 pywebview[qt]>=6.2,<7; sys_platform == "linux"
+pycairo>=1.26,<2; sys_platform == "linux"
+PyGObject>=3.50,<3.55; sys_platform == "linux"
 pyobjc-framework-CoreMedia>=10,<13; sys_platform == "darwin"
+pyobjc-framework-ApplicationServices>=10,<13; sys_platform == "darwin"
+pyobjc-framework-CoreText>=10,<13; sys_platform == "darwin"
 pyobjc-framework-libdispatch>=10,<13; sys_platform == "darwin"
 pyobjc-framework-Quartz>=10,<13; sys_platform == "darwin"
 pyobjc-framework-ScreenCaptureKit>=10,<13; sys_platform == "darwin"

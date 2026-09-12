@@ -174,6 +174,19 @@ class WebDashboardTests(unittest.TestCase):
         self.assertIn('GetModule("UIAutomationCore.dll")', spec)
         self.assertIn('"comtypes.gen.UIAutomationClient"', spec)
 
+    def test_macos_packaging_includes_accessibility_framework(self) -> None:
+        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn('"ApplicationServices"', spec)
+        self.assertIn('pyobjc-framework-ApplicationServices', requirements)
+
+    def test_linux_packaging_includes_atspi_reader(self) -> None:
+        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn('"gi.repository.Atspi"', spec)
+        self.assertIn('get_gi_typelibs(', spec)
+        self.assertIn('PyGObject>=3.50', requirements)
+
 
 if __name__ == "__main__":
     unittest.main()

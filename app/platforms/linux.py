@@ -7,6 +7,7 @@ import platform
 import re
 import shutil
 import subprocess
+import time
 from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
 
@@ -136,7 +137,39 @@ class LinuxPlatform:
         return self._window_provider.active_window()
 
     def get_foreground_application(self) -> ApplicationContext | None:
-        return application_from_window(self.get_foreground_window())
+        application = application_from_window(self.get_foreground_window())
+        if application is not None and application.identifier:
+            return application
+
+        # Wayland often exposes no X11 foreground window. AT-SPI supplies a
+        # unique active process; its executable is a stable rule key.
+        try:
+            from app.platforms.website.linux_atspi import _NativeAtspiBridge
+
+            process_id = _NativeAtspiBridge().active_process_id()
+            executable = (
+                _linux_executable_for_pid(process_id)
+                if process_id is not None and process_id > 0
+                else None
+            )
+        except Exception:
+            return application
+        if not executable:
+            return application
+        process_name = Path(executable).name
+        return ApplicationContext(
+            identifier=process_name,
+            display_name=process_name,
+            process_name=process_name,
+            window_id=None,
+            captured_at=time.monotonic(),
+            process_id=process_id,
+        )
+
+    def create_website_reader(self):
+        from app.platforms.website.linux_atspi import LinuxAtspiWebsiteReader
+
+        return LinuxAtspiWebsiteReader()
 
     def create_screen_capture(self):
         from app.platforms.capture import (
