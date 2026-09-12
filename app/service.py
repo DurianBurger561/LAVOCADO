@@ -14,7 +14,7 @@ from app import config
 from app.blocklist.watcher import BlocklistResult, WindowWatcher
 from app.intervention.intervene import InterventionGenerator
 from app.intervention.recorder import EventRecorder, ProtectionEvent
-from app.platform_support import prepare_desktop_environment
+from app.platforms import PlatformAdapter
 from app.vision.capture import Capturer
 from app.vision.context_classifier import load_context_classifier
 from app.vision.decision import DecisionEngine
@@ -39,6 +39,7 @@ class LavocadoService:
 
     def __init__(
         self,
+        platform_adapter: PlatformAdapter,
         capturer: Capturer | None = None,
         detector: Detector | None = None,
         overlay: Overlay | None = None,
@@ -55,8 +56,10 @@ class LavocadoService:
         scan_clock: Callable[[], float] = time.perf_counter,
         sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
-        prepare_desktop_environment()
-        self.capturer = capturer if capturer is not None else Capturer()
+        self.platform_adapter = platform_adapter
+        self.capturer = (
+            capturer if capturer is not None else Capturer(platform_adapter)
+        )
         uses_default_detector = detector is None
         self.detector = detector if detector is not None else Detector()
         if decision_engine is not None:
@@ -93,12 +96,22 @@ class LavocadoService:
             context_model=config.CONTEXT_MODEL_NAME,
             context_status=context_status,
         )
-        self.overlay = overlay if overlay is not None else Overlay()
-        self.recorder = recorder if recorder is not None else EventRecorder()
+        self.overlay = (
+            overlay if overlay is not None else Overlay(platform_adapter)
+        )
+        self.recorder = (
+            recorder
+            if recorder is not None
+            else EventRecorder(platform_adapter.default_data_dir() / "events.db")
+        )
         self.intervention = (
             intervention if intervention is not None else InterventionGenerator()
         )
-        self.watcher = watcher if watcher is not None else WindowWatcher()
+        self.watcher = (
+            watcher
+            if watcher is not None
+            else WindowWatcher(platform_adapter)
+        )
         self._verifier_factory = (
             verifier_factory
             if verifier_factory is not None

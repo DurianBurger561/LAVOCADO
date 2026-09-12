@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app.platforms.linux import LinuxPlatform
 from app.ui.api import DashboardAPI
 from app.ui.web_dashboard import dashboard_entry_path, run_web_dashboard
 
@@ -82,12 +83,13 @@ class WebDashboardTests(unittest.TestCase):
         webview = FakeWebview()
         controller = FakeController()
         recorder = FakeRecorder()
+        platform = LinuxPlatform(environ={}, release="generic-linux")
 
         run_web_dashboard(
+            platform,
             webview_module=webview,
             controller=controller,
             recorder=recorder,
-            system_name="Linux",
         )
 
         args, options = webview.window_call

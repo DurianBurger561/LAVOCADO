@@ -28,16 +28,20 @@ class FakeMSS:
         self.closed = True
 
 
+class FakePlatform:
+    @staticmethod
+    def screen_capture_help() -> str:
+        return "test capture help"
+
+
 class CaptureTests(unittest.TestCase):
-    @patch("app.vision.capture.prepare_desktop_environment")
     @patch("app.vision.capture.MSS", return_value=FakeMSS())
     def test_retains_original_and_bounds_model_frame(
         self,
         _mss: object,
-        _prepare: object,
     ) -> None:
         with patch("app.vision.capture.config.MODEL_FRAME_MAX_EDGE", 4):
-            capturer = Capturer()
+            capturer = Capturer(FakePlatform())
             captured = capturer.grab(1)
 
         self.assertEqual(captured.original_frame.shape, (4, 8, 3))
@@ -47,15 +51,13 @@ class CaptureTests(unittest.TestCase):
         self.assertTrue(captured.original_frame.flags.c_contiguous)
         self.assertTrue(captured.model_frame.flags.c_contiguous)
 
-    @patch("app.vision.capture.prepare_desktop_environment")
     @patch("app.vision.capture.MSS", return_value=FakeMSS())
     def test_does_not_upscale_small_screen(
         self,
         _mss: object,
-        _prepare: object,
     ) -> None:
         with patch("app.vision.capture.config.MODEL_FRAME_MAX_EDGE", 16):
-            captured = Capturer().grab(1)
+            captured = Capturer(FakePlatform()).grab(1)
 
         self.assertEqual(captured.original_frame.shape, (4, 8, 3))
         self.assertEqual(captured.model_frame.shape, (4, 8, 3))

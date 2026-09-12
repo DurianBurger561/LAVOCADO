@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
 
-from app.platforms.common import WindowInfo
+from app.platforms.base import (
+    Environment,
+    WindowInfo,
+    WindowProvider,
+    data_dir_override,
+)
 
 NAME = "Darwin"
 MACOS_WINDOW_SCRIPT = """
@@ -60,6 +66,46 @@ class MacOSWindowProvider:
         app_name, title, left, top, width, height = fields
         bounds = _parse_bounds(left, top, width, height)
         return WindowInfo(title=title, app_name=app_name, **bounds)
+
+
+class MacOSPlatform:
+    """Provide all macOS-specific services behind one adapter."""
+
+    name = NAME
+
+    def __init__(
+        self,
+        *,
+        environ: Environment | None = None,
+        home: Path | None = None,
+        window_provider: WindowProvider | None = None,
+    ) -> None:
+        self._environ = os.environ if environ is None else environ
+        self._home = Path.home() if home is None else home
+        self._window_provider = window_provider
+
+    def prepare_environment(self) -> None:
+        return None
+
+    def default_data_dir(self) -> Path:
+        override = data_dir_override(self._environ)
+        if override is not None:
+            return override
+        return default_data_dir(self._environ, self._home)
+
+    def get_foreground_window(self) -> WindowInfo | None:
+        if self._window_provider is None:
+            self._window_provider = MacOSWindowProvider()
+        return self._window_provider.active_window()
+
+    def tkinter_help(self) -> str:
+        return tkinter_help()
+
+    def screen_capture_help(self) -> str:
+        return screen_capture_help()
+
+    def prepare_webview_environment(self) -> str | None:
+        return prepare_webview_environment(self._environ)
 
 
 def _parse_bounds(

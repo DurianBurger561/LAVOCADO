@@ -10,7 +10,12 @@ import subprocess
 from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
 
-from app.platforms.common import WindowInfo
+from app.platforms.base import (
+    Environment,
+    WindowInfo,
+    WindowProvider,
+    data_dir_override,
+)
 
 NAME = "Linux"
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -71,6 +76,48 @@ class LinuxWindowProvider:
             check=False,
         )
         return result.stdout if result.returncode == 0 else ""
+
+
+class LinuxPlatform:
+    """Provide all Linux and WSL-specific services behind one adapter."""
+
+    name = NAME
+
+    def __init__(
+        self,
+        *,
+        environ: Environment | None = None,
+        home: Path | None = None,
+        release: str | None = None,
+        window_provider: WindowProvider | None = None,
+    ) -> None:
+        self._environ = os.environ if environ is None else environ
+        self._home = Path.home() if home is None else home
+        self._release = platform.release() if release is None else release
+        self._window_provider = window_provider
+
+    def prepare_environment(self) -> None:
+        return None
+
+    def default_data_dir(self) -> Path:
+        override = data_dir_override(self._environ)
+        if override is not None:
+            return override
+        return default_data_dir(self._environ, self._home)
+
+    def get_foreground_window(self) -> WindowInfo | None:
+        if self._window_provider is None:
+            self._window_provider = LinuxWindowProvider()
+        return self._window_provider.active_window()
+
+    def tkinter_help(self) -> str:
+        return tkinter_help()
+
+    def screen_capture_help(self) -> str:
+        return screen_capture_help()
+
+    def prepare_webview_environment(self) -> str | None:
+        return prepare_webview_environment(self._environ, self._release)
 
 
 def _x_property(output: str, property_name: str) -> str:
@@ -135,10 +182,11 @@ def is_wsl(
 
 def prepare_webview_environment(
     environ: MutableMapping[str, str],
+    release: str | None = None,
 ) -> str:
     """Select Qt and use software rendering by default under WSLg."""
 
-    if is_wsl(environ):
+    if is_wsl(environ, release):
         environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
         environ.setdefault("QT_OPENGL", "software")
         environ.setdefault("QT_QUICK_BACKEND", "software")

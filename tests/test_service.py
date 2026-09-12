@@ -18,6 +18,11 @@ class FakeCapturedFrame:
     model_frame: int
 
 
+class FakePlatform:
+    def get_foreground_window(self) -> None:
+        return None
+
+
 class FakeCapturer:
     def __init__(
         self,
@@ -167,6 +172,7 @@ class ServiceTests(unittest.TestCase):
             context_status="unavailable",
         )
         service = LavocadoService(
+            FakePlatform(),
             capturer=FakeCapturer(),
             detector=FakeDetector({1: [True]}),
             overlay=FakeOverlay(),
@@ -187,6 +193,7 @@ class ServiceTests(unittest.TestCase):
     def test_passes_full_capture_to_decision_engine(self) -> None:
         decision_engine = FakeDecisionEngine()
         service = LavocadoService(
+            FakePlatform(),
             capturer=FakeCapturer(),
             detector=FakeDetector({1: [False]}),
             overlay=FakeOverlay(),
@@ -202,6 +209,7 @@ class ServiceTests(unittest.TestCase):
     def test_fused_candidates_still_require_two_hits_in_three_frames(self) -> None:
         overlay = FakeOverlay()
         service = LavocadoService(
+            FakePlatform(),
             capturer=FakeCapturer(),
             detector=FakeDetector({1: [False, False, False]}),
             overlay=overlay,
@@ -226,6 +234,7 @@ class ServiceTests(unittest.TestCase):
         recorder = FakeRecorder()
         intervention = FakeIntervention()
         service = LavocadoService(
+            FakePlatform(),
             capturer=capturer,
             detector=FakeDetector({1: [False, True, True]}),
             overlay=overlay,
@@ -256,6 +265,7 @@ class ServiceTests(unittest.TestCase):
         current_time = [0.0]
         capturer = FakeCapturer()
         service = LavocadoService(
+            FakePlatform(),
             capturer=capturer,
             detector=FakeDetector({1: [False, True, True, False]}),
             overlay=FakeOverlay(),
@@ -284,6 +294,7 @@ class ServiceTests(unittest.TestCase):
         overlay = FakeOverlay()
         recorder = FakeRecorder()
         service = LavocadoService(
+            FakePlatform(),
             capturer=capturer,
             detector=FakeDetector(
                 {
@@ -314,6 +325,7 @@ class ServiceTests(unittest.TestCase):
         recorder = FakeRecorder()
         intervention = FakeIntervention()
         service = LavocadoService(
+            FakePlatform(),
             capturer=capturer,
             detector=FakeDetector({1: [False]}),
             overlay=FakeOverlay(),
@@ -335,6 +347,7 @@ class ServiceTests(unittest.TestCase):
         test_event = Event()
         test_event.set()
         service = LavocadoService(
+            FakePlatform(),
             capturer=FakeCapturer(),
             detector=FakeDetector({1: [False]}),
             overlay=overlay,
@@ -371,6 +384,7 @@ class ServiceTests(unittest.TestCase):
             )
         )
         service = LavocadoService(
+            FakePlatform(),
             capturer=capturer,
             detector=FakeDetector({1: [], 2: []}),
             overlay=overlay,

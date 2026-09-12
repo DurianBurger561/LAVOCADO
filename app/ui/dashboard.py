@@ -6,6 +6,7 @@ from datetime import datetime
 
 from app import config
 from app.intervention.recorder import EventRecorder
+from app.platforms import PlatformAdapter
 from app.ui.controller import ProtectionController, ProtectionStatus
 
 
@@ -206,7 +207,7 @@ class Dashboard:
         self.root.destroy()
 
 
-def run_dashboard() -> None:
+def run_dashboard(platform_adapter: PlatformAdapter) -> None:
     """Open the dashboard on the GUI main thread."""
 
     try:
@@ -218,5 +219,6 @@ def run_dashboard() -> None:
         ) from error
 
     root = tk.Tk()
-    Dashboard(root, tk, ttk)
+    recorder = EventRecorder(platform_adapter.default_data_dir() / "events.db")
+    Dashboard(root, tk, ttk, recorder=recorder)
     root.mainloop()

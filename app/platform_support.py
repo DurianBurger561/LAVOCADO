@@ -1,4 +1,4 @@
-"""Compatibility facade for desktop-platform setup helpers."""
+"""Temporary compatibility facade for the next migration phase."""
 
 from __future__ import annotations
 
@@ -8,16 +8,32 @@ from app.platforms import (
     SUPPORTED_SYSTEMS,
     ScreenCaptureError,
     UnsupportedPlatformError,
-    prepare_desktop_environment,
-    screen_capture_help,
-    tkinter_help,
+    create_platform_adapter,
 )
 from app.platforms.windows import enable_dpi_awareness
 
 
-def enable_windows_dpi_awareness(user32: Any | None = None) -> bool:
-    """Preserve the original public helper while delegating to Windows."""
+def prepare_desktop_environment(system_name: str | None = None) -> str:
+    adapter = create_platform_adapter(system_name)
+    adapter.prepare_environment()
+    return adapter.name
 
+
+def tkinter_help(system_name: str | None = None) -> str:
+    try:
+        return create_platform_adapter(system_name).tkinter_help()
+    except UnsupportedPlatformError:
+        return "Install a Python distribution that includes Tcl/Tk."
+
+
+def screen_capture_help(system_name: str | None = None) -> str:
+    try:
+        return create_platform_adapter(system_name).screen_capture_help()
+    except UnsupportedPlatformError:
+        return "The operating system did not allow screen capture."
+
+
+def enable_windows_dpi_awareness(user32: Any | None = None) -> bool:
     return enable_dpi_awareness(user32)
 
 
