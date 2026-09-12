@@ -1,0 +1,7 @@
+mss
+numpy
+Pillow
+nudenet>=3.4.2,<4
+openai>=2,<3
+pywebview>=6.2,<7; sys_platform != "linux"
+pywebview[qt]>=6.2,<7; sys_platform == "linux"

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LAVOCADO</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="logo-mark" aria-hidden="true"><span></span></div>
+          <div>
+            <p class="eyebrow">LOCAL SCREEN PROTECTION</p>
+            <h1>LAVOCADO</h1>
+          </div>
+        </div>
+        <div class="privacy-badge">
+          <span class="privacy-dot" aria-hidden="true"></span>
+          Visual processing stays on device
+        </div>
+      </header>
+
+      <main>
+        <section class="hero panel" aria-labelledby="protection-heading">
+          <div>
+            <p class="section-label">PROTECTION</p>
+            <div class="status-heading">
+              <span id="state-dot" class="state-dot stopped" aria-hidden="true"></span>
+              <h2 id="protection-heading">Protection <span id="protection-state">Stopped</span></h2>
+            </div>
+            <p id="status-detail" class="muted">
+              Start monitoring when you are ready. Every connected display is checked locally.
+            </p>
+          </div>
+          <div class="actions">
+            <button id="start-button" class="button primary" type="button">Start protection</button>
+            <button id="stop-button" class="button secondary" type="button" disabled>Stop</button>
+            <button id="test-button" class="button ghost" type="button" disabled>Test intervention</button>
+          </div>
+          <p id="action-message" class="action-message" aria-live="polite"></p>
+        </section>
+
+        <div class="dashboard-grid">
+          <section class="panel diagnostics" aria-labelledby="diagnostics-heading">
+            <div class="section-heading">
+              <div>
+                <p class="section-label">LIVE SIGNAL</p>
+                <h2 id="diagnostics-heading">Diagnostics</h2>
+              </div>
+              <div class="scan-summary">
+                <strong id="diag-scan">—</strong>
+                <span>last scan</span>
+              </div>
+            </div>
+
+            <dl class="model-list">
+              <div>
+                <dt>Detector</dt>
+                <dd id="diag-model">NudeNet 640m</dd>
+              </div>
+              <div>
+                <dt>Context model</dt>
+                <dd id="diag-context-model">Not started</dd>
+              </div>
+              <div>
+                <dt>Monitor</dt>
+                <dd id="diag-monitor">—</dd>
+              </div>
+              <div>
+                <dt>Updated</dt>
+                <dd id="diag-updated">Waiting for first scan</dd>
+              </div>
+            </dl>
+
+            <div class="signal-card">
+              <div class="signal-header">
+                <div>
+                  <span class="signal-name">NudeNet</span>
+                  <strong id="nude-label">No detection</strong>
+                </div>
+                <span id="nude-status" class="signal-tag neutral">None</span>
+              </div>
+              <div class="meter" aria-hidden="true"><span id="nude-progress"></span></div>
+              <p id="nude-score" class="score-line">0.00 / — threshold</p>
+            </div>
+
+            <div class="signal-pair">
+              <div class="mini-signal">
+                <span class="signal-name">Context</span>
+                <strong id="context-label">No result</strong>
+                <span id="context-score" class="muted">—</span>
+              </div>
+              <div class="mini-signal">
+                <span class="signal-name">Decision</span>
+                <strong id="decision-source">No candidate</strong>
+                <span class="muted">Requires explicit evidence</span>
+              </div>
+            </div>
+
+            <div class="temporal-row">
+              <div>
+                <span class="signal-name">Temporal confirmation</span>
+                <div id="temporal-dots" class="temporal-dots" aria-label="No recent candidates"></div>
+              </div>
+              <strong id="temporal-count">0 / 3</strong>
+            </div>
+
+            <div class="rescue-row">
+              <span>Rescue tile <strong id="rescue-tile">—</strong></span>
+              <span>Pinned checks <strong id="rescue-pin">0</strong></span>
+            </div>
+          </section>
+
+          <aside class="panel privacy-card" aria-labelledby="privacy-heading">
+            <div class="shield" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="img">
+                <path d="M12 2 20 5v6c0 5.1-3.4 9.4-8 11-4.6-1.6-8-5.9-8-11V5l8-3Z"></path>
+                <path d="m8.5 12 2.2 2.2 4.8-5"></path>
+              </svg>
+            </div>
+            <p class="section-label">PRIVACY BOUNDARY</p>
+            <h2 id="privacy-heading">Your screen remains yours.</h2>
+            <p>
+              Frames are analyzed in memory on this device. The dashboard receives only small diagnostic numbers and labels.
+            </p>
+            <ul>
+              <li>No visual content stored</li>
+              <li>No cloud vision requests</li>
+              <li>No URL or window title history</li>
+            </ul>
+          </aside>
+        </div>
+
+        <section class="panel history" aria-labelledby="history-heading">
+          <div class="section-heading history-heading">
+            <div>
+              <p class="section-label">LOCAL RECORD</p>
+              <h2 id="history-heading">Intervention history <span id="history-count" class="count-pill">0</span></h2>
+            </div>
+            <button id="refresh-history" class="text-button" type="button">Refresh history</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Trigger</th>
+                  <th>Label</th>
+                  <th>Confidence</th>
+                  <th>Monitor</th>
+                  <th>Shown</th>
+                </tr>
+              </thead>
+              <tbody id="history-body"></tbody>
+            </table>
+            <p id="history-empty" class="empty-state">No local interventions recorded yet.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

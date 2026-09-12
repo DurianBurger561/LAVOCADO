@@ -3,6 +3,238 @@
 </p>
 
 
-### <h1 align="center">Lavocado/小油果</h1>
-  ***小油果*** 是一套应用于电脑端的帮助用户自律的系统，可以屏蔽用户无法自控的特定网站应用内容并通过AI大模型LLM对其内容进行分析来对用户进行监督劝导  
-  The ***Lavocado*** is a system designed for use on computers to help users maintain self-discipline. It can block specific website content that users cannot control and analyze it through an AI large model LLM to supervise and guide the users.
+<h1 align="center">LAVOCADO / 小油果</h1>
+
+LAVOCADO is a local-first desktop protection tool. It monitors each connected
+display independently, confirms visual risk across multiple frames, and covers
+only the display that triggered protection.
+
+Screenshots are processed locally and are not stored or sent to an LLM.
+The primary whole-screen detector uses NudeNet 640m at 640-pixel inference.
+The full-resolution capture remains only in memory for later local rechecks.
+
+When a risk is confirmed, the affected display moves through a short pause,
+one guided breath, and a ready stage before enabling the continue button.
+`Esc` remains available as an emergency exit.
+
+## Local data and privacy
+
+When protection is triggered, LAVOCADO stores only the UTC time, detector
+label, confidence, monitor number, and whether the intervention was shown. It
+does not store screenshots, URLs, or window titles.
+
+The SQLite event database is stored in the current user's application-data
+directory:
+
+- Windows: `%LOCALAPPDATA%\\LAVOCADO\\events.db`
+- macOS: `~/Library/Application Support/LAVOCADO/events.db`
+- Linux or WSL: `${XDG_DATA_HOME:-~/.local/share}/lavocado/events.db`
+
+Set `LAVOCADO_DATA_DIR` before starting the app to use a different directory.
+
+## Optional AI support message
+
+LAVOCADO works without an API key and uses a built-in local message by default.
+To enable a short AI-generated message in the final intervention stage, set an
+OpenAI API key before starting the application:
+
+```powershell
+# Windows PowerShell
+$env:OPENAI_API_KEY="your-api-key"
+```
+
+```bash
+# macOS, Linux, or WSL
+export OPENAI_API_KEY="your-api-key"
+```
+
+Only a fixed request for a supportive message is sent. Screenshots, detector
+labels, confidence values, monitor numbers, URLs, and window titles are never
+included. API response storage is disabled for this request. Set
+`LAVOCADO_OPENAI_MODEL` to override the default model.
+
+## Foreground-window blocklist
+
+Add case-insensitive application or title terms in `app/config.py`:
+
+```python
+BLOCKED_APPS = ["Steam", "reddit.com"]
+```
+
+When a term matches, LAVOCADO uses the foreground window's center to cover only
+the display containing that window. Window metadata is checked in memory and is
+not stored or sent to the AI service. An empty list disables window inspection.
+
+On macOS, foreground-window details require Accessibility permission for the
+terminal or packaged application. On X11 Linux, install `xprop` and `xwininfo`
+(provided by `x11-utils` on Ubuntu). WSL can only inspect window metadata that
+WSLg exposes; use a native Windows build to match all Windows applications.
+
+## Supported platforms
+
+- Windows 10/11
+- macOS
+- Linux with X11-compatible screen capture, including WSLg
+
+Wayland support depends on the compositor's screen-capture permissions.
+
+## Setup
+
+Use Python 3.12 and create a virtual environment.
+
+### Windows PowerShell
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python scripts/download_models.py
+python main.py
+```
+
+### macOS
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python scripts/download_models.py
+python main.py
+```
+
+On first launch, allow Terminal or LAVOCADO under **System Settings → Privacy &
+Security → Screen & System Audio Recording**, then restart the application.
+
+### Ubuntu, Linux, or WSL
+
+```bash
+sudo apt install \
+  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 \
+  libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+  libxcb-render-util0 libxcb-util1 libxcb-xkb1
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python scripts/download_models.py
+python main.py
+```
+
+The pinned 640m model is about 99 MiB and is downloaded from NudeNet's official
+GitHub release with byte-size and SHA-256 verification. It is excluded from Git.
+If it is absent during a source run, LAVOCADO logs a warning and falls back to
+NudeNet 320n; packaged builds require the verified 640m file.
+Set `LAVOCADO_NUDENET_MODEL` to use a local 640m file at another path.
+
+To compare 320n and 640m locally without saving any analysis output:
+
+```bash
+python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+```
+
+### Optional context-model benchmark
+
+The Viddexa five-class context model is currently an optional development
+dependency and is not yet included in release packages. When installed, it is
+used only to confirm a borderline NudeNet detection on an expanded local crop.
+A Viddexa result by itself can never trigger protection, and `sexy` or `hentai`
+does not promote a borderline result. Install and benchmark it with:
+
+```bash
+python -m pip install -r requirements-context.txt
+python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+```
+
+The pinned model files are downloaded from Hugging Face, then inference runs
+locally. Benchmark images are not uploaded or saved, and the command prints
+only numbered results rather than input paths. If the dependencies or model are
+unavailable, LAVOCADO remains able to run in NudeNet-only mode. The existing
+2-of-3 temporal confirmation still applies after the fused candidate decision.
+
+For small-content rescue, each monitor is divided into four tiles and only one
+tile is context-classified per scan. A very high local `porn` score merely asks
+the same NudeNet 640m instance to recheck that tile; Viddexa never creates a
+candidate by itself. A rescued tile is pinned for the next two checks so the
+existing 2-of-3 temporal verifier can confirm or reject the same region. Rescue
+is disabled automatically when only the NudeNet 320n fallback is available.
+
+Protection diagnostics are kept in a thread-safe in-memory snapshot. They
+include model availability, latest scan latency, monitor number, top detector
+metadata, context result, decision source, temporal history, and rescue
+schedule. The snapshot uses an explicit safe schema and never contains image
+pixels, screenshots, crops, URLs, window titles, or image paths. It is not
+written to SQLite or sent to OpenAI.
+
+When protection is dashboard-owned, a fixed stdin/stdout message protocol
+copies that safe snapshot from the protection child into dashboard memory.
+Only start, stop, diagnostic-read, and test-intervention operations are
+supported; the bridge cannot execute commands or access arbitrary files. A
+manual test intervention is shown by the protection process on its GUI main
+thread and does not create a SQLite protection event.
+
+## Use LAVOCADO
+
+Start protection directly (the existing default):
+
+```bash
+python main.py
+```
+
+Or open the WebView dashboard to start and stop protection, inspect live
+diagnostics, test the intervention, and view recent privacy-safe events:
+
+```bash
+python main.py dashboard
+```
+
+The dashboard uses pywebview with local HTML, CSS, and JavaScript. It exposes
+only the fixed `DashboardAPI`, waits for `pywebviewready` before reading state,
+and uses private browsing mode. Linux installs use the Qt backend; Windows uses
+WebView2 when available, and macOS uses the system WebKit view. Closing the
+window stops and collects the dashboard-owned Protection child.
+
+The previous Tkinter dashboard remains available as a temporary fallback:
+
+```bash
+python main.py legacy-dashboard
+```
+
+The dashboard launches protection as a separate process so the overlay remains
+on the GUI main thread on Windows, macOS, and Linux. Closing the dashboard asks
+the protection process to stop cleanly.
+
+On a headless machine, inspect recent local events in the terminal:
+
+```bash
+python main.py events --limit 20
+```
+
+## Build desktop applications
+
+Install the separate build dependency and build on the target operating system:
+
+```bash
+python -m pip install -r requirements.txt -r requirements-build.txt
+python scripts/download_models.py
+python -m PyInstaller --noconfirm --clean lavocado.spec
+```
+
+The output is written under `dist/`. PyInstaller applications must be built on
+each target operating system; a Windows executable or macOS application cannot
+be produced directly from WSL/Linux.
+
+The **Package** workflow can build downloadable Windows, macOS, and Linux
+artifacts without requiring three local machines. Open the repository's
+**Actions** tab, select **Package**, choose **Run workflow**, and download the
+three artifacts when all matrix jobs finish. It also runs automatically for
+tags beginning with `v`.
+
+Packaged applications open the dashboard when launched without arguments. The
+Windows and macOS artifacts are currently unsigned, so development machines may
+show the normal unknown-publisher warning. Do not distribute them as a trusted
+release until code signing is configured.
+
+## Run tests
+
+```bash
+python -m unittest discover -s tests -v
+```
