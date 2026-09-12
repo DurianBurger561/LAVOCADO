@@ -113,6 +113,11 @@ def load_context_classifier(
             device=-1,
             use_fast=False,
         )
+    except ImportError:
+        LOGGER.warning(
+            "Viddexa dependencies are unavailable; continuing NudeNet-only"
+        )
+        return None
     except Exception:
         LOGGER.exception(
             "Viddexa context model is unavailable; continuing NudeNet-only"

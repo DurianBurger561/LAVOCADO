@@ -19,6 +19,14 @@ CONTEXT_MODEL_ENABLED = True
 CONTEXT_MODEL_NAME = "viddexa/nsfw-detection-2-mini"
 CONTEXT_MODEL_REVISION = "15f61cddc0a1a2a9176f018fb6838ef92c8163cc"
 
+# Conservative starting values for benchmark calibration, not scientifically
+# validated optimal thresholds.
+NUDENET_BORDERLINE_MARGIN = 0.10
+CONTEXT_CROP_EXPANSION = 1.75
+CONTEXT_PORN_CONFIRM_THRESHOLD = 0.90
+CONTEXT_SEXY_CAN_BLOCK = False
+CONTEXT_HENTAI_CAN_BLOCK = False
+
 # None selects the primary monitor automatically. Set an integer to override it.
 MONITOR_INDEX: int | None = None
 

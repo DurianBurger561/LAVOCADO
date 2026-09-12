@@ -86,6 +86,7 @@ class Detector:
                         "label": label,
                         "score": score,
                         "threshold": threshold,
+                        "box": detection.get("box"),
                     }
                 )
 
@@ -95,6 +96,7 @@ class Detector:
                 "reason": "",
                 "label": None,
                 "confidence": 0.0,
+                "box": None,
                 "check_points": detections,
             }
 
@@ -115,5 +117,6 @@ class Detector:
             ),
             "label": label,
             "confidence": score,
+            "box": strongest.get("box"),
             "check_points": detections,
         }

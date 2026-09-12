@@ -131,8 +131,10 @@ python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-im
 ### Optional context-model benchmark
 
 The Viddexa five-class context model is currently an optional development
-dependency. It is not yet connected to blocking decisions or release packages.
-Install and benchmark it separately before the fusion policy is enabled:
+dependency and is not yet included in release packages. When installed, it is
+used only to confirm a borderline NudeNet detection on an expanded local crop.
+A Viddexa result by itself can never trigger protection, and `sexy` or `hentai`
+does not promote a borderline result. Install and benchmark it with:
 
 ```bash
 python -m pip install -r requirements-context.txt
@@ -142,7 +144,8 @@ python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-imag
 The pinned model files are downloaded from Hugging Face, then inference runs
 locally. Benchmark images are not uploaded or saved, and the command prints
 only numbered results rather than input paths. If the dependencies or model are
-unavailable, LAVOCADO remains able to run in NudeNet-only mode.
+unavailable, LAVOCADO remains able to run in NudeNet-only mode. The existing
+2-of-3 temporal confirmation still applies after the fused candidate decision.
 
 ## Use LAVOCADO
 

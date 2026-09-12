@@ -57,6 +57,7 @@ class DetectorTests(unittest.TestCase):
         self.assertTrue(result["blocked"])
         self.assertEqual(result["label"], "FEMALE_GENITALIA_EXPOSED")
         self.assertAlmostEqual(result["confidence"], 0.81)
+        self.assertEqual(result["box"], [0, 0, 10, 10])
 
     def test_chooses_strongest_blocking_detection(self) -> None:
         model = FakeModel(

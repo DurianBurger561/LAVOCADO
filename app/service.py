@@ -16,6 +16,8 @@ from app.intervention.intervene import InterventionGenerator
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platform_support import prepare_desktop_environment
 from app.vision.capture import Capturer
+from app.vision.context_classifier import load_context_classifier
+from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
 from app.vision.overlay import Overlay
 from app.vision.temporal import TemporalVerifier
@@ -42,6 +44,7 @@ class LavocadoService:
         recorder: EventRecorder | None = None,
         intervention: InterventionGenerator | None = None,
         watcher: WindowWatcher | None = None,
+        decision_engine: DecisionEngine | None = None,
         *,
         verifier_factory: Callable[[], TemporalVerifier] | None = None,
         check_interval: float = config.CHECK_INTERVAL,
@@ -51,7 +54,15 @@ class LavocadoService:
     ) -> None:
         prepare_desktop_environment()
         self.capturer = capturer if capturer is not None else Capturer()
+        uses_default_detector = detector is None
         self.detector = detector if detector is not None else Detector()
+        self.decision_engine = (
+            decision_engine
+            if decision_engine is not None
+            else DecisionEngine(
+                load_context_classifier() if uses_default_detector else None
+            )
+        )
         self.overlay = overlay if overlay is not None else Overlay()
         self.recorder = recorder if recorder is not None else EventRecorder()
         self.intervention = (
@@ -137,7 +148,8 @@ class LavocadoService:
 
         for monitor_index in self.capturer.monitor_indexes:
             captured_frame = self.capturer.grab(monitor_index)
-            result = dict(self.detector.check(captured_frame.model_frame))
+            nudenet_result = dict(self.detector.check(captured_frame.model_frame))
+            result = self.decision_engine.evaluate(nudenet_result, captured_frame)
             result["monitor_index"] = monitor_index
             results.append(result)
 

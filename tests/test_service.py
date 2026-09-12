@@ -115,7 +115,76 @@ class FakeWatcher:
         return self.result
 
 
+class FakeDecisionEngine:
+    def __init__(self) -> None:
+        self.original_frames: list[int] = []
+
+    def evaluate(
+        self,
+        result: dict[str, object],
+        captured: FakeCapturedFrame,
+    ) -> dict[str, object]:
+        self.original_frames.append(captured.original_frame)
+        return result
+
+
+class SequenceDecisionEngine:
+    def __init__(self, candidates: list[bool]) -> None:
+        self._candidates = iter(candidates)
+
+    def evaluate(
+        self,
+        result: dict[str, object],
+        _captured: FakeCapturedFrame,
+    ) -> dict[str, object]:
+        candidate = next(self._candidates)
+        promoted = dict(result)
+        promoted.update(
+            {
+                "blocked": candidate,
+                "label": "FUSED" if candidate else None,
+                "confidence": 0.60 if candidate else 0.0,
+            }
+        )
+        return promoted
+
+
 class ServiceTests(unittest.TestCase):
+    def test_passes_full_capture_to_decision_engine(self) -> None:
+        decision_engine = FakeDecisionEngine()
+        service = LavocadoService(
+            capturer=FakeCapturer(),
+            detector=FakeDetector({1: [False]}),
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            decision_engine=decision_engine,
+        )
+
+        service.check_once()
+
+        self.assertEqual(decision_engine.original_frames, [1])
+
+    def test_fused_candidates_still_require_two_hits_in_three_frames(self) -> None:
+        overlay = FakeOverlay()
+        service = LavocadoService(
+            capturer=FakeCapturer(),
+            detector=FakeDetector({1: [False, False, False]}),
+            overlay=overlay,
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            decision_engine=SequenceDecisionEngine([True, False, True]),
+            verifier_factory=lambda: TemporalVerifier(3, 2),
+        )
+
+        service.check_once()
+        service.check_once()
+        self.assertEqual(overlay.shown_on, [])
+
+        service.check_once()
+
+        self.assertEqual(overlay.shown_on, [1])
+
     def test_blocks_after_two_candidate_frames_in_three_checks(self) -> None:
         current_time = [0.0]
         capturer = FakeCapturer()

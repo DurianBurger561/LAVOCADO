@@ -112,7 +112,7 @@ class ContextClassifierTests(unittest.TestCase):
     def test_load_failure_returns_none_for_nudenet_only_mode(self) -> None:
         factory = Mock(side_effect=ImportError("transformers missing"))
 
-        with self.assertLogs("app.vision.context_classifier", level="ERROR"):
+        with self.assertLogs("app.vision.context_classifier", level="WARNING"):
             classifier = load_context_classifier(pipeline_factory=factory)
 
         self.assertIsNone(classifier)

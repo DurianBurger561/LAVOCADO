@@ -18,6 +18,12 @@ class ConfigTests(unittest.TestCase):
         )
         self.assertRegex(config.CONTEXT_MODEL_REVISION, re.compile(r"^[0-9a-f]{40}$"))
 
+    def test_context_fusion_defaults_are_conservative(self) -> None:
+        self.assertEqual(config.NUDENET_BORDERLINE_MARGIN, 0.10)
+        self.assertEqual(config.CONTEXT_PORN_CONFIRM_THRESHOLD, 0.90)
+        self.assertFalse(config.CONTEXT_SEXY_CAN_BLOCK)
+        self.assertFalse(config.CONTEXT_HENTAI_CAN_BLOCK)
+
     def test_overlay_colours_are_hex_values(self) -> None:
         colour_names = (
             "OVERLAY_BG",
