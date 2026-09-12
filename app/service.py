@@ -15,6 +15,7 @@ from app.blocklist.watcher import BlocklistResult, WindowWatcher
 from app.intervention.intervene import InterventionGenerator
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platforms import PlatformAdapter
+from app.platforms.capture.models import CaptureBackendStatus
 from app.vision.capture import Capturer
 from app.vision.context_classifier import load_context_classifier
 from app.vision.decision import DecisionEngine
@@ -130,6 +131,7 @@ class LavocadoService:
         self._running = False
         self._state = State.STOPPED
         self.diagnostics.set_protection_state(self._state.name)
+        self._record_capture_diagnostics()
         self._cooldown_until = 0.0
 
     @property
@@ -191,6 +193,7 @@ class LavocadoService:
         """Advance the state machine by one monitoring step."""
 
         now = self._clock()
+        self._record_capture_diagnostics()
 
         if self._state == State.STOPPED:
             self._transition(State.MONITORING)
@@ -218,6 +221,7 @@ class LavocadoService:
         for monitor_index in self.capturer.monitor_indexes:
             scan_started = self._scan_clock()
             captured_frame = self.capturer.grab(monitor_index)
+            self._record_capture_diagnostics()
             if not self._is_fresh_frame(monitor_index, captured_frame):
                 continue
             has_fresh_frame = True
@@ -258,6 +262,11 @@ class LavocadoService:
     def _transition(self, state: State) -> None:
         self._state = state
         self.diagnostics.set_protection_state(state.name)
+
+    def _record_capture_diagnostics(self) -> None:
+        status = getattr(self.capturer, "status", None)
+        if isinstance(status, CaptureBackendStatus):
+            self.diagnostics.record_capture(status)
 
     def _decision_rescue_status(
         self,

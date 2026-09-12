@@ -7,6 +7,7 @@ from threading import Event
 
 from app.blocklist.watcher import BlocklistResult, WindowInfo
 from app.intervention.recorder import ProtectionEvent
+from app.platforms.capture import CaptureBackendStatus
 from app.service import LavocadoService, State
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.temporal import TemporalVerifier
@@ -58,6 +59,18 @@ class FakeCapturer:
 
     def close(self) -> None:
         self.closed = True
+
+    @property
+    def status(self) -> CaptureBackendStatus:
+        return CaptureBackendStatus(
+            preferred_backend="fake-native",
+            active_backend=None if self.closed else "fake-native",
+            fallback=False,
+            fallback_reason=None,
+            healthy=not self.closed,
+            monitor_count=len(self.monitor_indexes),
+            frame_age_ms=4.2,
+        )
 
     def monitor_index_at(self, _x: int, _y: int) -> int | None:
         return self.point_monitor_index
@@ -241,6 +254,10 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["last_scan_ms"], 123.0)
         self.assertEqual(snapshot["monitor_index"], 1)
         self.assertEqual(snapshot["temporal"], [1])
+        self.assertEqual(snapshot["capture"]["preferred_backend"], "fake-native")
+        self.assertEqual(snapshot["capture"]["active_backend"], "fake-native")
+        self.assertEqual(snapshot["capture"]["monitor_count"], 1)
+        self.assertEqual(snapshot["capture"]["frame_age_ms"], 4.2)
 
     def test_passes_full_capture_to_decision_engine(self) -> None:
         decision_engine = FakeDecisionEngine()

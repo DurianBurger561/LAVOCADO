@@ -35,6 +35,7 @@ class MSSCapture:
         self._monitors: list[MonitorInfo] = []
         self._raw_monitors: dict[str, dict[str, Any]] = {}
         self._sequences: dict[str, int] = {}
+        self._last_frame_ns: dict[str, int] = {}
 
     def start(self) -> None:
         if self._capture is not None:
@@ -57,6 +58,7 @@ class MSSCapture:
             monitor.id: dict(raw_monitors[monitor.index]) for monitor in monitors
         }
         self._sequences = {monitor.id: 0 for monitor in monitors}
+        self._last_frame_ns = {}
 
     def stop(self) -> None:
         capture = self._capture
@@ -64,6 +66,7 @@ class MSSCapture:
         self._monitors = []
         self._raw_monitors = {}
         self._sequences = {}
+        self._last_frame_ns = {}
         if capture is not None:
             capture.close()
 
@@ -90,10 +93,12 @@ class MSSCapture:
         image = np.ascontiguousarray(bgra[:, :, :3])
         sequence = self._sequences[str(monitor_id)] + 1
         self._sequences[str(monitor_id)] = sequence
+        timestamp_ns = self._clock_ns()
+        self._last_frame_ns[str(monitor_id)] = timestamp_ns
         return CaptureFrame(
             image=image,
             monitor_id=str(monitor_id),
-            timestamp_ns=self._clock_ns(),
+            timestamp_ns=timestamp_ns,
             sequence=sequence,
             changed_regions=None,
             backend=self.name,
@@ -101,6 +106,9 @@ class MSSCapture:
 
     def status(self) -> CaptureBackendStatus:
         started = self._capture is not None
+        now = self._clock_ns()
+        newest = max(self._last_frame_ns.values(), default=None)
+        age_ms = None if newest is None else max(0.0, (now - newest) / 1_000_000)
         return CaptureBackendStatus(
             preferred_backend=self.name,
             active_backend=self.name if started else None,
@@ -108,6 +116,7 @@ class MSSCapture:
             fallback_reason=None,
             healthy=started,
             monitor_count=len(self._monitors),
+            frame_age_ms=age_ms,
         )
 
     def _require_started(self) -> Any:

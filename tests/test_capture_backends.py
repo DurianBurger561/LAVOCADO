@@ -102,7 +102,11 @@ class StubBackend:
 class MSSCaptureTests(unittest.TestCase):
     def test_outputs_normalized_bgr_frame_and_fresh_sequence(self) -> None:
         raw = FakeMSS()
-        backend = MSSCapture(capture_factory=lambda: raw, clock_ns=lambda: 123)
+        ticks = iter((123, 123, 5_000_123))
+        backend = MSSCapture(
+            capture_factory=lambda: raw,
+            clock_ns=lambda: next(ticks),
+        )
         backend.start()
 
         first = backend.get_latest_frame("1")
@@ -116,6 +120,7 @@ class MSSCaptureTests(unittest.TestCase):
         self.assertEqual((first.sequence, second.sequence), (1, 2))
         self.assertIsNone(first.changed_regions)
         self.assertEqual(first.backend, "mss")
+        self.assertEqual(backend.status().frame_age_ms, 5.0)
 
     def test_runtime_screen_error_is_recoverable(self) -> None:
         backend = MSSCapture(capture_factory=lambda: FakeMSS(fail_grab=True))

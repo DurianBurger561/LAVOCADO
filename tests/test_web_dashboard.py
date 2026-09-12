@@ -125,6 +125,22 @@ class WebDashboardTests(unittest.TestCase):
         self.assertNotIn("innerHTML", script)
         self.assertNotIn("eval(", script)
 
+    def test_dashboard_renders_capture_backend_diagnostics(self) -> None:
+        html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+        for field in (
+            "capture-preferred",
+            "capture-active",
+            "capture-fallback",
+            "capture-reason",
+            "capture-frame-age",
+            "capture-monitors",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(f'id="{field}"', html)
+                self.assertIn(f'"{field}"', script)
+
     def test_runtime_dependencies_include_platform_webview_backends(self) -> None:
         requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
 

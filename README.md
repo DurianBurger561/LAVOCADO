@@ -205,9 +205,11 @@ is disabled automatically when only the NudeNet 320n fallback is available.
 Protection diagnostics are kept in a thread-safe in-memory snapshot. They
 include model availability, latest scan latency, monitor number, top detector
 metadata, context result, decision source, temporal history, and rescue
-schedule. The snapshot uses an explicit safe schema and never contains image
-pixels, screenshots, crops, URLs, window titles, or image paths. It is not
-written to SQLite or sent to OpenAI.
+schedule. Capture health reports the preferred and active backend, fallback
+state and reason, frame age, and detected display count. The snapshot uses an
+explicit safe schema and never contains image pixels, screenshots, crops,
+URLs, window titles, or image paths. It is not written to SQLite or sent to
+OpenAI.
 
 When protection is dashboard-owned, a fixed stdin/stdout message protocol
 copies that safe snapshot from the protection child into dashboard memory.

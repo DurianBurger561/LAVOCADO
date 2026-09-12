@@ -117,6 +117,33 @@ function renderDiagnostics(data) {
     text("diag-updated", "Waiting for first scan");
   }
 
+  const capture = data.capture || {};
+  text("capture-preferred", humanize(capture.preferred_backend, "—"));
+  text("capture-active", humanize(capture.active_backend, "—"));
+  text("capture-fallback", capture.fallback ? "Yes" : "No");
+  text("capture-monitors", String(Math.max(0, Number(capture.monitor_count) || 0)));
+  text(
+    "capture-frame-age",
+    capture.frame_age_ms === null || capture.frame_age_ms === undefined
+      ? "—"
+      : `${formatNumber(capture.frame_age_ms, 1)} ms`,
+  );
+  text("capture-reason", capture.fallback_reason || capture.error || "—");
+  let captureHealth = "Not started";
+  let captureHealthClass = "neutral";
+  if (capture.error || (capture.active_backend && !capture.healthy)) {
+    captureHealth = "Error";
+    captureHealthClass = "capture-error";
+  } else if (capture.fallback) {
+    captureHealth = "Fallback";
+    captureHealthClass = "capture-fallback";
+  } else if (capture.active_backend && capture.healthy) {
+    captureHealth = "Healthy";
+    captureHealthClass = "capture-healthy";
+  }
+  text("capture-health", captureHealth);
+  element("capture-health").className = `signal-tag ${captureHealthClass}`;
+
   const nude = data.nudenet || {};
   text("nude-label", humanize(nude.label, "No detection"));
   text("nude-status", humanize(nude.status, "None"));
