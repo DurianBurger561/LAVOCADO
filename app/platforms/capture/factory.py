@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.platforms.capture.base import ScreenCaptureBackend
 from app.platforms.capture.fallback import FallbackCaptureBackend
+from app.platforms.capture.linux_portal import PipeWirePortalCapture
 from app.platforms.capture.linux_session import LinuxCaptureRoute, LinuxSessionInfo
 from app.platforms.capture.linux_xshm import XShmCapture
 from app.platforms.capture.macos_screencapturekit import ScreenCaptureKitCapture
@@ -36,11 +37,14 @@ def create_linux_capture(
 ) -> ScreenCaptureBackend:
     """Select the native Linux backend while retaining one MSS safety net."""
 
+    if session.capture_route is LinuxCaptureRoute.PIPEWIRE_PORTAL:
+        return FallbackCaptureBackend(
+            primary=PipeWirePortalCapture(),
+            fallback=MSSCapture(),
+        )
     if session.capture_route is LinuxCaptureRoute.XSHM:
         return FallbackCaptureBackend(
             primary=XShmCapture(display=display),
             fallback=MSSCapture(),
         )
-    # Portal/PipeWire is introduced in Phase 11. Until then, Wayland and
-    # headless/unknown environments preserve the existing MSS behavior.
     return MSSCapture()

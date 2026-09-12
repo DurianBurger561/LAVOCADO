@@ -21,6 +21,7 @@ from app.platforms.capture.linux_session import (
     LinuxSessionKind,
     detect_linux_session,
 )
+from app.platforms.capture.linux_portal import PipeWirePortalCapture
 from app.platforms.capture.linux_xshm import XShmAvailability, XShmCapture
 from app.platforms.capture.macos_screencapturekit import ScreenCaptureKitCapture
 from app.platforms.capture.models import (
@@ -47,6 +48,7 @@ __all__ = [
     "LinuxSessionKind",
     "MSSCapture",
     "MonitorInfo",
+    "PipeWirePortalCapture",
     "Rect",
     "ScreenCaptureBackend",
     "ScreenCaptureKitCapture",

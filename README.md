@@ -74,9 +74,11 @@ WSLg exposes; use a native Windows build to match all Windows applications.
 
 - Windows 10/11
 - macOS
-- Linux with X11-compatible screen capture, including WSLg
+- Linux with native X11 or Wayland screen capture, including WSLg
 
-Wayland support depends on the compositor's screen-capture permissions.
+Wayland uses the desktop's ScreenCast Portal and PipeWire. Approve the displays
+in the system picker when protection starts. Explicitly cancelling or denying
+that request stops capture instead of bypassing the decision through MSS.
 
 Runtime platform integration is isolated under `app/platforms/`:
 
@@ -122,7 +124,9 @@ Security → Screen & System Audio Recording**, then restart the application.
 
 ```bash
 sudo apt install \
-  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 \
+  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 libxcb-shm0 \
+  gstreamer1.0-tools gstreamer1.0-pipewire \
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
   libxcb-render-util0 libxcb-util1 libxcb-xkb1
 python3 -m venv .venv

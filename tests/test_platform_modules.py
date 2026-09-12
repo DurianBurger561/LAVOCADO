@@ -70,7 +70,7 @@ class PlatformModuleTests(unittest.TestCase):
 
         self.assertIsInstance(capture, MSSCapture)
 
-    def test_linux_wayland_remains_on_mss_until_portal_phase(self) -> None:
+    def test_linux_wayland_creates_portal_capture_with_mss_fallback(self) -> None:
         capture = LinuxPlatform(
             environ={
                 "XDG_SESSION_TYPE": "wayland",
@@ -80,7 +80,11 @@ class PlatformModuleTests(unittest.TestCase):
             release="generic-linux",
         ).create_screen_capture()
 
-        self.assertIsInstance(capture, MSSCapture)
+        self.assertIsInstance(capture, FallbackCaptureBackend)
+        self.assertEqual(
+            capture.status().preferred_backend,
+            "linux_pipewire_portal",
+        )
 
     def test_linux_adapter_exposes_runtime_capture_route(self) -> None:
         platform = LinuxPlatform(

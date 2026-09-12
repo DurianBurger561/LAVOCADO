@@ -30,6 +30,8 @@ elif sys.platform == "darwin":
     ]
 else:
     platform_hidden_imports = [
+        "dbus_fast",
+        "dbus_fast.aio",
         "mss.linux.xgetimage",
         "mss.linux.xshmgetimage",
     ]
