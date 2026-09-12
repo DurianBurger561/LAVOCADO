@@ -4,7 +4,7 @@
 
 <h1 align="center">LAVOCADO / 小油果</h1>
 
-<p align="center"><a href="README.md">English</a> | <a href="README.zh.md">中文</a></p>
+<p align="center"><a href="README.md"><b>🇬🇧🇺🇸🇨🇦🇦🇺🇳🇿English<b></a> | <a href="README.zh.md"><b>🇨🇳中文<b></a></p>
 
 LAVOCADO is a local-first desktop protection tool. It monitors each connected
 display independently, confirms visual risk across multiple frames, and covers

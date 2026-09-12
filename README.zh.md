@@ -4,7 +4,7 @@
 
 <h1 align="center">LAVOCADO / 小油果</h1>
 
-<p align="center"><a href="README.md">English</a> | <a href="README.zh.md">中文</a></p>
+<p align="center"><a href="README.md"><b>🇬🇧🇺🇸🇨🇦🇦🇺🇳🇿English<b></a> | <a href="README.zh.md"><b>🇨🇳中文<b></a></p>
 
 LAVOCADO 是一款本地优先的桌面守护工具。它独立监控每一块相连的显示器,通过连续多帧确认视觉风险,并且只遮挡触发保护的那一块屏幕。
 
