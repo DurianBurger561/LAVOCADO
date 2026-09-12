@@ -32,14 +32,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers.add_parser("dashboard", help="open the local WebView control panel")
-    subparsers.add_parser(
-        "web-dashboard",
-        help="compatibility alias for the WebView control panel",
-    )
-    subparsers.add_parser(
-        "legacy-dashboard",
-        help="open the fallback Tkinter control panel",
-    )
 
     events = subparsers.add_parser("events", help="show recent local events")
     events.add_argument("--limit", type=positive_int, default=20)
@@ -195,16 +187,11 @@ def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
     command = args.command or default_command()
     platform_adapter = create_platform_adapter()
-    if command in ("dashboard", "web-dashboard"):
+    if command == "dashboard":
         from app.ui.web_dashboard import run_web_dashboard
 
         platform_adapter.prepare_environment()
         run_web_dashboard(platform_adapter)
-    elif command == "legacy-dashboard":
-        from app.ui.dashboard import run_dashboard
-
-        platform_adapter.prepare_environment()
-        run_dashboard(platform_adapter)
     elif command == "events":
         show_events(args.limit, platform_adapter)
     else:

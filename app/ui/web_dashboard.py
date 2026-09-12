@@ -1,4 +1,4 @@
-"""pywebview dashboard composition while the Tk dashboard remains available."""
+"""Compose the local pywebview dashboard."""
 
 from __future__ import annotations
 
