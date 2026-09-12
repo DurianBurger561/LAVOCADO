@@ -30,6 +30,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--overlay-process",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--monitor-index",
+        type=positive_int,
+        help=argparse.SUPPRESS,
+    )
 
     subparsers.add_parser("dashboard", help="open the local WebView control panel")
 
@@ -152,6 +162,17 @@ def run_protection(
     _write_status("LAVOCADO stopped.", control_output)
 
 
+def run_overlay(platform_adapter: PlatformAdapter, monitor_index: int | None) -> None:
+    """Run the isolated macOS overlay process."""
+
+    from app.vision.overlay_process import run_overlay_process_child
+
+    control_input = _standard_stream(sys.stdin, 0, "r")
+    if control_input is None:
+        raise RuntimeError("Overlay control pipe is unavailable")
+    run_overlay_process_child(platform_adapter, monitor_index, control_input)
+
+
 def format_event(event) -> str:
     """Return one privacy-safe event line for terminal output."""
 
@@ -185,8 +206,13 @@ def show_events(limit: int, platform_adapter: PlatformAdapter) -> None:
 
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
-    command = args.command or default_command()
     platform_adapter = create_platform_adapter()
+    if args.overlay_process:
+        platform_adapter.prepare_environment()
+        run_overlay(platform_adapter, args.monitor_index)
+        return
+
+    command = args.command or default_command()
     if command == "dashboard":
         from app.ui.web_dashboard import run_web_dashboard
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class UnsupportedPlatformError(RuntimeError):
@@ -56,6 +56,10 @@ class PlatformAdapter(Protocol):
     def default_data_dir(self) -> Path: ...
 
     def get_foreground_window(self) -> WindowInfo | None: ...
+
+    def prepare_overlay_window(self, root: Any) -> None: ...
+
+    def release_overlay_focus(self) -> None: ...
 
     def tkinter_help(self) -> str: ...
 

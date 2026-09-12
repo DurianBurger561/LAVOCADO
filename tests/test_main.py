@@ -66,6 +66,17 @@ class MainTests(unittest.TestCase):
         platform.prepare_environment.assert_called_once_with()
         run_protection.assert_called_once_with(platform, False)
 
+    def test_overlay_process_flag_runs_the_internal_entry_point(self) -> None:
+        platform = Mock()
+        with (
+            patch("main.create_platform_adapter", return_value=platform),
+            patch("main.run_overlay") as run_overlay,
+        ):
+            main.main(["--overlay-process", "--monitor-index", "2"])
+
+        platform.prepare_environment.assert_called_once_with()
+        run_overlay.assert_called_once_with(platform, 2)
+
     def test_control_message_sets_stop_event(self) -> None:
         stop_event = threading.Event()
 

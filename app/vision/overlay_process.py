@@ -1,0 +1,217 @@
+"""Run the macOS intervention window outside the screen-monitoring process."""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import select
+import subprocess
+import sys
+import time
+from concurrent.futures import Future
+from pathlib import Path
+from threading import Event, Thread
+from typing import TextIO
+
+from app.intervention.intervene import LOCAL_FALLBACK_MESSAGE
+
+LOGGER = logging.getLogger(__name__)
+POLL_INTERVAL_SECONDS = 0.05
+HEARTBEAT_TIMEOUT_SECONDS = 5.0
+STARTUP_TIMEOUT_SECONDS = 30.0
+HEARTBEAT_TOKEN = "LAVOCADO_OVERLAY_HEARTBEAT"
+
+
+def overlay_process_command(monitor_index: int | None) -> list[str]:
+    """Build a source or PyInstaller command for the short-lived overlay app."""
+
+    if getattr(sys, "frozen", False):
+        command = [sys.executable]
+    else:
+        project_root = Path(__file__).resolve().parents[2]
+        command = [sys.executable, str(project_root / "main.py")]
+
+    command.append("--overlay-process")
+    if monitor_index is not None:
+        command.extend(("--monitor-index", str(monitor_index)))
+    return command
+
+
+def show_overlay_process(
+    monitor_index: int | None,
+    support_message: Future[str] | None,
+    *,
+    process_factory=subprocess.Popen,
+    sleeper=time.sleep,
+    clock=time.monotonic,
+    heartbeat_timeout: float = HEARTBEAT_TIMEOUT_SECONDS,
+    startup_timeout: float = STARTUP_TIMEOUT_SECONDS,
+) -> None:
+    """Wait for the isolated overlay and forward its message when available."""
+
+    process = process_factory(
+        overlay_process_command(monitor_index),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        encoding="utf-8",
+        bufsize=1,
+    )
+    message_sent = False
+    output_stream = getattr(process, "stdout", None)
+    started_at = clock()
+    last_heartbeat = started_at
+    received_heartbeat = False
+
+    try:
+        while process.poll() is None:
+            if _consume_heartbeat(output_stream):
+                last_heartbeat = clock()
+                received_heartbeat = True
+            now = clock()
+            if received_heartbeat and now - last_heartbeat > heartbeat_timeout:
+                LOGGER.error("macOS overlay stopped responding; closing its window")
+                break
+            if not received_heartbeat and now - started_at > startup_timeout:
+                LOGGER.error("macOS overlay did not start responding; closing it")
+                break
+            if not message_sent:
+                message = _ready_message(support_message)
+                if message is not None:
+                    _send_message(process.stdin, message)
+                    message_sent = True
+            sleeper(POLL_INTERVAL_SECONDS)
+    finally:
+        _close_stdin(process.stdin)
+        _close_output(output_stream)
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+    if process.returncode:
+        LOGGER.warning("macOS overlay process exited with status %s", process.returncode)
+
+
+def run_overlay_process_child(
+    platform_adapter,
+    monitor_index: int | None,
+    input_stream: TextIO,
+) -> None:
+    """Show the overlay and close it if the monitoring process disappears."""
+
+    from app.vision.overlay import Overlay
+
+    support_message: Future[str] = Future()
+    parent_closed = Event()
+    Thread(
+        target=_read_parent_messages,
+        args=(input_stream, support_message, parent_closed),
+        daemon=True,
+        name="lavocado-overlay-parent-watch",
+    ).start()
+    overlay = Overlay(platform_adapter, isolate_macos_process=False)
+    overlay.show(
+        monitor_index=monitor_index,
+        support_message=support_message,
+        parent_closed_event=parent_closed,
+        heartbeat_callback=_write_heartbeat,
+    )
+
+
+def _read_parent_messages(
+    input_stream: TextIO,
+    support_message: Future[str],
+    parent_closed: Event,
+) -> None:
+    """Receive one message, then watch the pipe for parent-process shutdown."""
+
+    try:
+        line = input_stream.readline()
+        message = LOCAL_FALLBACK_MESSAGE
+        if line:
+            try:
+                payload = json.loads(line)
+                received = payload.get("message") if isinstance(payload, dict) else None
+                if isinstance(received, str) and received.strip():
+                    message = received
+            except (json.JSONDecodeError, TypeError):
+                LOGGER.warning("Ignoring an invalid overlay message")
+        if not support_message.done():
+            support_message.set_result(message)
+
+        while input_stream.readline():
+            pass
+    except (OSError, ValueError):
+        if not support_message.done():
+            support_message.set_result(LOCAL_FALLBACK_MESSAGE)
+    finally:
+        parent_closed.set()
+
+
+def _ready_message(support_message: Future[str] | None) -> str | None:
+    if support_message is None:
+        return LOCAL_FALLBACK_MESSAGE
+    if not support_message.done():
+        return None
+    try:
+        return support_message.result() or LOCAL_FALLBACK_MESSAGE
+    except Exception:
+        LOGGER.exception("Could not prepare the overlay support message")
+        return LOCAL_FALLBACK_MESSAGE
+
+
+def _consume_heartbeat(output_stream: TextIO | None) -> bool:
+    if output_stream is None:
+        return False
+    received = False
+    try:
+        while select.select([output_stream], [], [], 0)[0]:
+            line = output_stream.readline()
+            if not line:
+                break
+            if line.strip() == HEARTBEAT_TOKEN:
+                received = True
+    except (OSError, TypeError, ValueError):
+        return False
+    return received
+
+
+def _write_heartbeat() -> None:
+    try:
+        os.write(1, f"{HEARTBEAT_TOKEN}\n".encode("ascii"))
+    except OSError:
+        return
+
+
+def _send_message(input_stream: TextIO | None, message: str) -> None:
+    if input_stream is None:
+        return
+    try:
+        input_stream.write(json.dumps({"message": message}, ensure_ascii=True) + "\n")
+        input_stream.flush()
+    except (BrokenPipeError, OSError, ValueError):
+        return
+
+
+def _close_stdin(input_stream: TextIO | None) -> None:
+    if input_stream is None:
+        return
+    try:
+        input_stream.close()
+    except OSError:
+        return
+
+
+def _close_output(output_stream: TextIO | None) -> None:
+    if output_stream is None:
+        return
+    try:
+        output_stream.close()
+    except OSError:
+        return

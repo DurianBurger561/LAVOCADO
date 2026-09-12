@@ -110,6 +110,12 @@ class LinuxPlatform:
             self._window_provider = LinuxWindowProvider()
         return self._window_provider.active_window()
 
+    def prepare_overlay_window(self, _root: object) -> None:
+        return None
+
+    def release_overlay_focus(self) -> None:
+        return None
+
     def tkinter_help(self) -> str:
         return tkinter_help()
 

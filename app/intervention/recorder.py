@@ -9,6 +9,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
+from typing import TypeVar
+
+_Result = TypeVar("_Result")
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +135,11 @@ class EventRecorder:
                 (event_id,),
             )
 
+    def mark_intervention_shown_async(self, event_id: int) -> Future[None]:
+        """Queue the displayed marker without blocking overlay dismissal."""
+
+        return self._submit(self.mark_intervention_shown, event_id)
+
     def recent(self, limit: int = 100) -> list[RecordedEvent]:
         """Return newest events first."""
 
@@ -192,9 +200,9 @@ class EventRecorder:
 
     def _submit(
         self,
-        function: Callable[..., int],
+        function: Callable[..., _Result],
         *args: object,
-    ) -> Future[int]:
+    ) -> Future[_Result]:
         with self._close_lock:
             if self._closed:
                 raise RuntimeError("EventRecorder is closed")

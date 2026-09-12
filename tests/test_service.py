@@ -99,6 +99,16 @@ class FakeRecorder:
         self.closed = True
 
 
+class PendingRecorder(FakeRecorder):
+    def __init__(self) -> None:
+        super().__init__()
+        self.future: Future[int] = Future()
+
+    def record_async(self, event: ProtectionEvent) -> Future[int]:
+        self.events.append(event)
+        return self.future
+
+
 class FakeIntervention:
     def __init__(self) -> None:
         self.generate_count = 0
@@ -260,6 +270,31 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(recorder.shown_event_ids, [1])
         self.assertEqual(intervention.generate_count, 1)
         self.assertEqual(overlay.support_messages[0].result(), "Support message")
+
+    def test_intervention_does_not_wait_for_event_recording(self) -> None:
+        current_time = [0.0]
+        recorder = PendingRecorder()
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(),
+            detector=FakeDetector({1: [True, True]}),
+            overlay=FakeOverlay(),
+            recorder=recorder,
+            intervention=FakeIntervention(),
+            verifier_factory=lambda: TemporalVerifier(2, 2),
+            cooldown_seconds=8.0,
+            clock=lambda: current_time[0],
+        )
+
+        service.check_once()
+        service.check_once()
+
+        self.assertEqual(service.state, State.COOLDOWN)
+        self.assertEqual(recorder.shown_event_ids, [])
+
+        recorder.future.set_result(1)
+
+        self.assertEqual(recorder.shown_event_ids, [1])
 
     def test_cooldown_temporarily_skips_capture(self) -> None:
         current_time = [0.0]

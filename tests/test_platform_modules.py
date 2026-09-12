@@ -2,7 +2,8 @@
 
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from app.platforms import (
     UnsupportedPlatformError,
@@ -162,6 +163,63 @@ class PlatformModuleTests(unittest.TestCase):
     def test_native_platforms_keep_pywebviews_default_backend(self) -> None:
         self.assertIsNone(WindowsPlatform(environ={}).prepare_webview_environment())
         self.assertIsNone(MacOSPlatform(environ={}).prepare_webview_environment())
+
+    def test_macos_overlay_joins_spaces_without_disabling_activation(self) -> None:
+        class Root:
+            def __init__(self) -> None:
+                self._w = "."
+                self.tk_calls: list[tuple[object, ...]] = []
+                self.bindings: list[tuple[object, ...]] = []
+                self.tk = self
+
+            def call(self, *args: object) -> None:
+                self.tk_calls.append(args)
+
+            def title(self) -> str:
+                return "LAVOCADO Protection"
+
+            def bind(self, *args: object, **kwargs: object) -> None:
+                self.bindings.append((*args, kwargs))
+
+        root = Root()
+        platform = MacOSPlatform(environ={})
+        native_window = Mock()
+        native_window.title.return_value = "LAVOCADO Protection"
+        native_window.collectionBehavior.return_value = 8
+        native_app = Mock()
+        native_app.windows.return_value = [native_window]
+        appkit = SimpleNamespace(
+            NSApplication=SimpleNamespace(
+                sharedApplication=Mock(return_value=native_app)
+            ),
+            NSApplicationActivationPolicyAccessory=1,
+            NSWindowCollectionBehaviorCanJoinAllSpaces=1,
+            NSWindowCollectionBehaviorCanJoinAllApplications=262144,
+            NSWindowCollectionBehaviorFullScreenAuxiliary=256,
+        )
+
+        with patch.dict("sys.modules", {"AppKit": appkit}):
+            platform.prepare_overlay_window(root)
+        platform.release_overlay_focus()
+
+        native_app.setActivationPolicy_.assert_called_once_with(1)
+        native_window.setCollectionBehavior_.assert_called_once_with(
+            8 | 1 | 262144 | 256
+        )
+        self.assertEqual(
+            root.tk_calls,
+            [
+                ("wm", "attributes", ".", "-class", "nspanel"),
+                (
+                    "::tk::unsupported::MacWindowStyle",
+                    "style",
+                    ".",
+                    "overlay",
+                    ("canJoinAllSpaces", "nonActivating"),
+                )
+            ],
+        )
+        self.assertEqual(root.bindings[0][0], "<Map>")
 
 
 if __name__ == "__main__":
