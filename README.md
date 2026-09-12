@@ -161,6 +161,13 @@ schedule. The snapshot uses an explicit safe schema and never contains image
 pixels, screenshots, crops, URLs, window titles, or image paths. It is not
 written to SQLite or sent to OpenAI.
 
+When protection is dashboard-owned, a fixed stdin/stdout message protocol
+copies that safe snapshot from the protection child into dashboard memory.
+Only start, stop, diagnostic-read, and test-intervention operations are
+supported; the bridge cannot execute commands or access arbitrary files. A
+manual test intervention is shown by the protection process on its GUI main
+thread and does not create a SQLite protection event.
+
 ## Use LAVOCADO
 
 Start protection directly (the existing default):

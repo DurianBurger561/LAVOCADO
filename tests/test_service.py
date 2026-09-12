@@ -3,6 +3,7 @@
 import unittest
 from concurrent.futures import Future
 from dataclasses import dataclass
+from threading import Event
 
 from app.blocklist.watcher import BlocklistResult, WindowInfo
 from app.intervention.recorder import ProtectionEvent
@@ -327,6 +328,26 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(recorder.closed)
         self.assertTrue(intervention.closed)
         self.assertEqual(service.state, State.STOPPED)
+
+    def test_manual_intervention_runs_on_service_loop_without_recording(self) -> None:
+        overlay = FakeOverlay()
+        recorder = FakeRecorder()
+        test_event = Event()
+        test_event.set()
+        service = LavocadoService(
+            capturer=FakeCapturer(),
+            detector=FakeDetector({1: [False]}),
+            overlay=overlay,
+            recorder=recorder,
+            intervention=FakeIntervention(),
+            sleeper=lambda _: service.stop(),
+        )
+
+        service.start(test_intervention_event=test_event)
+
+        self.assertEqual(overlay.shown_on, [1])
+        self.assertEqual(recorder.events, [])
+        self.assertFalse(test_event.is_set())
 
     def test_blocklist_match_immediately_blocks_the_window_monitor(self) -> None:
         capturer = FakeCapturer(

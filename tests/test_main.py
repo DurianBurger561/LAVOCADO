@@ -1,10 +1,11 @@
 """Tests for the command-line entry point."""
 
 import io
+import json
 import sys
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import main
 from app.intervention.recorder import RecordedEvent
@@ -39,6 +40,50 @@ class MainTests(unittest.TestCase):
         main._listen_for_stop(stop_event, io.StringIO(""))
 
         self.assertTrue(stop_event.is_set())
+
+    def test_control_protocol_returns_diagnostics_and_queues_overlay(self) -> None:
+        stop_event = threading.Event()
+        test_event = threading.Event()
+        output = io.StringIO()
+
+        class Diagnostics:
+            @staticmethod
+            def snapshot():
+                return {"protection_state": "MONITORING", "temporal": [1]}
+
+        main._listen_for_control(
+            stop_event,
+            test_event,
+            Diagnostics(),
+            io.StringIO("diagnostics\ntest-intervention\nstop\n"),
+            output,
+        )
+
+        self.assertTrue(stop_event.is_set())
+        self.assertTrue(test_event.is_set())
+        line = output.getvalue().strip()
+        self.assertTrue(line.startswith(main.DIAGNOSTICS_PREFIX))
+        payload = json.loads(line.removeprefix(main.DIAGNOSTICS_PREFIX))
+        self.assertEqual(payload["temporal"], [1])
+
+    def test_recovers_a_redirected_stream_for_windowed_builds(self) -> None:
+        recovered = io.StringIO()
+        opener = Mock(return_value=recovered)
+
+        result = main._standard_stream(None, 1, "w", opener=opener)
+
+        self.assertIs(result, recovered)
+        opener.assert_called_once_with(
+            1,
+            "w",
+            encoding="utf-8",
+            closefd=False,
+        )
+
+    def test_keeps_an_available_standard_stream(self) -> None:
+        existing = io.StringIO()
+
+        self.assertIs(main._standard_stream(existing, 1, "w"), existing)
 
     def test_format_event_contains_only_expected_metadata(self) -> None:
         event = RecordedEvent(

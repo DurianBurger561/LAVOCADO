@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import threading
+
+from app.ui.controller import DIAGNOSTICS_PREFIX
 
 
 def positive_int(value: str) -> int:
@@ -45,35 +48,103 @@ def default_command() -> str:
 def _listen_for_stop(stop_event, input_stream) -> None:
     """Translate a dashboard pipe message or closed pipe into a clean stop."""
 
+    _listen_for_control(stop_event, None, None, input_stream, None)
+
+
+def _listen_for_control(
+    stop_event,
+    test_intervention_event,
+    diagnostics,
+    input_stream,
+    output_stream,
+) -> None:
+    """Handle the dashboard's fixed, portable child-process protocol."""
+
     for line in input_stream:
-        if line.strip().casefold() == "stop":
+        command = line.strip().casefold()
+        if command == "stop":
             stop_event.set()
             return
+        if command == "test-intervention" and test_intervention_event is not None:
+            test_intervention_event.set()
+        elif command == "diagnostics" and diagnostics is not None:
+            payload = json.dumps(
+                diagnostics.snapshot(),
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+            print(
+                f"{DIAGNOSTICS_PREFIX}{payload}",
+                file=output_stream,
+                flush=True,
+            )
     stop_event.set()
+
+
+def _standard_stream(stream, descriptor: int, mode: str, opener=open):
+    """Recover a redirected stream hidden by a windowed PyInstaller bootloader."""
+
+    if stream is not None:
+        return stream
+    try:
+        return opener(
+            descriptor,
+            mode,
+            encoding="utf-8",
+            closefd=False,
+        )
+    except (OSError, ValueError):
+        return None
+
+
+def _write_status(message: str, output_stream) -> None:
+    if output_stream is not None:
+        print(message, file=output_stream, flush=True)
 
 
 def run_protection(control_stdin: bool = False, input_stream=None) -> None:
     """Run the existing protection loop on the process main thread."""
 
+    control_input = input_stream if input_stream is not None else sys.stdin
+    control_output = sys.stdout
+    if control_stdin:
+        control_input = _standard_stream(control_input, 0, "r")
+        control_output = _standard_stream(control_output, 1, "w")
+        if control_input is None or control_output is None:
+            raise RuntimeError("Dashboard control pipes are unavailable")
+
     from app.service import LavocadoService
 
     service = LavocadoService()
     stop_event = threading.Event()
+    test_intervention_event = threading.Event()
     if control_stdin:
         listener = threading.Thread(
-            target=_listen_for_stop,
-            args=(stop_event, input_stream or sys.stdin),
+            target=_listen_for_control,
+            args=(
+                stop_event,
+                test_intervention_event,
+                service.diagnostics,
+                control_input,
+                control_output,
+            ),
             daemon=True,
             name="lavocado-dashboard-control",
         )
         listener.start()
 
-    print("LAVOCADO is watching all detected monitors. Press Ctrl+C to stop.")
+    _write_status(
+        "LAVOCADO is watching all detected monitors. Press Ctrl+C to stop.",
+        control_output,
+    )
     try:
-        service.start(stop_event=stop_event)
+        service.start(
+            stop_event=stop_event,
+            test_intervention_event=test_intervention_event,
+        )
     except KeyboardInterrupt:
         service.stop()
-    print("LAVOCADO stopped.")
+    _write_status("LAVOCADO stopped.", control_output)
 
 
 def format_event(event) -> str:

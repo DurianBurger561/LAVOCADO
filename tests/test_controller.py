@@ -1,11 +1,13 @@
 """Tests for dashboard-owned protection process control."""
 
+import json
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from app.ui.controller import (
+    DIAGNOSTICS_PREFIX,
     ProtectionController,
     ProtectionStatus,
     default_protection_command,
@@ -31,9 +33,16 @@ class FakeInput:
 class FakeProcess:
     def __init__(self) -> None:
         self.stdin = FakeInput()
+        self.stdout = []
         self.exit_code = None
+        self.wait_timeouts = []
 
     def poll(self):
+        return self.exit_code
+
+    def wait(self, timeout: float):
+        self.wait_timeouts.append(timeout)
+        self.exit_code = 0
         return self.exit_code
 
 
@@ -71,6 +80,30 @@ class ProtectionControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.status, ProtectionStatus.STOPPING)
         self.assertFalse(self.controller.stop())
 
+    def test_test_intervention_sends_fixed_control_message(self) -> None:
+        self.controller.start()
+
+        self.assertTrue(self.controller.test_intervention())
+        self.assertEqual(
+            self.factory.process.stdin.content,
+            "test-intervention\n",
+        )
+
+    def test_accepts_only_prefixed_json_diagnostics(self) -> None:
+        payload = {"protection_state": "MONITORING", "temporal": [1, 0, 1]}
+        self.controller.start()
+
+        self.assertFalse(self.controller._handle_output_line("ordinary output\n"))
+        self.assertFalse(
+            self.controller._handle_output_line(f"{DIAGNOSTICS_PREFIX}not-json\n")
+        )
+        self.assertTrue(
+            self.controller._handle_output_line(
+                f"{DIAGNOSTICS_PREFIX}{json.dumps(payload)}\n"
+            )
+        )
+        self.assertEqual(self.controller.snapshot(timeout=0), payload)
+
     def test_collects_successful_exit(self) -> None:
         self.controller.start()
         self.factory.process.exit_code = 0
@@ -84,6 +117,15 @@ class ProtectionControllerTests(unittest.TestCase):
 
         self.assertEqual(self.controller.status, ProtectionStatus.FAILED)
         self.assertEqual(self.controller.last_exit_code, 7)
+
+    def test_close_waits_for_the_owned_child(self) -> None:
+        self.controller.start()
+
+        self.controller.close(timeout=1.5)
+
+        self.assertEqual(self.factory.process.stdin.content, "stop\n")
+        self.assertEqual(self.factory.process.wait_timeouts, [1.5])
+        self.assertEqual(self.controller.status, ProtectionStatus.STOPPED)
 
     def test_default_command_uses_absolute_main_path(self) -> None:
         command = default_protection_command()
@@ -99,6 +141,35 @@ class ProtectionControllerTests(unittest.TestCase):
             command,
             (sys.executable, "protect", "--control-stdin"),
         )
+
+    def test_round_trips_diagnostics_through_a_real_child_process(self) -> None:
+        script = (
+            "import json, sys\n"
+            f"prefix = {DIAGNOSTICS_PREFIX!r}\n"
+            "for line in sys.stdin:\n"
+            "    command = line.strip()\n"
+            "    if command == 'diagnostics':\n"
+            "        print(prefix + json.dumps({\n"
+            "            'protection_state': 'MONITORING',\n"
+            "            'last_scan_ms': 42.5,\n"
+            "        }), flush=True)\n"
+            "    elif command == 'stop':\n"
+            "        break\n"
+        )
+        controller = ProtectionController(
+            command=(sys.executable, "-u", "-c", script),
+        )
+
+        try:
+            self.assertTrue(controller.start())
+            snapshot = controller.snapshot(timeout=2.0)
+            self.assertEqual(snapshot["protection_state"], "MONITORING")
+            self.assertEqual(snapshot["last_scan_ms"], 42.5)
+            self.assertTrue(controller.stop())
+            controller._process.wait(timeout=2.0)
+            self.assertEqual(controller.status, ProtectionStatus.STOPPED)
+        finally:
+            controller.close()
 
 
 if __name__ == "__main__":

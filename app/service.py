@@ -122,7 +122,11 @@ class LavocadoService:
     def state(self) -> State:
         return self._state
 
-    def start(self, stop_event: Event | None = None) -> None:
+    def start(
+        self,
+        stop_event: Event | None = None,
+        test_intervention_event: Event | None = None,
+    ) -> None:
         """Run monitoring until stop is requested or Ctrl+C is received."""
 
         self._running = True
@@ -130,7 +134,11 @@ class LavocadoService:
 
         try:
             while self._running and not (stop_event and stop_event.is_set()):
-                self.check_once()
+                if test_intervention_event and test_intervention_event.is_set():
+                    test_intervention_event.clear()
+                    self.show_test_intervention()
+                else:
+                    self.check_once()
                 if self._running and not (stop_event and stop_event.is_set()):
                     self._sleeper(self.check_interval)
         finally:
@@ -150,6 +158,20 @@ class LavocadoService:
         """Request a clean stop after the current operation finishes."""
 
         self._running = False
+
+    def show_test_intervention(self) -> None:
+        """Show an unrecorded manual test overlay on the primary monitor."""
+
+        monitor_indexes = tuple(self.capturer.monitor_indexes)
+        monitor_index = monitor_indexes[0] if monitor_indexes else config.MONITOR_INDEX
+        self._transition(State.BLOCKED)
+        try:
+            self.overlay.show(
+                monitor_index=monitor_index,
+                support_message=self._generate_intervention(),
+            )
+        finally:
+            self._transition(State.MONITORING)
 
     def check_once(self) -> list[dict[str, object]] | None:
         """Advance the state machine by one monitoring step."""
