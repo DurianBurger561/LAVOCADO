@@ -11,11 +11,7 @@ from mss.exception import ScreenShotError
 from PIL import Image
 
 from app import config
-from app.platform_support import (
-    ScreenCaptureError,
-    prepare_desktop_environment,
-    screen_capture_help,
-)
+from app.platforms import PlatformAdapter, ScreenCaptureError
 from app.vision.monitors import monitor_index_at_point, select_monitor_index
 
 
@@ -30,8 +26,12 @@ class CapturedFrame:
 class Capturer:
     """Capture physical monitors without discarding the original pixels."""
 
-    def __init__(self, monitor_index: int | None = config.MONITOR_INDEX) -> None:
-        prepare_desktop_environment()
+    def __init__(
+        self,
+        platform_adapter: PlatformAdapter,
+        monitor_index: int | None = config.MONITOR_INDEX,
+    ) -> None:
+        self._platform = platform_adapter
         self._capture = MSS()
         self._configured_monitor_index = monitor_index
         self._monitor_index = select_monitor_index(
@@ -59,7 +59,9 @@ class Capturer:
         try:
             screenshot = self._capture.grab(monitor)
         except ScreenShotError as error:
-            raise ScreenCaptureError(screen_capture_help()) from error
+            raise ScreenCaptureError(
+                self._platform.screen_capture_help()
+            ) from error
 
         # MSS provides BGRA bytes. Convert them into a PIL RGB image.
         image = Image.frombytes(

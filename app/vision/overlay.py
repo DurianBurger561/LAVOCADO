@@ -13,7 +13,7 @@ from app.intervention.sequence import (
     InterventionSequence,
     default_intervention_sequence,
 )
-from app.platform_support import prepare_desktop_environment, tkinter_help
+from app.platforms import PlatformAdapter
 from app.vision.monitors import monitor_geometry, select_monitor_index
 
 
@@ -22,12 +22,14 @@ class Overlay:
 
     def __init__(
         self,
+        platform_adapter: PlatformAdapter,
         monitor_index: int | None = config.MONITOR_INDEX,
         sequence_factory: Callable[
             [], InterventionSequence
         ] = default_intervention_sequence,
     ) -> None:
         self._root: Any | None = None
+        self._platform = platform_adapter
         self._monitor_index = monitor_index
         self._sequence_factory = sequence_factory
         self._sequence: InterventionSequence | None = None
@@ -47,12 +49,12 @@ class Overlay:
         if self.is_visible:
             return
 
-        prepare_desktop_environment()
-
         try:
             import tkinter as tk
         except ModuleNotFoundError as error:
-            raise RuntimeError(f"Tkinter is required. {tkinter_help()}") from error
+            raise RuntimeError(
+                f"Tkinter is required. {self._platform.tkinter_help()}"
+            ) from error
 
         with MSS() as display_capture:
             selected_index = select_monitor_index(

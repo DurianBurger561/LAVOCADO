@@ -7,6 +7,7 @@ import json
 import sys
 import threading
 
+from app.platforms import PlatformAdapter, create_platform_adapter
 from app.ui.controller import DIAGNOSTICS_PREFIX
 
 
@@ -110,7 +111,11 @@ def _write_status(message: str, output_stream) -> None:
         print(message, file=output_stream, flush=True)
 
 
-def run_protection(control_stdin: bool = False, input_stream=None) -> None:
+def run_protection(
+    platform_adapter: PlatformAdapter,
+    control_stdin: bool = False,
+    input_stream=None,
+) -> None:
     """Run the existing protection loop on the process main thread."""
 
     control_input = input_stream if input_stream is not None else sys.stdin
@@ -123,7 +128,7 @@ def run_protection(control_stdin: bool = False, input_stream=None) -> None:
 
     from app.service import LavocadoService
 
-    service = LavocadoService()
+    service = LavocadoService(platform_adapter)
     stop_event = threading.Event()
     test_intervention_event = threading.Event()
     if control_stdin:
@@ -168,12 +173,12 @@ def format_event(event) -> str:
     )
 
 
-def show_events(limit: int) -> None:
+def show_events(limit: int, platform_adapter: PlatformAdapter) -> None:
     """Print recent events without requiring a graphical display."""
 
     from app.intervention.recorder import EventRecorder
 
-    recorder = EventRecorder()
+    recorder = EventRecorder(platform_adapter.default_data_dir() / "events.db")
     try:
         events = recorder.recent(limit)
     finally:
@@ -189,18 +194,25 @@ def show_events(limit: int) -> None:
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
     command = args.command or default_command()
+    platform_adapter = create_platform_adapter()
     if command in ("dashboard", "web-dashboard"):
         from app.ui.web_dashboard import run_web_dashboard
 
-        run_web_dashboard()
+        platform_adapter.prepare_environment()
+        run_web_dashboard(platform_adapter)
     elif command == "legacy-dashboard":
         from app.ui.dashboard import run_dashboard
 
-        run_dashboard()
+        platform_adapter.prepare_environment()
+        run_dashboard(platform_adapter)
     elif command == "events":
-        show_events(args.limit)
+        show_events(args.limit, platform_adapter)
     else:
-        run_protection(getattr(args, "control_stdin", False))
+        platform_adapter.prepare_environment()
+        run_protection(
+            platform_adapter,
+            getattr(args, "control_stdin", False),
+        )
 
 
 if __name__ == "__main__":

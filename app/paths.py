@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from app.platforms import default_data_dir as platform_data_dir
+from app.platforms import create_platform_adapter
 
 
 def default_data_dir(
@@ -15,7 +15,13 @@ def default_data_dir(
 ) -> Path:
     """Return the user-specific data directory without creating it."""
 
-    return platform_data_dir(system_name, environ, home)
+    environment = None if environ is None else dict(environ)
+    adapter = create_platform_adapter(
+        system_name,
+        environ=environment,
+        home=home,
+    )
+    return adapter.default_data_dir()
 
 
 def default_database_path(**kwargs: object) -> Path:

@@ -4,18 +4,19 @@ import ctypes
 import subprocess
 import unittest
 
-from app.blocklist.watcher import WindowInfo, WindowWatcher
+from app.blocklist.watcher import WindowWatcher
+from app.platforms import WindowInfo
 from app.platforms.linux import LinuxWindowProvider
 from app.platforms.macos import MacOSWindowProvider
 from app.platforms.windows import WindowsWindowProvider
 
 
-class FakeProvider:
+class FakePlatform:
     def __init__(self, window: WindowInfo | None) -> None:
         self.window = window
         self.call_count = 0
 
-    def active_window(self) -> WindowInfo | None:
+    def get_foreground_window(self) -> WindowInfo | None:
         self.call_count += 1
         return self.window
 
@@ -79,15 +80,15 @@ class FakeKernel32:
 
 class WindowWatcherTests(unittest.TestCase):
     def test_disabled_blocklist_does_not_read_window_metadata(self) -> None:
-        provider = FakeProvider(WindowInfo("Private title"))
-        watcher = WindowWatcher([], provider=provider)
+        platform = FakePlatform(WindowInfo("Private title"))
+        watcher = WindowWatcher(platform, [])
 
         self.assertFalse(watcher.check().blocked)
-        self.assertEqual(provider.call_count, 0)
+        self.assertEqual(platform.call_count, 0)
 
     def test_matches_title_case_insensitively(self) -> None:
         window = WindowInfo("Video on EXAMPLE.COM", "Browser", 0, 0, 800, 600)
-        watcher = WindowWatcher(["example.com"], provider=FakeProvider(window))
+        watcher = WindowWatcher(FakePlatform(window), ["example.com"])
 
         result = watcher.check()
 
@@ -97,7 +98,7 @@ class WindowWatcherTests(unittest.TestCase):
 
     def test_matches_application_name(self) -> None:
         window = WindowInfo("Home", "Steam", 0, 0, 800, 600)
-        watcher = WindowWatcher(["steam"], provider=FakeProvider(window))
+        watcher = WindowWatcher(FakePlatform(window), ["steam"])
 
         self.assertTrue(watcher.check().blocked)
 

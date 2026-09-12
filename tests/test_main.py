@@ -32,16 +32,41 @@ class MainTests(unittest.TestCase):
         self.assertEqual(events.limit, 7)
 
     def test_dashboard_command_uses_webview(self) -> None:
-        with patch("app.ui.web_dashboard.run_web_dashboard") as run_dashboard:
+        platform = Mock()
+        with (
+            patch(
+                "main.create_platform_adapter",
+                return_value=platform,
+            ) as create_adapter,
+            patch("app.ui.web_dashboard.run_web_dashboard") as run_dashboard,
+        ):
             main.main(["dashboard"])
 
-        run_dashboard.assert_called_once_with()
+        create_adapter.assert_called_once_with()
+        platform.prepare_environment.assert_called_once_with()
+        run_dashboard.assert_called_once_with(platform)
+
+    def test_protection_receives_the_process_platform_adapter(self) -> None:
+        platform = Mock()
+        with (
+            patch("main.create_platform_adapter", return_value=platform),
+            patch("main.run_protection") as run_protection,
+        ):
+            main.main(["protect"])
+
+        platform.prepare_environment.assert_called_once_with()
+        run_protection.assert_called_once_with(platform, False)
 
     def test_legacy_dashboard_keeps_tkinter_fallback(self) -> None:
-        with patch("app.ui.dashboard.run_dashboard") as run_dashboard:
+        platform = Mock()
+        with (
+            patch("main.create_platform_adapter", return_value=platform),
+            patch("app.ui.dashboard.run_dashboard") as run_dashboard,
+        ):
             main.main(["legacy-dashboard"])
 
-        run_dashboard.assert_called_once_with()
+        platform.prepare_environment.assert_called_once_with()
+        run_dashboard.assert_called_once_with(platform)
 
     def test_control_message_sets_stop_event(self) -> None:
         stop_event = threading.Event()

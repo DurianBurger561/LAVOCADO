@@ -37,9 +37,15 @@ class FakeWidget:
         self.focus_count += 1
 
 
+class FakePlatform:
+    @staticmethod
+    def tkinter_help() -> str:
+        return "test Tkinter help"
+
+
 class OverlayTests(unittest.TestCase):
     def test_dismiss_destroys_the_window(self) -> None:
-        overlay = Overlay()
+        overlay = Overlay(FakePlatform())
         root = FakeRoot()
         overlay._root = root
 
@@ -49,7 +55,7 @@ class OverlayTests(unittest.TestCase):
         self.assertFalse(overlay.is_visible)
 
     def test_escape_uses_the_same_dismiss_path(self) -> None:
-        overlay = Overlay()
+        overlay = Overlay(FakePlatform())
         root = FakeRoot()
         overlay._root = root
 
@@ -60,7 +66,7 @@ class OverlayTests(unittest.TestCase):
         self.assertFalse(overlay.is_visible)
 
     def test_guided_dismiss_is_locked_until_final_step(self) -> None:
-        overlay = Overlay()
+        overlay = Overlay(FakePlatform())
         root = FakeRoot()
         overlay._root = root
         overlay._sequence = InterventionSequence(
@@ -86,7 +92,7 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(root.destroy_count, 1)
 
     def test_render_schedules_each_stage_and_enables_final_button(self) -> None:
-        overlay = Overlay()
+        overlay = Overlay(FakePlatform())
         root = FakeRoot()
         title = FakeWidget()
         body = FakeWidget()
@@ -124,7 +130,7 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(button.focus_count, 1)
 
     def test_ready_stage_displays_completed_support_message(self) -> None:
-        overlay = Overlay()
+        overlay = Overlay(FakePlatform())
         root = FakeRoot()
         body = FakeWidget()
         message: Future[str] = Future()

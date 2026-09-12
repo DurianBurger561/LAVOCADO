@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.intervention.recorder import EventRecorder
-from app.platforms import prepare_webview_environment
+from app.platforms import PlatformAdapter
 from app.ui.api import DashboardAPI
 from app.ui.controller import ProtectionController
 from app.vision.model_assets import resource_root
@@ -22,16 +22,16 @@ def dashboard_entry_path(root: Path | None = None) -> Path:
 
 
 def run_web_dashboard(
+    platform_adapter: PlatformAdapter,
     *,
     webview_module=None,
     controller=None,
     recorder=None,
     root: Path | None = None,
-    system_name: str | None = None,
 ) -> None:
     """Open the local web dashboard on the GUI main thread."""
 
-    webview_gui = prepare_webview_environment(system_name)
+    webview_gui = platform_adapter.prepare_webview_environment()
     if webview_module is None:
         try:
             import webview as webview_module
@@ -41,7 +41,9 @@ def run_web_dashboard(
             ) from error
 
     controller = controller or ProtectionController()
-    recorder = recorder or EventRecorder()
+    recorder = recorder or EventRecorder(
+        platform_adapter.default_data_dir() / "events.db"
+    )
     api = DashboardAPI(controller, recorder, controller)
     closed = False
 
