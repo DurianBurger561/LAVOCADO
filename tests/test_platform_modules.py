@@ -44,15 +44,22 @@ class PlatformModuleTests(unittest.TestCase):
         self.assertIsInstance(capture, FallbackCaptureBackend)
         self.assertEqual(capture.status().preferred_backend, "windows_dxgi")
 
-    def test_macos_and_linux_remain_on_mss_during_migration(self) -> None:
-        adapters = (
-            MacOSPlatform(environ={}),
-            LinuxPlatform(environ={}, release="generic-linux"),
+    def test_macos_adapter_creates_native_capture_with_mss_fallback(self) -> None:
+        capture = MacOSPlatform(environ={}).create_screen_capture()
+
+        self.assertIsInstance(capture, FallbackCaptureBackend)
+        self.assertEqual(
+            capture.status().preferred_backend,
+            "macos_screencapturekit",
         )
 
-        for adapter in adapters:
-            with self.subTest(platform=adapter.name):
-                self.assertIsInstance(adapter.create_screen_capture(), MSSCapture)
+    def test_linux_remains_on_mss_during_migration(self) -> None:
+        capture = LinuxPlatform(
+            environ={},
+            release="generic-linux",
+        ).create_screen_capture()
+
+        self.assertIsInstance(capture, MSSCapture)
 
     def test_factory_returns_one_adapter_for_the_requested_system(self) -> None:
         self.assertIsInstance(create_platform_adapter("Windows"), WindowsPlatform)

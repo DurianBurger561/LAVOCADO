@@ -6,3 +6,7 @@ nudenet>=3.4.2,<4
 openai>=2,<3
 pywebview>=6.2,<7; sys_platform != "linux"
 pywebview[qt]>=6.2,<7; sys_platform == "linux"
+pyobjc-framework-CoreMedia>=10,<13; sys_platform == "darwin"
+pyobjc-framework-libdispatch>=10,<13; sys_platform == "darwin"
+pyobjc-framework-Quartz>=10,<13; sys_platform == "darwin"
+pyobjc-framework-ScreenCaptureKit>=10,<13; sys_platform == "darwin"

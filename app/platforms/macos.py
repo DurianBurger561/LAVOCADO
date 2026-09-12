@@ -102,9 +102,9 @@ class MacOSPlatform:
         return self._window_provider.active_window()
 
     def create_screen_capture(self):
-        from app.platforms.capture import MSSCapture
+        from app.platforms.capture import create_macos_capture
 
-        return MSSCapture()
+        return create_macos_capture()
 
     def prepare_overlay_window(self, root: Any) -> None:
         appkit = None

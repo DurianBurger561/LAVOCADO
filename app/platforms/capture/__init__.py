@@ -8,8 +8,9 @@ from app.platforms.capture.errors import (
     CaptureRecoverableError,
     CaptureUnavailableError,
 )
-from app.platforms.capture.factory import create_windows_capture
+from app.platforms.capture.factory import create_macos_capture, create_windows_capture
 from app.platforms.capture.fallback import FallbackCaptureBackend
+from app.platforms.capture.macos_screencapturekit import ScreenCaptureKitCapture
 from app.platforms.capture.models import (
     CaptureBackendStatus,
     CaptureFrame,
@@ -32,6 +33,8 @@ __all__ = [
     "MonitorInfo",
     "Rect",
     "ScreenCaptureBackend",
+    "ScreenCaptureKitCapture",
     "WindowsDXGICapture",
+    "create_macos_capture",
     "create_windows_capture",
 ]
