@@ -5,15 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from app.platforms.capture import ScreenCaptureBackend
 
 
 class UnsupportedPlatformError(RuntimeError):
     """Raised when LAVOCADO is started on an unsupported operating system."""
-
-
-class ScreenCaptureError(RuntimeError):
-    """Raised when the operating system prevents screen capture."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +55,8 @@ class PlatformAdapter(Protocol):
     def default_data_dir(self) -> Path: ...
 
     def get_foreground_window(self) -> WindowInfo | None: ...
+
+    def create_screen_capture(self) -> ScreenCaptureBackend: ...
 
     def prepare_overlay_window(self, root: Any) -> None: ...
 

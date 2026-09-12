@@ -121,6 +121,7 @@ class LavocadoService:
             )
         )
         self._verifiers: dict[int, TemporalVerifier] = {}
+        self._last_frame_sequences: dict[int, tuple[str, int]] = {}
         self.check_interval = check_interval
         self.cooldown_seconds = cooldown_seconds
         self._clock = clock
@@ -212,10 +213,14 @@ class LavocadoService:
 
         results: list[dict[str, object]] = []
         has_candidate = False
+        has_fresh_frame = False
 
         for monitor_index in self.capturer.monitor_indexes:
             scan_started = self._scan_clock()
             captured_frame = self.capturer.grab(monitor_index)
+            if not self._is_fresh_frame(monitor_index, captured_frame):
+                continue
+            has_fresh_frame = True
             nudenet_result = dict(self.detector.check(captured_frame.model_frame))
             result = self.decision_engine.evaluate(
                 nudenet_result,
@@ -246,7 +251,8 @@ class LavocadoService:
                 self._show_intervention(result, monitor_index, trigger_type="vision")
                 return results
 
-        self._transition(State.CANDIDATE if has_candidate else State.MONITORING)
+        if has_fresh_frame:
+            self._transition(State.CANDIDATE if has_candidate else State.MONITORING)
         return results
 
     def _transition(self, state: State) -> None:
@@ -262,6 +268,16 @@ class LavocadoService:
             return {}
         status = status_reader(monitor_index)
         return status if isinstance(status, dict) else {}
+
+    def _is_fresh_frame(self, monitor_index: int, captured_frame: object) -> bool:
+        sequence = getattr(captured_frame, "sequence", None)
+        if not isinstance(sequence, int) or sequence < 1:
+            return True
+        identity = (str(getattr(captured_frame, "backend", "unknown")), sequence)
+        if self._last_frame_sequences.get(monitor_index) == identity:
+            return False
+        self._last_frame_sequences[monitor_index] = identity
+        return True
 
     def _reset_verifiers(self) -> None:
         for verifier in self._verifiers.values():

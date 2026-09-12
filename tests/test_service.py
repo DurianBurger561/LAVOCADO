@@ -16,6 +16,8 @@ from app.vision.temporal import TemporalVerifier
 class FakeCapturedFrame:
     original_frame: int
     model_frame: int
+    sequence: int = 0
+    backend: str = "fake"
 
 
 class FakePlatform:
@@ -28,17 +30,30 @@ class FakeCapturer:
         self,
         monitor_indexes: tuple[int, ...] = (1,),
         point_monitor_index: int | None = 1,
+        sequences: dict[int, list[int]] | None = None,
     ) -> None:
         self.monitor_indexes = monitor_indexes
         self.point_monitor_index = point_monitor_index
         self.grabbed_indexes: list[int] = []
         self.closed = False
+        self._sequences = {
+            monitor_index: iter(values)
+            for monitor_index, values in (sequences or {}).items()
+        }
+        self._sequence_counts: dict[int, int] = {}
 
     def grab(self, monitor_index: int) -> FakeCapturedFrame:
         self.grabbed_indexes.append(monitor_index)
+        sequence_source = self._sequences.get(monitor_index)
+        if sequence_source is None:
+            sequence = self._sequence_counts.get(monitor_index, 0) + 1
+            self._sequence_counts[monitor_index] = sequence
+        else:
+            sequence = next(sequence_source)
         return FakeCapturedFrame(
             original_frame=monitor_index,
             model_frame=monitor_index,
+            sequence=sequence,
         )
 
     def close(self) -> None:
@@ -173,6 +188,33 @@ class SequenceDecisionEngine:
 
 
 class ServiceTests(unittest.TestCase):
+    def test_duplicate_capture_sequence_does_not_advance_temporal(self) -> None:
+        overlay = FakeOverlay()
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(sequences={1: [7, 7, 8, 9]}),
+            detector=FakeDetector({1: [True, True, False]}),
+            overlay=overlay,
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            verifier_factory=lambda: TemporalVerifier(3, 2),
+        )
+
+        service.check_once()
+        duplicate_results = service.check_once()
+
+        self.assertEqual(duplicate_results, [])
+        self.assertEqual(service.state, State.CANDIDATE)
+        self.assertEqual(overlay.shown_on, [])
+
+        service.check_once()
+
+        self.assertEqual(overlay.shown_on, [])
+
+        service.check_once()
+
+        self.assertEqual(overlay.shown_on, [1])
+
     def test_updates_in_memory_diagnostics_after_scan(self) -> None:
         scan_times = iter((10.0, 10.123))
         diagnostics = DiagnosticsStore(

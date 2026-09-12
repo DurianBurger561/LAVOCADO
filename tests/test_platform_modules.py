@@ -10,6 +10,7 @@ from app.platforms import (
     WindowInfo,
     create_platform_adapter,
 )
+from app.platforms.capture import MSSCapture
 from app.platforms.linux import LinuxPlatform
 from app.platforms.macos import MacOSPlatform
 from app.platforms.windows import WindowsPlatform, enable_dpi_awareness
@@ -37,6 +38,17 @@ class LegacyUser32:
 
 
 class PlatformModuleTests(unittest.TestCase):
+    def test_each_adapter_creates_portable_capture_during_migration(self) -> None:
+        adapters = (
+            WindowsPlatform(environ={}),
+            MacOSPlatform(environ={}),
+            LinuxPlatform(environ={}, release="generic-linux"),
+        )
+
+        for adapter in adapters:
+            with self.subTest(platform=adapter.name):
+                self.assertIsInstance(adapter.create_screen_capture(), MSSCapture)
+
     def test_factory_returns_one_adapter_for_the_requested_system(self) -> None:
         self.assertIsInstance(create_platform_adapter("Windows"), WindowsPlatform)
         self.assertIsInstance(create_platform_adapter("Darwin"), MacOSPlatform)
