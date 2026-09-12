@@ -78,6 +78,19 @@ WSLg exposes; use a native Windows build to match all Windows applications.
 
 Wayland support depends on the compositor's screen-capture permissions.
 
+Runtime platform integration is isolated under `app/platforms/`:
+
+- `windows.py` contains User32/Kernel32 foreground-window access, DPI setup,
+  Windows data paths, and native runtime guidance.
+- `macos.py` contains System Events foreground-window access, macOS data paths,
+  and permission guidance.
+- `linux.py` contains X11 foreground-window access, XDG data paths, and the Qt
+  WebView setup used by Linux and WSLg.
+
+The rest of the application calls the shared adapter registry. The older
+`app/platform_support.py`, `app/paths.py`, and provider imports from
+`app/blocklist/watcher.py` remain as compatibility facades.
+
 ## Setup
 
 Use Python 3.12 and create a virtual environment.
@@ -118,6 +131,12 @@ python -m pip install -r requirements.txt
 python scripts/download_models.py
 python main.py
 ```
+
+Linux explicitly selects pywebview's Qt backend, so a missing optional GTK
+`gi` module is not treated as a startup failure. Under WSLg, LAVOCADO defaults
+Qt WebEngine to software rendering to avoid Mesa/Zink failures when no DRM
+render node is exposed. User-provided Qt or Mesa environment values are not
+overwritten.
 
 The pinned 640m model is about 99 MiB and is downloaded from NudeNet's official
 GitHub release with byte-size and SHA-256 verification. It is excluded from Git.

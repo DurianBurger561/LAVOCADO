@@ -4,13 +4,10 @@ import ctypes
 import subprocess
 import unittest
 
-from app.blocklist.watcher import (
-    LinuxWindowProvider,
-    MacOSWindowProvider,
-    WindowInfo,
-    WindowsWindowProvider,
-    WindowWatcher,
-)
+from app.blocklist.watcher import WindowInfo, WindowWatcher
+from app.platforms.linux import LinuxWindowProvider
+from app.platforms.macos import MacOSWindowProvider
+from app.platforms.windows import WindowsWindowProvider
 
 
 class FakeProvider:

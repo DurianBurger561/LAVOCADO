@@ -87,6 +87,7 @@ class WebDashboardTests(unittest.TestCase):
             webview_module=webview,
             controller=controller,
             recorder=recorder,
+            system_name="Linux",
         )
 
         args, options = webview.window_call
@@ -96,7 +97,7 @@ class WebDashboardTests(unittest.TestCase):
         self.assertEqual(options["min_size"], (850, 600))
         self.assertEqual(
             webview.start_call,
-            {"http_server": True, "private_mode": True},
+            {"http_server": True, "private_mode": True, "gui": "qt"},
         )
         self.assertEqual(len(webview.window.events.closed.handlers), 1)
         webview.window.events.closed.handlers[0]()

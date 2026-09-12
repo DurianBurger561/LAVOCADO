@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
-import platform
 from collections.abc import Mapping
 from pathlib import Path
+
+from app.platforms import default_data_dir as platform_data_dir
 
 
 def default_data_dir(
@@ -15,25 +15,7 @@ def default_data_dir(
 ) -> Path:
     """Return the user-specific data directory without creating it."""
 
-    system_name = system_name or platform.system()
-    environ = os.environ if environ is None else environ
-    home = Path.home() if home is None else home
-
-    override = environ.get("LAVOCADO_DATA_DIR")
-    if override:
-        return Path(override).expanduser()
-
-    if system_name == "Windows":
-        local_app_data = environ.get("LOCALAPPDATA")
-        base = Path(local_app_data) if local_app_data else home / "AppData" / "Local"
-        return base / "LAVOCADO"
-
-    if system_name == "Darwin":
-        return home / "Library" / "Application Support" / "LAVOCADO"
-
-    xdg_data_home = environ.get("XDG_DATA_HOME")
-    base = Path(xdg_data_home) if xdg_data_home else home / ".local" / "share"
-    return base / "lavocado"
+    return platform_data_dir(system_name, environ, home)
 
 
 def default_database_path(**kwargs: object) -> Path:

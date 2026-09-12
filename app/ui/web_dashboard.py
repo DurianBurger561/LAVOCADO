@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.intervention.recorder import EventRecorder
+from app.platforms import prepare_webview_environment
 from app.ui.api import DashboardAPI
 from app.ui.controller import ProtectionController
 from app.vision.model_assets import resource_root
@@ -26,9 +27,11 @@ def run_web_dashboard(
     controller=None,
     recorder=None,
     root: Path | None = None,
+    system_name: str | None = None,
 ) -> None:
     """Open the local web dashboard on the GUI main thread."""
 
+    webview_gui = prepare_webview_environment(system_name)
     if webview_module is None:
         try:
             import webview as webview_module
@@ -65,9 +68,12 @@ def run_web_dashboard(
     window.events.closed += close_resources
 
     try:
-        webview_module.start(
-            http_server=True,
-            private_mode=True,
-        )
+        start_options: dict[str, object] = {
+            "http_server": True,
+            "private_mode": True,
+        }
+        if webview_gui is not None:
+            start_options["gui"] = webview_gui
+        webview_module.start(**start_options)
     finally:
         close_resources()
