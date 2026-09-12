@@ -176,6 +176,19 @@ To compare 320n and 640m locally without saving any analysis output:
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 ```
 
+To compare the native capture path with MSS in isolated developer processes:
+
+```bash
+python -m pip install -r requirements-benchmark.txt
+python scripts/benchmark_capture.py
+```
+
+The capture benchmark reports aggregate latency, frame age, CPU, resident
+memory, display resolution, and capture-to-NudeNet-decision timing. It does not
+retain or upload frames. See the
+[capture benchmark guide](docs/capture-benchmark.md) for individual backend
+commands, permission behaviour, and the resolution/monitor test matrix.
+
 ### Optional context-model benchmark
 
 The Viddexa five-class context model is currently an optional development
