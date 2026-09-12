@@ -61,6 +61,21 @@ class PlatformModuleTests(unittest.TestCase):
 
         self.assertIsInstance(capture, MSSCapture)
 
+    def test_linux_adapter_exposes_runtime_capture_route(self) -> None:
+        platform = LinuxPlatform(
+            environ={
+                "WSL_DISTRO_NAME": "Ubuntu-24.04",
+                "WAYLAND_DISPLAY": "wayland-0",
+                "DISPLAY": ":0",
+            },
+            release="microsoft-standard-WSL2",
+        )
+
+        session = platform.desktop_session()
+
+        self.assertEqual(session.kind.value, "wsl")
+        self.assertEqual(session.capture_route.value, "pipewire_portal")
+
     def test_factory_returns_one_adapter_for_the_requested_system(self) -> None:
         self.assertIsInstance(create_platform_adapter("Windows"), WindowsPlatform)
         self.assertIsInstance(create_platform_adapter("Darwin"), MacOSPlatform)
