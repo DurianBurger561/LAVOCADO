@@ -236,11 +236,22 @@ explicit safe schema and never contains image pixels, screenshots, crops,
 URLs, window titles, or image paths. It is not written to SQLite or sent to
 OpenAI.
 
+Every fresh frame also passes through a per-monitor change scheduler before
+NudeNet inference. Native changed-region metadata is preferred when the active
+backend provides it; otherwise LAVOCADO compares a bounded 64x64 grayscale map
+in memory. The first frame, periodic safety frames, and temporal follow-up
+frames after a candidate are always scanned. The change map is never written
+to disk, added to diagnostics, or uploaded.
+
 Source developers can explicitly test `Auto`, native-only, and MSS-only capture
 paths. This override is environment-gated, is disabled in packaged user builds,
 and is not exposed by the dashboard. See the
 [developer capture override guide](docs/developer-capture-override.md) for the
 cross-platform commands and permission-policy notes.
+
+The implementation-to-requirement mapping and remaining physical-platform
+checks are tracked in the
+[native capture acceptance checklist](docs/native-capture-acceptance.md).
 
 When protection is dashboard-owned, a fixed stdin/stdout message protocol
 copies that safe snapshot from the protection child into dashboard memory.

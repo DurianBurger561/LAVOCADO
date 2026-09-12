@@ -9,6 +9,7 @@ from app.blocklist.watcher import BlocklistResult, WindowInfo
 from app.intervention.recorder import ProtectionEvent
 from app.platforms.capture import CaptureBackendStatus
 from app.service import LavocadoService, State
+from app.vision.change_scheduler import ChangeDecision
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.temporal import TemporalVerifier
 
@@ -78,12 +79,14 @@ class FakeCapturer:
 
 class FakeDetector:
     def __init__(self, results_by_monitor: dict[int, list[bool]]) -> None:
+        self.checked_indexes: list[int] = []
         self._results_by_monitor = {
             monitor_index: iter(results)
             for monitor_index, results in results_by_monitor.items()
         }
 
     def check(self, monitor_index: int) -> dict[str, object]:
+        self.checked_indexes.append(monitor_index)
         blocked = next(self._results_by_monitor[monitor_index])
         return {
             "blocked": blocked,
@@ -92,6 +95,26 @@ class FakeDetector:
             "confidence": 1.0 if blocked else 0.0,
             "check_points": [],
         }
+
+
+class FakeChangeScheduler:
+    def __init__(self, scan_results: list[bool]) -> None:
+        self._scan_results = iter(scan_results)
+        self.candidates: list[tuple[int, bool]] = []
+        self.reset_count = 0
+
+    def should_scan(
+        self,
+        _captured: FakeCapturedFrame,
+        _monitor_index: int,
+    ) -> ChangeDecision:
+        return ChangeDecision(next(self._scan_results), "fake", 0.0)
+
+    def record_candidate(self, monitor_index: int, is_candidate: bool) -> None:
+        self.candidates.append((monitor_index, is_candidate))
+
+    def reset(self) -> None:
+        self.reset_count += 1
 
 
 class FakeOverlay:
@@ -201,6 +224,27 @@ class SequenceDecisionEngine:
 
 
 class ServiceTests(unittest.TestCase):
+    def test_change_scheduler_skips_detector_until_scan_is_due(self) -> None:
+        detector = FakeDetector({1: [False]})
+        scheduler = FakeChangeScheduler([False, True])
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(),
+            detector=detector,
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            change_scheduler=scheduler,
+        )
+
+        self.assertEqual(service.check_once(), [])
+        self.assertEqual(detector.checked_indexes, [])
+
+        service.check_once()
+
+        self.assertEqual(detector.checked_indexes, [1])
+        self.assertEqual(scheduler.candidates, [(1, False)])
+
     def test_duplicate_capture_sequence_does_not_advance_temporal(self) -> None:
         overlay = FakeOverlay()
         service = LavocadoService(
