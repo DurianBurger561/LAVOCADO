@@ -16,7 +16,14 @@ if not model_path.is_file():
 model_data = [(str(model_path), "models")]
 web_data = [(str(Path(SPECPATH) / "app" / "ui" / "web"), "app/ui/web")]
 if sys.platform == "win32":
-    platform_hidden_imports = ["dxcam"]
+    from comtypes.client import GetModule
+
+    GetModule("UIAutomationCore.dll")
+    platform_hidden_imports = [
+        "dxcam",
+        "comtypes.client",
+        "comtypes.gen.UIAutomationClient",
+    ]
 elif sys.platform == "darwin":
     platform_hidden_imports = [
         "CoreMedia",

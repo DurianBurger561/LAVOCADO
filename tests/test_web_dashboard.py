@@ -169,6 +169,11 @@ class WebDashboardTests(unittest.TestCase):
         self.assertIn('"app" / "ui" / "web"', spec)
         self.assertIn('"app/ui/web"', spec)
 
+    def test_windows_packaging_includes_generated_uia_interface(self) -> None:
+        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        self.assertIn('GetModule("UIAutomationCore.dll")', spec)
+        self.assertIn('"comtypes.gen.UIAutomationClient"', spec)
+
 
 if __name__ == "__main__":
     unittest.main()

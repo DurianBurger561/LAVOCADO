@@ -11,6 +11,8 @@ def application(identifier: str, window_id: str = "one") -> ApplicationContext:
 
 
 class FakeWebsiteReader:
+    source = "test-accessibility"
+
     def __init__(self, values: list[str | None | Exception]) -> None:
         self.values = iter(values)
         self.calls = []
@@ -49,6 +51,7 @@ class ForegroundContextTests(unittest.TestCase):
         self.assertEqual(context.website.state, WebsiteContextState.KNOWN)
         self.assertEqual(context.website.hostname, "trusted.example")
         self.assertEqual(context.website.browser, "chromium")
+        self.assertEqual(context.website.source, "test-accessibility")
         self.assertEqual(reader.calls, [("chrome.exe", "chromium")])
         self.assertNotIn("private", repr(context))
         self.assertNotIn("secret", repr(context))

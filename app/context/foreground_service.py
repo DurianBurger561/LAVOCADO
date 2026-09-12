@@ -64,7 +64,7 @@ class ForegroundContextService:
             ),
             browser=browser.family,
             hostname=hostname,
-            source=None,
+            source=(getattr(self._website_reader, "source", None) if hostname else None),
             captured_at=captured_at,
         )
         return ForegroundContext(application, True, website, captured_at)

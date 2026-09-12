@@ -14,6 +14,7 @@ from app.platforms.capture import FallbackCaptureBackend, MSSCapture
 from app.platforms.linux import LinuxPlatform
 from app.platforms.macos import MacOSPlatform
 from app.platforms.windows import WindowsPlatform, enable_dpi_awareness
+from app.platforms.website.windows_uia import WindowsUIAWebsiteReader
 
 
 class SuccessfulUser32:
@@ -43,6 +44,12 @@ class PlatformModuleTests(unittest.TestCase):
 
         self.assertIsInstance(capture, FallbackCaptureBackend)
         self.assertEqual(capture.status().preferred_backend, "windows_dxgi")
+
+    def test_windows_adapter_creates_uia_website_reader(self) -> None:
+        self.assertIsInstance(
+            WindowsPlatform(environ={}).create_website_reader(),
+            WindowsUIAWebsiteReader,
+        )
 
     def test_macos_adapter_creates_native_capture_with_mss_fallback(self) -> None:
         capture = MacOSPlatform(environ={}).create_screen_capture()
