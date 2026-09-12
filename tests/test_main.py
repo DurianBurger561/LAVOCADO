@@ -22,9 +22,11 @@ class MainTests(unittest.TestCase):
 
     def test_parser_accepts_dashboard_and_event_limit(self) -> None:
         dashboard = main.build_parser().parse_args(["dashboard"])
+        web_dashboard = main.build_parser().parse_args(["web-dashboard"])
         events = main.build_parser().parse_args(["events", "--limit", "7"])
 
         self.assertEqual(dashboard.command, "dashboard")
+        self.assertEqual(web_dashboard.command, "web-dashboard")
         self.assertEqual(events.limit, 7)
 
     def test_control_message_sets_stop_event(self) -> None:

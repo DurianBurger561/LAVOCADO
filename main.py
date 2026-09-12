@@ -31,6 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers.add_parser("dashboard", help="open the local control panel")
+    subparsers.add_parser(
+        "web-dashboard",
+        help="preview the pywebview control panel",
+    )
 
     events = subparsers.add_parser("events", help="show recent local events")
     events.add_argument("--limit", type=positive_int, default=20)
@@ -185,6 +189,10 @@ def main(argv=None) -> None:
         from app.ui.dashboard import run_dashboard
 
         run_dashboard()
+    elif command == "web-dashboard":
+        from app.ui.web_dashboard import run_web_dashboard
+
+        run_web_dashboard()
     elif command == "events":
         show_events(args.limit)
     else:

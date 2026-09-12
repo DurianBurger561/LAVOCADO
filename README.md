@@ -183,6 +183,22 @@ privacy-safe events:
 python main.py dashboard
 ```
 
+The replacement WebView dashboard is available as an opt-in preview while the
+Tkinter dashboard remains the default. Install its isolated UI dependency and
+launch it with:
+
+```bash
+python -m pip install -r requirements-ui.txt
+python main.py web-dashboard
+```
+
+The preview uses pywebview with local HTML, CSS, and JavaScript. It exposes only
+the fixed `DashboardAPI`, waits for `pywebviewready` before reading state, and
+uses private browsing mode. Linux installs use the Qt backend from the UI
+requirements file; Windows uses WebView2 when available, and macOS uses the
+system WebKit view. Closing the window stops and collects the dashboard-owned
+Protection child.
+
 The dashboard launches protection as a separate process so the overlay remains
 on the GUI main thread on Windows, macOS, and Linux. Closing the dashboard asks
 the protection process to stop cleanly.
