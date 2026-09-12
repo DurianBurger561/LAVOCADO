@@ -34,7 +34,7 @@ def run_web_dashboard(
             import webview as webview_module
         except ImportError as error:
             raise RuntimeError(
-                "pywebview is required; install requirements-ui.txt"
+                "pywebview is required; install requirements.txt"
             ) from error
 
     controller = controller or ProtectionController()

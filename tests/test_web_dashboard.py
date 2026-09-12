@@ -122,6 +122,18 @@ class WebDashboardTests(unittest.TestCase):
         self.assertNotIn("innerHTML", script)
         self.assertNotIn("eval(", script)
 
+    def test_runtime_dependencies_include_platform_webview_backends(self) -> None:
+        requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+        self.assertIn("pywebview>=6.2,<7", requirements)
+        self.assertIn('sys_platform == "linux"', requirements)
+
+    def test_pyinstaller_spec_bundles_all_web_resources(self) -> None:
+        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+
+        self.assertIn('"app" / "ui" / "web"', spec)
+        self.assertIn('"app/ui/web"', spec)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,12 +14,13 @@ if not model_path.is_file():
         "run: python scripts/download_models.py"
     )
 model_data = [(str(model_path), "models")]
+web_data = [(str(Path(SPECPATH) / "app" / "ui" / "web"), "app/ui/web")]
 
 analysis = Analysis(
     ["main.py"],
     pathex=[],
     binaries=[],
-    datas=nudenet_data + model_data,
+    datas=nudenet_data + model_data + web_data,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

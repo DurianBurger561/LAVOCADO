@@ -23,11 +23,25 @@ class MainTests(unittest.TestCase):
     def test_parser_accepts_dashboard_and_event_limit(self) -> None:
         dashboard = main.build_parser().parse_args(["dashboard"])
         web_dashboard = main.build_parser().parse_args(["web-dashboard"])
+        legacy_dashboard = main.build_parser().parse_args(["legacy-dashboard"])
         events = main.build_parser().parse_args(["events", "--limit", "7"])
 
         self.assertEqual(dashboard.command, "dashboard")
         self.assertEqual(web_dashboard.command, "web-dashboard")
+        self.assertEqual(legacy_dashboard.command, "legacy-dashboard")
         self.assertEqual(events.limit, 7)
+
+    def test_dashboard_command_uses_webview(self) -> None:
+        with patch("app.ui.web_dashboard.run_web_dashboard") as run_dashboard:
+            main.main(["dashboard"])
+
+        run_dashboard.assert_called_once_with()
+
+    def test_legacy_dashboard_keeps_tkinter_fallback(self) -> None:
+        with patch("app.ui.dashboard.run_dashboard") as run_dashboard:
+            main.main(["legacy-dashboard"])
+
+        run_dashboard.assert_called_once_with()
 
     def test_control_message_sets_stop_event(self) -> None:
         stop_event = threading.Event()

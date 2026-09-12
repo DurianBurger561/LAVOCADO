@@ -108,7 +108,10 @@ Security → Screen & System Audio Recording**, then restart the application.
 ### Ubuntu, Linux, or WSL
 
 ```bash
-sudo apt install python3-tk x11-utils
+sudo apt install \
+  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 \
+  libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+  libxcb-render-util0 libxcb-util1 libxcb-xkb1
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -176,28 +179,24 @@ Start protection directly (the existing default):
 python main.py
 ```
 
-Or open the local dashboard to start and stop protection and view recent
-privacy-safe events:
+Or open the WebView dashboard to start and stop protection, inspect live
+diagnostics, test the intervention, and view recent privacy-safe events:
 
 ```bash
 python main.py dashboard
 ```
 
-The replacement WebView dashboard is available as an opt-in preview while the
-Tkinter dashboard remains the default. Install its isolated UI dependency and
-launch it with:
+The dashboard uses pywebview with local HTML, CSS, and JavaScript. It exposes
+only the fixed `DashboardAPI`, waits for `pywebviewready` before reading state,
+and uses private browsing mode. Linux installs use the Qt backend; Windows uses
+WebView2 when available, and macOS uses the system WebKit view. Closing the
+window stops and collects the dashboard-owned Protection child.
+
+The previous Tkinter dashboard remains available as a temporary fallback:
 
 ```bash
-python -m pip install -r requirements-ui.txt
-python main.py web-dashboard
+python main.py legacy-dashboard
 ```
-
-The preview uses pywebview with local HTML, CSS, and JavaScript. It exposes only
-the fixed `DashboardAPI`, waits for `pywebviewready` before reading state, and
-uses private browsing mode. Linux installs use the Qt backend from the UI
-requirements file; Windows uses WebView2 when available, and macOS uses the
-system WebKit view. Closing the window stops and collects the dashboard-owned
-Protection child.
 
 The dashboard launches protection as a separate process so the overlay remains
 on the GUI main thread on Windows, macOS, and Linux. Closing the dashboard asks

@@ -30,10 +30,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
 
-    subparsers.add_parser("dashboard", help="open the local control panel")
+    subparsers.add_parser("dashboard", help="open the local WebView control panel")
     subparsers.add_parser(
         "web-dashboard",
-        help="preview the pywebview control panel",
+        help="compatibility alias for the WebView control panel",
+    )
+    subparsers.add_parser(
+        "legacy-dashboard",
+        help="open the fallback Tkinter control panel",
     )
 
     events = subparsers.add_parser("events", help="show recent local events")
@@ -185,14 +189,14 @@ def show_events(limit: int) -> None:
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
     command = args.command or default_command()
-    if command == "dashboard":
-        from app.ui.dashboard import run_dashboard
-
-        run_dashboard()
-    elif command == "web-dashboard":
+    if command in ("dashboard", "web-dashboard"):
         from app.ui.web_dashboard import run_web_dashboard
 
         run_web_dashboard()
+    elif command == "legacy-dashboard":
+        from app.ui.dashboard import run_dashboard
+
+        run_dashboard()
     elif command == "events":
         show_events(args.limit)
     else:

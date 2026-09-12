@@ -1,2 +1,0 @@
-pywebview>=6.2,<7; sys_platform != "linux"
-pywebview[qt]>=6.2,<7; sys_platform == "linux"
