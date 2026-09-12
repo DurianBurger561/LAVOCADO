@@ -15,13 +15,14 @@ if not model_path.is_file():
     )
 model_data = [(str(model_path), "models")]
 web_data = [(str(Path(SPECPATH) / "app" / "ui" / "web"), "app/ui/web")]
+platform_hidden_imports = ["dxcam"] if sys.platform == "win32" else []
 
 analysis = Analysis(
     ["main.py"],
     pathex=[],
     binaries=[],
     datas=nudenet_data + model_data + web_data,
-    hiddenimports=[],
+    hiddenimports=platform_hidden_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -180,9 +180,9 @@ class WindowsPlatform:
         return self._window_provider.active_window()
 
     def create_screen_capture(self):
-        from app.platforms.capture import MSSCapture
+        from app.platforms.capture import create_windows_capture
 
-        return MSSCapture()
+        return create_windows_capture()
 
     def prepare_overlay_window(self, _root: object) -> None:
         return None

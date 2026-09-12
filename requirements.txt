@@ -1,4 +1,5 @@
 mss
+dxcam>=0.3,<0.4; sys_platform == "win32"
 numpy
 Pillow
 nudenet>=3.4.2,<4
