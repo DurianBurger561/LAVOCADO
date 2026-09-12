@@ -142,6 +142,28 @@ Qt WebEngine to software rendering to avoid Mesa/Zink failures when no DRM
 render node is exposed. User-provided Qt or Mesa environment values are not
 overwritten.
 
+Validate the current Linux capture route without opening a capture session:
+
+```bash
+python scripts/validate_linux_capture.py --self-check
+```
+
+Run the live validation on an actual X11, Wayland, or WSLg desktop with:
+
+```bash
+python scripts/validate_linux_capture.py
+```
+
+The live check requests two fresh frames from every selected display, validates
+their dimensions, BGR format, and advancing sequence, then discards them. It
+never saves or uploads pixels. On Wayland, approve every display in the system
+picker. Cancelling the picker reports `permission_denied` without trying MSS.
+The JSON result should report `linux_xshm` for X11,
+`linux_pipewire_portal` for Wayland, or `mss` with a fallback reason when a
+native backend is technically unavailable. See the complete
+[Linux capture validation checklist](docs/linux-capture-validation.md) for the
+GNOME, KDE, WSLg, permission, and multi-display matrix.
+
 The pinned 640m model is about 99 MiB and is downloaded from NudeNet's official
 GitHub release with byte-size and SHA-256 verification. It is excluded from Git.
 If it is absent during a source run, LAVOCADO logs a warning and falls back to
