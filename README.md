@@ -211,12 +211,6 @@ and uses private browsing mode. Linux installs use the Qt backend; Windows uses
 WebView2 when available, and macOS uses the system WebKit view. Closing the
 window stops and collects the dashboard-owned Protection child.
 
-The previous Tkinter dashboard remains available as a temporary fallback:
-
-```bash
-python main.py legacy-dashboard
-```
-
 The dashboard launches protection as a separate process so the overlay remains
 on the GUI main thread on Windows, macOS, and Linux. Closing the dashboard asks
 the protection process to stop cleanly.

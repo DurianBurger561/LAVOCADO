@@ -1,5 +1,6 @@
 """Tests for the command-line entry point."""
 
+import argparse
 import io
 import json
 import sys
@@ -22,14 +23,22 @@ class MainTests(unittest.TestCase):
 
     def test_parser_accepts_dashboard_and_event_limit(self) -> None:
         dashboard = main.build_parser().parse_args(["dashboard"])
-        web_dashboard = main.build_parser().parse_args(["web-dashboard"])
-        legacy_dashboard = main.build_parser().parse_args(["legacy-dashboard"])
         events = main.build_parser().parse_args(["events", "--limit", "7"])
 
         self.assertEqual(dashboard.command, "dashboard")
-        self.assertEqual(web_dashboard.command, "web-dashboard")
-        self.assertEqual(legacy_dashboard.command, "legacy-dashboard")
         self.assertEqual(events.limit, 7)
+
+    def test_parser_exposes_only_supported_commands(self) -> None:
+        command_action = next(
+            action
+            for action in main.build_parser()._actions
+            if isinstance(action, argparse._SubParsersAction)
+        )
+
+        self.assertEqual(
+            set(command_action.choices),
+            {"protect", "dashboard", "events"},
+        )
 
     def test_dashboard_command_uses_webview(self) -> None:
         platform = Mock()
@@ -56,17 +65,6 @@ class MainTests(unittest.TestCase):
 
         platform.prepare_environment.assert_called_once_with()
         run_protection.assert_called_once_with(platform, False)
-
-    def test_legacy_dashboard_keeps_tkinter_fallback(self) -> None:
-        platform = Mock()
-        with (
-            patch("main.create_platform_adapter", return_value=platform),
-            patch("app.ui.dashboard.run_dashboard") as run_dashboard,
-        ):
-            main.main(["legacy-dashboard"])
-
-        platform.prepare_environment.assert_called_once_with()
-        run_dashboard.assert_called_once_with(platform)
 
     def test_control_message_sets_stop_event(self) -> None:
         stop_event = threading.Event()
