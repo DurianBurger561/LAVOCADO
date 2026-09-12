@@ -58,6 +58,13 @@ button {
   align-items: center;
 }
 
+.capture-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
 .topbar {
   justify-content: space-between;
   margin-bottom: 30px;
