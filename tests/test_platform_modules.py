@@ -197,6 +197,26 @@ class PlatformModuleTests(unittest.TestCase):
         self.assertIs(platform.get_foreground_window(), window)
         provider.active_window.assert_called_once_with()
 
+    def test_each_adapter_exposes_title_free_foreground_application(self) -> None:
+        window = WindowInfo(
+            title="Private page title",
+            app_name="Chrome",
+            app_identifier="chrome.exe",
+            window_id="123",
+            process_id=42,
+        )
+        for platform in (
+            WindowsPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=window))),
+            MacOSPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=window))),
+            LinuxPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=window))),
+        ):
+            with self.subTest(platform=platform.name):
+                application = platform.get_foreground_application()
+                self.assertEqual(application.identifier, "chrome.exe")
+                self.assertEqual(application.window_id, "123")
+                self.assertEqual(application.process_id, 42)
+                self.assertNotIn("Private page title", repr(application))
+
     def test_linux_explicitly_selects_the_qt_webview_backend(self) -> None:
         environment: dict[str, str] = {}
         platform = LinuxPlatform(

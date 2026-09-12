@@ -9,6 +9,8 @@ from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
 from typing import Any
 
+from app.context.application import application_from_window
+from app.context.models import ApplicationContext
 from app.platforms.base import (
     Environment,
     WindowInfo,
@@ -48,8 +50,13 @@ CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 class MacOSWindowProvider:
     """Read the frontmost process and window through System Events."""
 
-    def __init__(self, runner: CommandRunner = subprocess.run) -> None:
+    def __init__(
+        self,
+        runner: CommandRunner = subprocess.run,
+        identity_reader: Callable[[], tuple[str | None, str | None, int | None]] | None = None,
+    ) -> None:
         self._runner = runner
+        self._identity_reader = identity_reader or _frontmost_application_identity
 
     def active_window(self) -> WindowInfo | None:
         result = self._runner(
@@ -68,7 +75,19 @@ class MacOSWindowProvider:
 
         app_name, title, left, top, width, height = fields
         bounds = _parse_bounds(left, top, width, height)
-        return WindowInfo(title=title, app_name=app_name, **bounds)
+        try:
+            native_name, bundle_id, process_id = self._identity_reader()
+        except Exception:
+            native_name, bundle_id, process_id = None, None, None
+        if not native_name or native_name.casefold() != app_name.casefold():
+            bundle_id, process_id = None, None
+        return WindowInfo(
+            title=title,
+            app_name=app_name,
+            app_identifier=bundle_id,
+            process_id=process_id,
+            **bounds,
+        )
 
 
 class MacOSPlatform:
@@ -100,6 +119,9 @@ class MacOSPlatform:
         if self._window_provider is None:
             self._window_provider = MacOSWindowProvider()
         return self._window_provider.active_window()
+
+    def get_foreground_application(self) -> ApplicationContext | None:
+        return application_from_window(self.get_foreground_window())
 
     def create_screen_capture(self):
         from app.platforms.capture import (
@@ -189,6 +211,24 @@ def _parse_bounds(
         }
     except ValueError:
         return {"left": None, "top": None, "width": None, "height": None}
+
+
+def _frontmost_application_identity() -> tuple[str | None, str | None, int | None]:
+    """Use NSRunningApplication rather than a mutable name as the rule key."""
+
+    try:
+        import AppKit
+
+        running = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+        if running is None:
+            return None, None, None
+        return (
+            running.localizedName(),
+            running.bundleIdentifier(),
+            int(running.processIdentifier()),
+        )
+    except Exception:
+        return None, None, None
 
 
 def _configure_native_overlay_window(root: Any, application: Any, appkit: Any) -> None:

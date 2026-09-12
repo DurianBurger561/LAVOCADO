@@ -29,6 +29,7 @@ class ApplicationContext:
     process_name: str | None
     window_id: str | None
     captured_at: float
+    process_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,4 +71,3 @@ class ContextPolicyResult:
     website_action: ContextPolicyAction
     matched_application_rule: ApplicationRule | None = None
     matched_website_rule: WebsiteRule | None = None
-

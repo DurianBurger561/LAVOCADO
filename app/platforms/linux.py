@@ -10,6 +10,8 @@ import subprocess
 from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
 
+from app.context.application import application_from_window
+from app.context.models import ApplicationContext
 from app.platforms.base import (
     Environment,
     WindowInfo,
@@ -29,9 +31,13 @@ class LinuxWindowProvider:
         self,
         runner: CommandRunner = subprocess.run,
         executable_finder: Callable[[str], str | None] = shutil.which,
+        process_executable_reader: Callable[[int], str | None] | None = None,
     ) -> None:
         self._runner = runner
         self._executable_finder = executable_finder
+        self._process_executable_reader = (
+            process_executable_reader or _linux_executable_for_pid
+        )
 
     def active_window(self) -> WindowInfo | None:
         if not self._executable_finder("xprop"):
@@ -44,13 +50,28 @@ class LinuxWindowProvider:
         window_id = window_id_match.group()
 
         properties = self._run(
-            ["xprop", "-id", window_id, "_NET_WM_NAME", "WM_NAME", "WM_CLASS"]
+            [
+                "xprop", "-id", window_id, "_NET_WM_NAME", "WM_NAME",
+                "WM_CLASS", "_NET_WM_PID", "_GTK_APPLICATION_ID",
+            ]
         )
         title = _x_property(properties, "_NET_WM_NAME") or _x_property(
             properties,
             "WM_NAME",
         )
         app_name = _x_window_class(properties)
+        process_id = _x_process_id(properties)
+        try:
+            executable = (
+                self._process_executable_reader(process_id)
+                if process_id is not None
+                else None
+            )
+        except Exception:
+            executable = None
+        app_identifier = _x_property(properties, "_GTK_APPLICATION_ID") or (
+            Path(executable).name if executable else None
+        )
 
         bounds: dict[str, int | None] = {}
         if self._executable_finder("xwininfo"):
@@ -65,6 +86,9 @@ class LinuxWindowProvider:
         return WindowInfo(
             title=title,
             app_name=app_name,
+            app_identifier=app_identifier,
+            window_id=window_id,
+            process_id=process_id,
             **bounds,
         )
 
@@ -110,6 +134,9 @@ class LinuxPlatform:
         if self._window_provider is None:
             self._window_provider = LinuxWindowProvider()
         return self._window_provider.active_window()
+
+    def get_foreground_application(self) -> ApplicationContext | None:
+        return application_from_window(self.get_foreground_window())
 
     def create_screen_capture(self):
         from app.platforms.capture import (
@@ -164,6 +191,21 @@ def _x_window_class(output: str) -> str:
 def _x_number(output: str, field: str) -> int | None:
     match = re.search(rf"^\s*{re.escape(field)}:\s*(-?\d+)", output, re.MULTILINE)
     return None if match is None else int(match.group(1))
+
+
+def _x_process_id(output: str) -> int | None:
+    match = re.search(r"^_NET_WM_PID[^=]*=\s*(\d+)", output, re.MULTILINE)
+    if match is None:
+        return None
+    process_id = int(match.group(1))
+    return process_id if process_id > 0 else None
+
+
+def _linux_executable_for_pid(process_id: int) -> str | None:
+    try:
+        return os.readlink(f"/proc/{process_id}/exe")
+    except OSError:
+        return None
 
 
 def create_window_provider() -> LinuxWindowProvider:
