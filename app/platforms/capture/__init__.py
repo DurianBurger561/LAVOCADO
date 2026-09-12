@@ -31,10 +31,18 @@ from app.platforms.capture.models import (
     Rect,
 )
 from app.platforms.capture.mss_fallback import MSSCapture
+from app.platforms.capture.override import (
+    CAPTURE_BACKEND_ENV,
+    DEVELOPER_BUILD_ENV,
+    CaptureBackendMode,
+    developer_capture_override_enabled,
+    resolve_capture_backend_mode,
+)
 from app.platforms.capture.windows_dxgi import WindowsDXGICapture
 
 __all__ = [
     "CaptureBackendStatus",
+    "CaptureBackendMode",
     "CaptureError",
     "CaptureFatalError",
     "CaptureFrame",
@@ -58,5 +66,9 @@ __all__ = [
     "create_linux_capture",
     "create_macos_capture",
     "create_windows_capture",
+    "CAPTURE_BACKEND_ENV",
+    "DEVELOPER_BUILD_ENV",
+    "developer_capture_override_enabled",
     "detect_linux_session",
+    "resolve_capture_backend_mode",
 ]

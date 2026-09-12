@@ -211,6 +211,12 @@ explicit safe schema and never contains image pixels, screenshots, crops,
 URLs, window titles, or image paths. It is not written to SQLite or sent to
 OpenAI.
 
+Source developers can explicitly test `Auto`, native-only, and MSS-only capture
+paths. This override is environment-gated, is disabled in packaged user builds,
+and is not exposed by the dashboard. See the
+[developer capture override guide](docs/developer-capture-override.md) for the
+cross-platform commands and permission-policy notes.
+
 When protection is dashboard-owned, a fixed stdin/stdout message protocol
 copies that safe snapshot from the protection child into dashboard memory.
 Only start, stop, diagnostic-read, and test-intervention operations are

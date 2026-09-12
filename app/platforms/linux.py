@@ -112,11 +112,15 @@ class LinuxPlatform:
         return self._window_provider.active_window()
 
     def create_screen_capture(self):
-        from app.platforms.capture import create_linux_capture
+        from app.platforms.capture import (
+            create_linux_capture,
+            resolve_capture_backend_mode,
+        )
 
         return create_linux_capture(
             self.desktop_session(),
             display=self._environ.get("DISPLAY"),
+            mode=resolve_capture_backend_mode(self._environ),
         )
 
     def desktop_session(self) -> LinuxSessionInfo:
