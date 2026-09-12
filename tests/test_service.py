@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from app.blocklist.watcher import BlocklistResult, WindowInfo
 from app.intervention.recorder import ProtectionEvent
 from app.service import LavocadoService, State
+from app.vision.diagnostics import DiagnosticsStore
 from app.vision.temporal import TemporalVerifier
 
 
@@ -156,6 +157,32 @@ class SequenceDecisionEngine:
 
 
 class ServiceTests(unittest.TestCase):
+    def test_updates_in_memory_diagnostics_after_scan(self) -> None:
+        scan_times = iter((10.0, 10.123))
+        diagnostics = DiagnosticsStore(
+            model_variant="test",
+            inference_resolution=640,
+            context_model="test-context",
+            context_status="unavailable",
+        )
+        service = LavocadoService(
+            capturer=FakeCapturer(),
+            detector=FakeDetector({1: [True]}),
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            diagnostics=diagnostics,
+            scan_clock=lambda: next(scan_times),
+        )
+
+        service.check_once()
+
+        snapshot = diagnostics.snapshot()
+        self.assertEqual(snapshot["protection_state"], "CANDIDATE")
+        self.assertEqual(snapshot["last_scan_ms"], 123.0)
+        self.assertEqual(snapshot["monitor_index"], 1)
+        self.assertEqual(snapshot["temporal"], [1])
+
     def test_passes_full_capture_to_decision_engine(self) -> None:
         decision_engine = FakeDecisionEngine()
         service = LavocadoService(

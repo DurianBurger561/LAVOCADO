@@ -29,7 +29,15 @@ class TemporalVerifierTests(unittest.TestCase):
         verifier.reset()
 
         self.assertEqual(verifier.hits, 0)
+        self.assertEqual(verifier.history, ())
         self.assertFalse(verifier.update(True))
+
+    def test_history_is_an_immutable_copy(self) -> None:
+        verifier = TemporalVerifier(window_size=3, required_hits=2)
+        verifier.update(True)
+        verifier.update(False)
+
+        self.assertEqual(verifier.history, (True, False))
 
 
 if __name__ == "__main__":

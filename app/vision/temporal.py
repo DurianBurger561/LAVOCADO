@@ -24,6 +24,12 @@ class TemporalVerifier:
 
         return sum(self._history)
 
+    @property
+    def history(self) -> tuple[bool, ...]:
+        """Return an immutable copy for privacy-safe diagnostics."""
+
+        return tuple(self._history)
+
     def update(self, is_candidate: bool) -> bool:
         """Record one decision and report whether the risk is confirmed."""
 

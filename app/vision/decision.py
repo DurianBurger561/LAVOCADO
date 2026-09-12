@@ -259,6 +259,16 @@ class DecisionEngine:
 
         self._rescue_schedules.clear()
 
+    def rescue_status(self, monitor_index: int) -> dict[str, int | None]:
+        """Return scalar scheduling state without exposing any image data."""
+
+        schedule = self._rescue_schedules.get(monitor_index, _RescueSchedule())
+        return {
+            "next_tile_index": schedule.next_tile_index,
+            "pinned_tile_index": schedule.pinned_tile_index,
+            "pinned_checks_remaining": schedule.pinned_checks_remaining,
+        }
+
     def _strong_nudenet_result(
         self,
         result: dict[str, Any],

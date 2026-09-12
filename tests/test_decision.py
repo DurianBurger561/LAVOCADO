@@ -182,6 +182,14 @@ class DecisionEngineTests(unittest.TestCase):
         engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
 
         self.assertEqual(context.received_means, [10, 20, 10])
+        self.assertEqual(
+            engine.rescue_status(1),
+            {
+                "next_tile_index": 1,
+                "pinned_tile_index": None,
+                "pinned_checks_remaining": 0,
+            },
+        )
 
     def test_strong_nudenet_candidate_does_not_need_context(self) -> None:
         context = FakeContextClassifier({"porn": 1.0})

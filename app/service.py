@@ -19,6 +19,7 @@ from app.vision.capture import Capturer
 from app.vision.context_classifier import load_context_classifier
 from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
+from app.vision.diagnostics import DiagnosticsStore
 from app.vision.overlay import Overlay
 from app.vision.temporal import TemporalVerifier
 
@@ -45,11 +46,13 @@ class LavocadoService:
         intervention: InterventionGenerator | None = None,
         watcher: WindowWatcher | None = None,
         decision_engine: DecisionEngine | None = None,
+        diagnostics: DiagnosticsStore | None = None,
         *,
         verifier_factory: Callable[[], TemporalVerifier] | None = None,
         check_interval: float = config.CHECK_INTERVAL,
         cooldown_seconds: float = config.COOLDOWN_SECONDS,
         clock: Callable[[], float] = time.monotonic,
+        scan_clock: Callable[[], float] = time.perf_counter,
         sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         prepare_desktop_environment()
@@ -73,6 +76,23 @@ class LavocadoService:
                 context_classifier,
                 local_rescue_detector,
             )
+        context_sensor = getattr(self.decision_engine, "context_classifier", None)
+        if not config.CONTEXT_MODEL_ENABLED:
+            context_status = "disabled"
+        elif context_sensor is None:
+            context_status = "unavailable"
+        else:
+            context_status = "available"
+        self.diagnostics = diagnostics or DiagnosticsStore(
+            model_variant=str(getattr(self.detector, "model_variant", "custom")),
+            inference_resolution=getattr(
+                self.detector,
+                "inference_resolution",
+                None,
+            ),
+            context_model=config.CONTEXT_MODEL_NAME,
+            context_status=context_status,
+        )
         self.overlay = overlay if overlay is not None else Overlay()
         self.recorder = recorder if recorder is not None else EventRecorder()
         self.intervention = (
@@ -91,9 +111,11 @@ class LavocadoService:
         self.check_interval = check_interval
         self.cooldown_seconds = cooldown_seconds
         self._clock = clock
+        self._scan_clock = scan_clock
         self._sleeper = sleeper
         self._running = False
         self._state = State.STOPPED
+        self.diagnostics.set_protection_state(self._state.name)
         self._cooldown_until = 0.0
 
     @property
@@ -104,7 +126,7 @@ class LavocadoService:
         """Run monitoring until stop is requested or Ctrl+C is received."""
 
         self._running = True
-        self._state = State.MONITORING
+        self._transition(State.MONITORING)
 
         try:
             while self._running and not (stop_event and stop_event.is_set()):
@@ -121,7 +143,7 @@ class LavocadoService:
                     finally:
                         self.intervention.close()
             finally:
-                self._state = State.STOPPED
+                self._transition(State.STOPPED)
                 self._running = False
 
     def stop(self) -> None:
@@ -135,12 +157,12 @@ class LavocadoService:
         now = self._clock()
 
         if self._state == State.STOPPED:
-            self._state = State.MONITORING
+            self._transition(State.MONITORING)
 
         if self._state == State.COOLDOWN:
             if now < self._cooldown_until:
                 return None
-            self._state = State.MONITORING
+            self._transition(State.MONITORING)
 
         blocklist_result = self.watcher.check()
         blocked_result = self._blocklist_detection(blocklist_result)
@@ -157,6 +179,7 @@ class LavocadoService:
         has_candidate = False
 
         for monitor_index in self.capturer.monitor_indexes:
+            scan_started = self._scan_clock()
             captured_frame = self.capturer.grab(monitor_index)
             nudenet_result = dict(self.detector.check(captured_frame.model_frame))
             result = self.decision_engine.evaluate(
@@ -174,12 +197,36 @@ class LavocadoService:
                 verifier = self._verifier_factory()
                 self._verifiers[monitor_index] = verifier
 
-            if verifier.update(is_candidate):
+            confirmed = verifier.update(is_candidate)
+            rescue_status = self._decision_rescue_status(monitor_index)
+            self.diagnostics.record_scan(
+                monitor_index=monitor_index,
+                elapsed_ms=(self._scan_clock() - scan_started) * 1000,
+                decision=result,
+                temporal=verifier.history,
+                rescue_status=rescue_status,
+            )
+
+            if confirmed:
                 self._show_intervention(result, monitor_index, trigger_type="vision")
                 return results
 
-        self._state = State.CANDIDATE if has_candidate else State.MONITORING
+        self._transition(State.CANDIDATE if has_candidate else State.MONITORING)
         return results
+
+    def _transition(self, state: State) -> None:
+        self._state = state
+        self.diagnostics.set_protection_state(state.name)
+
+    def _decision_rescue_status(
+        self,
+        monitor_index: int,
+    ) -> dict[str, int | None]:
+        status_reader = getattr(self.decision_engine, "rescue_status", None)
+        if not callable(status_reader):
+            return {}
+        status = status_reader(monitor_index)
+        return status if isinstance(status, dict) else {}
 
     def _reset_verifiers(self) -> None:
         for verifier in self._verifiers.values():
@@ -216,7 +263,7 @@ class LavocadoService:
         monitor_index: int,
         trigger_type: str,
     ) -> None:
-        self._state = State.BLOCKED
+        self._transition(State.BLOCKED)
         record_future = self._record_trigger(result, monitor_index, trigger_type)
         support_message = self._generate_intervention()
         self.overlay.show(
@@ -231,7 +278,7 @@ class LavocadoService:
                 LOGGER.exception("Could not finish recording protection event")
         self._reset_verifiers()
         self._cooldown_until = self._clock() + self.cooldown_seconds
-        self._state = State.COOLDOWN
+        self._transition(State.COOLDOWN)
 
     def _blocklist_detection(
         self,
