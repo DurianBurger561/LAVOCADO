@@ -31,6 +31,13 @@ RESCUE_ENABLED = True
 RESCUE_TILE_ROWS = 2
 RESCUE_TILE_COLUMNS = 2
 
+# Conservative screen-change scheduling. Native dirty-region metadata is used
+# when available; otherwise a small grayscale map avoids retaining full frames.
+CHANGE_MAP_MAX_EDGE = 64
+CHANGE_PIXEL_DELTA = 12
+CHANGE_RATIO_THRESHOLD = 0.01
+CHANGE_PERIODIC_SCAN_INTERVAL = 8
+
 # None selects the primary monitor automatically. Set an integer to override it.
 MONITOR_INDEX: int | None = None
 

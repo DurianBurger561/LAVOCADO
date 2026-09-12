@@ -58,6 +58,13 @@ button {
   align-items: center;
 }
 
+.capture-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
 .topbar {
   justify-content: space-between;
   margin-bottom: 30px;
@@ -356,6 +363,7 @@ main {
 }
 
 .signal-card,
+.capture-card,
 .mini-signal,
 .temporal-row,
 .rescue-row {
@@ -366,6 +374,47 @@ main {
 .signal-card {
   padding: 15px;
   border-radius: 13px;
+}
+
+.capture-card {
+  margin-bottom: 10px;
+  padding: 15px;
+  border-radius: 13px;
+}
+
+.capture-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.capture-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 13px 0 0;
+}
+
+.capture-list div {
+  min-width: 0;
+}
+
+.capture-list dt {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.capture-list dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.capture-reason-row {
+  grid-column: 1 / -1;
 }
 
 .signal-header {
@@ -407,6 +456,21 @@ main {
 .signal-tag.borderline {
   color: var(--amber);
   background: rgba(244, 201, 122, 0.12);
+}
+
+.signal-tag.capture-healthy {
+  color: var(--green);
+  background: rgba(85, 203, 136, 0.12);
+}
+
+.signal-tag.capture-fallback {
+  color: var(--amber);
+  background: rgba(244, 201, 122, 0.12);
+}
+
+.signal-tag.capture-error {
+  color: var(--danger);
+  background: rgba(255, 115, 138, 0.12);
 }
 
 .meter {

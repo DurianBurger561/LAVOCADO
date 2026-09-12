@@ -3,6 +3,7 @@
 import json
 import unittest
 
+from app.platforms.capture import CaptureBackendStatus
 from app.vision.diagnostics import DiagnosticsStore
 
 
@@ -16,6 +17,39 @@ def make_store() -> DiagnosticsStore:
 
 
 class DiagnosticsStoreTests(unittest.TestCase):
+    def test_records_privacy_safe_capture_status(self) -> None:
+        store = make_store()
+
+        store.record_capture(
+            CaptureBackendStatus(
+                preferred_backend="linux_pipewire_portal",
+                active_backend="mss",
+                fallback=True,
+                fallback_reason="CaptureUnavailableError: portal unavailable",
+                healthy=True,
+                session="wayland",
+                monitor_count=2,
+                frame_age_ms=12.34,
+            )
+        )
+
+        self.assertEqual(
+            store.snapshot()["capture"],
+            {
+                "preferred_backend": "linux_pipewire_portal",
+                "active_backend": "mss",
+                "fallback": True,
+                "fallback_reason": (
+                    "CaptureUnavailableError: portal unavailable"
+                ),
+                "healthy": True,
+                "error": None,
+                "session": "wayland",
+                "monitor_count": 2,
+                "frame_age_ms": 12.3,
+            },
+        )
+
     def test_records_expected_scan_summary(self) -> None:
         store = make_store()
         store.set_protection_state("candidate")

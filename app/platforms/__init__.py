@@ -8,7 +8,6 @@ from pathlib import Path
 from app.platforms.base import (
     Environment,
     PlatformAdapter,
-    ScreenCaptureError,
     UnsupportedPlatformError,
     WindowInfo,
 )
@@ -47,7 +46,6 @@ __all__ = [
     "LinuxPlatform",
     "MacOSPlatform",
     "PlatformAdapter",
-    "ScreenCaptureError",
     "UnsupportedPlatformError",
     "WindowInfo",
     "WindowsPlatform",

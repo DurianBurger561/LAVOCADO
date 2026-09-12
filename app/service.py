@@ -15,7 +15,9 @@ from app.blocklist.watcher import BlocklistResult, WindowWatcher
 from app.intervention.intervene import InterventionGenerator
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platforms import PlatformAdapter
+from app.platforms.capture.models import CaptureBackendStatus
 from app.vision.capture import Capturer
+from app.vision.change_scheduler import ChangeScheduler
 from app.vision.context_classifier import load_context_classifier
 from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
@@ -48,6 +50,7 @@ class LavocadoService:
         watcher: WindowWatcher | None = None,
         decision_engine: DecisionEngine | None = None,
         diagnostics: DiagnosticsStore | None = None,
+        change_scheduler: ChangeScheduler | None = None,
         *,
         verifier_factory: Callable[[], TemporalVerifier] | None = None,
         check_interval: float = config.CHECK_INTERVAL,
@@ -120,7 +123,9 @@ class LavocadoService:
                 config.CONFIRMATION_REQUIRED_HITS,
             )
         )
+        self.change_scheduler = change_scheduler or ChangeScheduler()
         self._verifiers: dict[int, TemporalVerifier] = {}
+        self._last_frame_sequences: dict[int, tuple[str, int]] = {}
         self.check_interval = check_interval
         self.cooldown_seconds = cooldown_seconds
         self._clock = clock
@@ -129,6 +134,7 @@ class LavocadoService:
         self._running = False
         self._state = State.STOPPED
         self.diagnostics.set_protection_state(self._state.name)
+        self._record_capture_diagnostics()
         self._cooldown_until = 0.0
 
     @property
@@ -190,6 +196,7 @@ class LavocadoService:
         """Advance the state machine by one monitoring step."""
 
         now = self._clock()
+        self._record_capture_diagnostics()
 
         if self._state == State.STOPPED:
             self._transition(State.MONITORING)
@@ -212,10 +219,21 @@ class LavocadoService:
 
         results: list[dict[str, object]] = []
         has_candidate = False
+        has_fresh_frame = False
 
         for monitor_index in self.capturer.monitor_indexes:
             scan_started = self._scan_clock()
             captured_frame = self.capturer.grab(monitor_index)
+            self._record_capture_diagnostics()
+            if not self._is_fresh_frame(monitor_index, captured_frame):
+                continue
+            has_fresh_frame = True
+            schedule = self.change_scheduler.should_scan(
+                captured_frame,
+                monitor_index,
+            )
+            if not schedule.scan:
+                continue
             nudenet_result = dict(self.detector.check(captured_frame.model_frame))
             result = self.decision_engine.evaluate(
                 nudenet_result,
@@ -226,6 +244,7 @@ class LavocadoService:
             results.append(result)
 
             is_candidate = bool(result["blocked"])
+            self.change_scheduler.record_candidate(monitor_index, is_candidate)
             has_candidate = has_candidate or is_candidate
             verifier = self._verifiers.get(monitor_index)
             if verifier is None:
@@ -246,12 +265,18 @@ class LavocadoService:
                 self._show_intervention(result, monitor_index, trigger_type="vision")
                 return results
 
-        self._transition(State.CANDIDATE if has_candidate else State.MONITORING)
+        if has_fresh_frame:
+            self._transition(State.CANDIDATE if has_candidate else State.MONITORING)
         return results
 
     def _transition(self, state: State) -> None:
         self._state = state
         self.diagnostics.set_protection_state(state.name)
+
+    def _record_capture_diagnostics(self) -> None:
+        status = getattr(self.capturer, "status", None)
+        if isinstance(status, CaptureBackendStatus):
+            self.diagnostics.record_capture(status)
 
     def _decision_rescue_status(
         self,
@@ -263,12 +288,23 @@ class LavocadoService:
         status = status_reader(monitor_index)
         return status if isinstance(status, dict) else {}
 
+    def _is_fresh_frame(self, monitor_index: int, captured_frame: object) -> bool:
+        sequence = getattr(captured_frame, "sequence", None)
+        if not isinstance(sequence, int) or sequence < 1:
+            return True
+        identity = (str(getattr(captured_frame, "backend", "unknown")), sequence)
+        if self._last_frame_sequences.get(monitor_index) == identity:
+            return False
+        self._last_frame_sequences[monitor_index] = identity
+        return True
+
     def _reset_verifiers(self) -> None:
         for verifier in self._verifiers.values():
             verifier.reset()
         reset_decisions = getattr(self.decision_engine, "reset", None)
         if callable(reset_decisions):
             reset_decisions()
+        self.change_scheduler.reset()
 
     def _record_trigger(
         self,

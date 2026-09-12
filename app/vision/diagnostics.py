@@ -8,6 +8,7 @@ from threading import Lock
 from typing import Any
 
 from app import config
+from app.platforms.capture.models import CaptureBackendStatus
 
 
 def _friendly_model_name(variant: str) -> str:
@@ -46,6 +47,17 @@ class DiagnosticsStore:
             "inference_resolution": inference_resolution,
             "context_model": context_model,
             "context_status": context_status,
+            "capture": {
+                "preferred_backend": None,
+                "active_backend": None,
+                "fallback": False,
+                "fallback_reason": None,
+                "healthy": False,
+                "error": None,
+                "session": None,
+                "monitor_count": 0,
+                "frame_age_ms": None,
+            },
             "last_scan_ms": None,
             "last_scan_at": None,
             "monitor_index": None,
@@ -73,6 +85,23 @@ class DiagnosticsStore:
 
         with self._lock:
             self._snapshot["protection_state"] = str(state).upper()
+
+    def record_capture(self, status: CaptureBackendStatus) -> None:
+        """Store an allow-listed, privacy-safe capture health snapshot."""
+
+        capture = {
+            "preferred_backend": self._optional_string(status.preferred_backend),
+            "active_backend": self._optional_string(status.active_backend),
+            "fallback": bool(status.fallback),
+            "fallback_reason": self._optional_string(status.fallback_reason),
+            "healthy": bool(status.healthy),
+            "error": self._optional_string(status.error),
+            "session": self._optional_string(status.session),
+            "monitor_count": max(0, int(status.monitor_count)),
+            "frame_age_ms": self._nonnegative_float(status.frame_age_ms),
+        }
+        with self._lock:
+            self._snapshot["capture"] = capture
 
     def record_scan(
         self,
@@ -125,6 +154,11 @@ class DiagnosticsStore:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @classmethod
+    def _nonnegative_float(cls, value: object) -> float | None:
+        number = cls._optional_float(value)
+        return None if number is None else round(max(0.0, number), 1)
 
     @classmethod
     def _nudenet_summary(cls, decision: dict[str, Any]) -> dict[str, Any]:

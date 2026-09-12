@@ -33,7 +33,11 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q app tests main.py
+        run: python -m compileall -q app scripts tests main.py
+
+      - name: Validate Linux capture routing
+        if: runner.os == 'Linux'
+        run: python scripts/validate_linux_capture.py --self-check
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v

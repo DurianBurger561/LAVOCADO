@@ -7,7 +7,9 @@ from threading import Event
 
 from app.blocklist.watcher import BlocklistResult, WindowInfo
 from app.intervention.recorder import ProtectionEvent
+from app.platforms.capture import CaptureBackendStatus
 from app.service import LavocadoService, State
+from app.vision.change_scheduler import ChangeDecision
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.temporal import TemporalVerifier
 
@@ -16,6 +18,8 @@ from app.vision.temporal import TemporalVerifier
 class FakeCapturedFrame:
     original_frame: int
     model_frame: int
+    sequence: int = 0
+    backend: str = "fake"
 
 
 class FakePlatform:
@@ -28,21 +32,46 @@ class FakeCapturer:
         self,
         monitor_indexes: tuple[int, ...] = (1,),
         point_monitor_index: int | None = 1,
+        sequences: dict[int, list[int]] | None = None,
     ) -> None:
         self.monitor_indexes = monitor_indexes
         self.point_monitor_index = point_monitor_index
         self.grabbed_indexes: list[int] = []
         self.closed = False
+        self._sequences = {
+            monitor_index: iter(values)
+            for monitor_index, values in (sequences or {}).items()
+        }
+        self._sequence_counts: dict[int, int] = {}
 
     def grab(self, monitor_index: int) -> FakeCapturedFrame:
         self.grabbed_indexes.append(monitor_index)
+        sequence_source = self._sequences.get(monitor_index)
+        if sequence_source is None:
+            sequence = self._sequence_counts.get(monitor_index, 0) + 1
+            self._sequence_counts[monitor_index] = sequence
+        else:
+            sequence = next(sequence_source)
         return FakeCapturedFrame(
             original_frame=monitor_index,
             model_frame=monitor_index,
+            sequence=sequence,
         )
 
     def close(self) -> None:
         self.closed = True
+
+    @property
+    def status(self) -> CaptureBackendStatus:
+        return CaptureBackendStatus(
+            preferred_backend="fake-native",
+            active_backend=None if self.closed else "fake-native",
+            fallback=False,
+            fallback_reason=None,
+            healthy=not self.closed,
+            monitor_count=len(self.monitor_indexes),
+            frame_age_ms=4.2,
+        )
 
     def monitor_index_at(self, _x: int, _y: int) -> int | None:
         return self.point_monitor_index
@@ -50,12 +79,14 @@ class FakeCapturer:
 
 class FakeDetector:
     def __init__(self, results_by_monitor: dict[int, list[bool]]) -> None:
+        self.checked_indexes: list[int] = []
         self._results_by_monitor = {
             monitor_index: iter(results)
             for monitor_index, results in results_by_monitor.items()
         }
 
     def check(self, monitor_index: int) -> dict[str, object]:
+        self.checked_indexes.append(monitor_index)
         blocked = next(self._results_by_monitor[monitor_index])
         return {
             "blocked": blocked,
@@ -64,6 +95,26 @@ class FakeDetector:
             "confidence": 1.0 if blocked else 0.0,
             "check_points": [],
         }
+
+
+class FakeChangeScheduler:
+    def __init__(self, scan_results: list[bool]) -> None:
+        self._scan_results = iter(scan_results)
+        self.candidates: list[tuple[int, bool]] = []
+        self.reset_count = 0
+
+    def should_scan(
+        self,
+        _captured: FakeCapturedFrame,
+        _monitor_index: int,
+    ) -> ChangeDecision:
+        return ChangeDecision(next(self._scan_results), "fake", 0.0)
+
+    def record_candidate(self, monitor_index: int, is_candidate: bool) -> None:
+        self.candidates.append((monitor_index, is_candidate))
+
+    def reset(self) -> None:
+        self.reset_count += 1
 
 
 class FakeOverlay:
@@ -173,6 +224,54 @@ class SequenceDecisionEngine:
 
 
 class ServiceTests(unittest.TestCase):
+    def test_change_scheduler_skips_detector_until_scan_is_due(self) -> None:
+        detector = FakeDetector({1: [False]})
+        scheduler = FakeChangeScheduler([False, True])
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(),
+            detector=detector,
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            change_scheduler=scheduler,
+        )
+
+        self.assertEqual(service.check_once(), [])
+        self.assertEqual(detector.checked_indexes, [])
+
+        service.check_once()
+
+        self.assertEqual(detector.checked_indexes, [1])
+        self.assertEqual(scheduler.candidates, [(1, False)])
+
+    def test_duplicate_capture_sequence_does_not_advance_temporal(self) -> None:
+        overlay = FakeOverlay()
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(sequences={1: [7, 7, 8, 9]}),
+            detector=FakeDetector({1: [True, True, False]}),
+            overlay=overlay,
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            verifier_factory=lambda: TemporalVerifier(3, 2),
+        )
+
+        service.check_once()
+        duplicate_results = service.check_once()
+
+        self.assertEqual(duplicate_results, [])
+        self.assertEqual(service.state, State.CANDIDATE)
+        self.assertEqual(overlay.shown_on, [])
+
+        service.check_once()
+
+        self.assertEqual(overlay.shown_on, [])
+
+        service.check_once()
+
+        self.assertEqual(overlay.shown_on, [1])
+
     def test_updates_in_memory_diagnostics_after_scan(self) -> None:
         scan_times = iter((10.0, 10.123))
         diagnostics = DiagnosticsStore(
@@ -199,6 +298,10 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["last_scan_ms"], 123.0)
         self.assertEqual(snapshot["monitor_index"], 1)
         self.assertEqual(snapshot["temporal"], [1])
+        self.assertEqual(snapshot["capture"]["preferred_backend"], "fake-native")
+        self.assertEqual(snapshot["capture"]["active_backend"], "fake-native")
+        self.assertEqual(snapshot["capture"]["monitor_count"], 1)
+        self.assertEqual(snapshot["capture"]["frame_age_ms"], 4.2)
 
     def test_passes_full_capture_to_decision_engine(self) -> None:
         decision_engine = FakeDecisionEngine()

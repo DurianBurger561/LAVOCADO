@@ -16,6 +16,7 @@ from app.platforms.base import (
     WindowProvider,
     data_dir_override,
 )
+from app.platforms.capture.linux_session import LinuxSessionInfo, detect_linux_session
 
 NAME = "Linux"
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -110,6 +111,23 @@ class LinuxPlatform:
             self._window_provider = LinuxWindowProvider()
         return self._window_provider.active_window()
 
+    def create_screen_capture(self):
+        from app.platforms.capture import (
+            create_linux_capture,
+            resolve_capture_backend_mode,
+        )
+
+        return create_linux_capture(
+            self.desktop_session(),
+            display=self._environ.get("DISPLAY"),
+            mode=resolve_capture_backend_mode(self._environ),
+        )
+
+    def desktop_session(self) -> LinuxSessionInfo:
+        """Return the runtime route input used by Linux native capture factories."""
+
+        return detect_linux_session(self._environ, self._release)
+
     def prepare_overlay_window(self, _root: object) -> None:
         return None
 
@@ -179,11 +197,7 @@ def is_wsl(
 ) -> bool:
     """Return whether this Linux process is hosted by WSL."""
 
-    environ = os.environ if environ is None else environ
-    release = platform.release() if release is None else release
-    return bool(environ.get("WSL_DISTRO_NAME") or environ.get("WSL_INTEROP")) or (
-        "microsoft" in release.casefold()
-    )
+    return detect_linux_session(environ, release).is_wsl
 
 
 def prepare_webview_environment(

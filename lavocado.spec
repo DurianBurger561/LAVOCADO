@@ -15,13 +15,33 @@ if not model_path.is_file():
     )
 model_data = [(str(model_path), "models")]
 web_data = [(str(Path(SPECPATH) / "app" / "ui" / "web"), "app/ui/web")]
+if sys.platform == "win32":
+    platform_hidden_imports = ["dxcam"]
+elif sys.platform == "darwin":
+    platform_hidden_imports = [
+        "CoreMedia",
+        "Foundation",
+        "Quartz",
+        "Quartz.CoreGraphics",
+        "Quartz.CoreVideo",
+        "ScreenCaptureKit",
+        "dispatch",
+        "objc",
+    ]
+else:
+    platform_hidden_imports = [
+        "dbus_fast",
+        "dbus_fast.aio",
+        "mss.linux.xgetimage",
+        "mss.linux.xshmgetimage",
+    ]
 
 analysis = Analysis(
     ["main.py"],
     pathex=[],
     binaries=[],
     datas=nudenet_data + model_data + web_data,
-    hiddenimports=[],
+    hiddenimports=platform_hidden_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

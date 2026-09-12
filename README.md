@@ -75,9 +75,11 @@ WSLg exposes; use a native Windows build to match all Windows applications.
 
 - Windows 10/11
 - macOS
-- Linux with X11-compatible screen capture, including WSLg
+- Linux with native X11 or Wayland screen capture, including WSLg
 
-Wayland support depends on the compositor's screen-capture permissions.
+Wayland uses the desktop's ScreenCast Portal and PipeWire. Approve the displays
+in the system picker when protection starts. Explicitly cancelling or denying
+that request stops capture instead of bypassing the decision through MSS.
 
 Runtime platform integration is isolated under `app/platforms/`:
 
@@ -123,7 +125,9 @@ Security → Screen & System Audio Recording**, then restart the application.
 
 ```bash
 sudo apt install \
-  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 \
+  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 libxcb-shm0 \
+  gstreamer1.0-tools gstreamer1.0-pipewire \
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
   libxcb-render-util0 libxcb-util1 libxcb-xkb1
 python3 -m venv .venv
@@ -139,6 +143,28 @@ Qt WebEngine to software rendering to avoid Mesa/Zink failures when no DRM
 render node is exposed. User-provided Qt or Mesa environment values are not
 overwritten.
 
+Validate the current Linux capture route without opening a capture session:
+
+```bash
+python scripts/validate_linux_capture.py --self-check
+```
+
+Run the live validation on an actual X11, Wayland, or WSLg desktop with:
+
+```bash
+python scripts/validate_linux_capture.py
+```
+
+The live check requests two fresh frames from every selected display, validates
+their dimensions, BGR format, and advancing sequence, then discards them. It
+never saves or uploads pixels. On Wayland, approve every display in the system
+picker. Cancelling the picker reports `permission_denied` without trying MSS.
+The JSON result should report `linux_xshm` for X11,
+`linux_pipewire_portal` for Wayland, or `mss` with a fallback reason when a
+native backend is technically unavailable. See the complete
+[Linux capture validation checklist](docs/linux-capture-validation.md) for the
+GNOME, KDE, WSLg, permission, and multi-display matrix.
+
 The pinned 640m model is about 99 MiB and is downloaded from NudeNet's official
 GitHub release with byte-size and SHA-256 verification. It is excluded from Git.
 If it is absent during a source run, LAVOCADO logs a warning and falls back to
@@ -150,6 +176,31 @@ To compare 320n and 640m locally without saving any analysis output:
 ```bash
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 ```
+
+To compare the native capture path with MSS in isolated developer processes:
+
+```bash
+python -m pip install -r requirements-benchmark.txt
+python scripts/benchmark_capture.py
+```
+
+The capture benchmark reports aggregate latency, frame age, CPU, resident
+memory, display resolution, and capture-to-NudeNet-decision timing. It does not
+retain or upload frames. See the
+[capture benchmark guide](docs/capture-benchmark.md) for individual backend
+commands, permission behaviour, and the resolution/monitor test matrix.
+
+For release stability validation, run the capture soak tool for at least one
+hour per platform and backend mode:
+
+```bash
+python scripts/soak_capture.py --backend auto --duration-seconds 3600
+```
+
+It detects stalled sequences, unhealthy backends, memory/resource growth,
+fallback transitions, and incomplete cleanup without retaining frames. See the
+[capture soak-testing guide](docs/capture-soak-testing.md) for the eight-hour
+command, failure thresholds, and platform matrix.
 
 ### Optional context-model benchmark
 
@@ -180,9 +231,28 @@ is disabled automatically when only the NudeNet 320n fallback is available.
 Protection diagnostics are kept in a thread-safe in-memory snapshot. They
 include model availability, latest scan latency, monitor number, top detector
 metadata, context result, decision source, temporal history, and rescue
-schedule. The snapshot uses an explicit safe schema and never contains image
-pixels, screenshots, crops, URLs, window titles, or image paths. It is not
-written to SQLite or sent to OpenAI.
+schedule. Capture health reports the preferred and active backend, fallback
+state and reason, frame age, and detected display count. The snapshot uses an
+explicit safe schema and never contains image pixels, screenshots, crops,
+URLs, window titles, or image paths. It is not written to SQLite or sent to
+OpenAI.
+
+Every fresh frame also passes through a per-monitor change scheduler before
+NudeNet inference. Native changed-region metadata is preferred when the active
+backend provides it; otherwise LAVOCADO compares a bounded 64x64 grayscale map
+in memory. The first frame, periodic safety frames, and temporal follow-up
+frames after a candidate are always scanned. The change map is never written
+to disk, added to diagnostics, or uploaded.
+
+Source developers can explicitly test `Auto`, native-only, and MSS-only capture
+paths. This override is environment-gated, is disabled in packaged user builds,
+and is not exposed by the dashboard. See the
+[developer capture override guide](docs/developer-capture-override.md) for the
+cross-platform commands and permission-policy notes.
+
+The implementation-to-requirement mapping and remaining physical-platform
+checks are tracked in the
+[native capture acceptance checklist](docs/native-capture-acceptance.md).
 
 When protection is dashboard-owned, a fixed stdin/stdout message protocol
 copies that safe snapshot from the protection child into dashboard memory.

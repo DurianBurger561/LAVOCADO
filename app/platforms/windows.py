@@ -179,6 +179,14 @@ class WindowsPlatform:
             self._window_provider = WindowsWindowProvider()
         return self._window_provider.active_window()
 
+    def create_screen_capture(self):
+        from app.platforms.capture import (
+            create_windows_capture,
+            resolve_capture_backend_mode,
+        )
+
+        return create_windows_capture(resolve_capture_backend_mode(self._environ))
+
     def prepare_overlay_window(self, _root: object) -> None:
         return None
 

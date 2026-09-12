@@ -10,6 +10,7 @@ from app.platforms import (
     WindowInfo,
     create_platform_adapter,
 )
+from app.platforms.capture import FallbackCaptureBackend, MSSCapture
 from app.platforms.linux import LinuxPlatform
 from app.platforms.macos import MacOSPlatform
 from app.platforms.windows import WindowsPlatform, enable_dpi_awareness
@@ -37,6 +38,69 @@ class LegacyUser32:
 
 
 class PlatformModuleTests(unittest.TestCase):
+    def test_windows_adapter_creates_native_capture_with_mss_fallback(self) -> None:
+        capture = WindowsPlatform(environ={}).create_screen_capture()
+
+        self.assertIsInstance(capture, FallbackCaptureBackend)
+        self.assertEqual(capture.status().preferred_backend, "windows_dxgi")
+
+    def test_macos_adapter_creates_native_capture_with_mss_fallback(self) -> None:
+        capture = MacOSPlatform(environ={}).create_screen_capture()
+
+        self.assertIsInstance(capture, FallbackCaptureBackend)
+        self.assertEqual(
+            capture.status().preferred_backend,
+            "macos_screencapturekit",
+        )
+
+    def test_linux_x11_creates_xshm_capture_with_mss_fallback(self) -> None:
+        capture = LinuxPlatform(
+            environ={"XDG_SESSION_TYPE": "x11", "DISPLAY": ":0"},
+            release="generic-linux",
+        ).create_screen_capture()
+
+        self.assertIsInstance(capture, FallbackCaptureBackend)
+        self.assertEqual(capture.status().preferred_backend, "linux_xshm")
+
+    def test_linux_unknown_session_remains_on_mss(self) -> None:
+        capture = LinuxPlatform(
+            environ={},
+            release="generic-linux",
+        ).create_screen_capture()
+
+        self.assertIsInstance(capture, MSSCapture)
+
+    def test_linux_wayland_creates_portal_capture_with_mss_fallback(self) -> None:
+        capture = LinuxPlatform(
+            environ={
+                "XDG_SESSION_TYPE": "wayland",
+                "WAYLAND_DISPLAY": "wayland-0",
+                "DISPLAY": ":0",
+            },
+            release="generic-linux",
+        ).create_screen_capture()
+
+        self.assertIsInstance(capture, FallbackCaptureBackend)
+        self.assertEqual(
+            capture.status().preferred_backend,
+            "linux_pipewire_portal",
+        )
+
+    def test_linux_adapter_exposes_runtime_capture_route(self) -> None:
+        platform = LinuxPlatform(
+            environ={
+                "WSL_DISTRO_NAME": "Ubuntu-24.04",
+                "WAYLAND_DISPLAY": "wayland-0",
+                "DISPLAY": ":0",
+            },
+            release="microsoft-standard-WSL2",
+        )
+
+        session = platform.desktop_session()
+
+        self.assertEqual(session.kind.value, "wsl")
+        self.assertEqual(session.capture_route.value, "pipewire_portal")
+
     def test_factory_returns_one_adapter_for_the_requested_system(self) -> None:
         self.assertIsInstance(create_platform_adapter("Windows"), WindowsPlatform)
         self.assertIsInstance(create_platform_adapter("Darwin"), MacOSPlatform)

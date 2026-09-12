@@ -26,6 +26,38 @@ function humanize(value, fallback = "No candidate") {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+const captureBackendNames = {
+  windows_dxgi: "Windows DXGI",
+  macos_screencapturekit: "macOS ScreenCaptureKit",
+  linux_pipewire_portal: "Linux PipeWire Portal",
+  linux_xshm: "Linux XShm",
+  mss: "MSS",
+};
+
+function captureBackendName(backend) {
+  if (!backend) {
+    return "—";
+  }
+  return captureBackendNames[backend] || humanize(backend, "Unknown");
+}
+
+function captureMode(capture) {
+  const backend = capture.active_backend;
+  if (!backend) {
+    return { label: "Not started", className: "neutral" };
+  }
+  if (backend === "mss") {
+    return {
+      label: capture.fallback ? "MSS · Fallback" : "MSS · Active",
+      className: capture.fallback ? "capture-fallback" : "capture-healthy",
+    };
+  }
+  return {
+    label: `Native · ${captureBackendName(backend)}`,
+    className: capture.healthy ? "capture-healthy" : "capture-error",
+  };
+}
+
 function showMessage(message, isError = false) {
   const target = element("action-message");
   target.textContent = message || "";
@@ -116,6 +148,36 @@ function renderDiagnostics(data) {
   } else {
     text("diag-updated", "Waiting for first scan");
   }
+
+  const capture = data.capture || {};
+  const mode = captureMode(capture);
+  text("capture-mode", mode.label);
+  element("capture-mode").className = `signal-tag ${mode.className}`;
+  text("capture-preferred", captureBackendName(capture.preferred_backend));
+  text("capture-active", captureBackendName(capture.active_backend));
+  text("capture-fallback", capture.fallback ? "Yes" : "No");
+  text("capture-monitors", String(Math.max(0, Number(capture.monitor_count) || 0)));
+  text(
+    "capture-frame-age",
+    capture.frame_age_ms === null || capture.frame_age_ms === undefined
+      ? "—"
+      : `${formatNumber(capture.frame_age_ms, 1)} ms`,
+  );
+  text("capture-reason", capture.fallback_reason || capture.error || "—");
+  let captureHealth = "Not started";
+  let captureHealthClass = "neutral";
+  if (capture.error || (capture.active_backend && !capture.healthy)) {
+    captureHealth = "Error";
+    captureHealthClass = "capture-error";
+  } else if (capture.fallback) {
+    captureHealth = "Fallback";
+    captureHealthClass = "capture-fallback";
+  } else if (capture.active_backend && capture.healthy) {
+    captureHealth = "Healthy";
+    captureHealthClass = "capture-healthy";
+  }
+  text("capture-health", captureHealth);
+  element("capture-health").className = `signal-tag ${captureHealthClass}`;
 
   const nude = data.nudenet || {};
   text("nude-label", humanize(nude.label, "No detection"));
