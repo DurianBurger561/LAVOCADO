@@ -11,7 +11,28 @@ from app.platforms import (
 )
 from app.platforms.linux import LinuxPlatform
 from app.platforms.macos import MacOSPlatform
-from app.platforms.windows import WindowsPlatform
+from app.platforms.windows import WindowsPlatform, enable_dpi_awareness
+
+
+class SuccessfulUser32:
+    def __init__(self) -> None:
+        self.context = None
+
+    def SetProcessDpiAwarenessContext(self, context: object) -> int:
+        self.context = context
+        return 1
+
+
+class LegacyUser32:
+    def __init__(self) -> None:
+        self.legacy_called = False
+
+    def SetProcessDpiAwarenessContext(self, _context: object) -> int:
+        return 0
+
+    def SetProcessDPIAware(self) -> int:
+        self.legacy_called = True
+        return 1
 
 
 class PlatformModuleTests(unittest.TestCase):
@@ -54,6 +75,49 @@ class PlatformModuleTests(unittest.TestCase):
             platform.default_data_dir(),
             Path("/tmp/private-lavocado"),
         )
+
+    def test_native_data_directory_environment_variables_are_used(self) -> None:
+        windows = WindowsPlatform(
+            environ={"LOCALAPPDATA": "C:/Users/test/AppData/Local"},
+            home=Path("C:/Users/test"),
+        )
+        linux = LinuxPlatform(
+            environ={"XDG_DATA_HOME": "/tmp/xdg-data"},
+            home=Path("/home/test"),
+            release="generic-linux",
+        )
+
+        self.assertEqual(
+            windows.default_data_dir(),
+            Path("C:/Users/test/AppData/Local/LAVOCADO"),
+        )
+        self.assertEqual(
+            linux.default_data_dir(),
+            Path("/tmp/xdg-data/lavocado"),
+        )
+
+    def test_adapters_expose_platform_specific_setup_help(self) -> None:
+        windows = WindowsPlatform(environ={})
+        macos = MacOSPlatform(environ={})
+        linux = LinuxPlatform(environ={}, release="generic-linux")
+
+        self.assertIn("Tcl/Tk", windows.tkinter_help())
+        self.assertIn("python.org", macos.tkinter_help())
+        self.assertIn("python3-tk", linux.tkinter_help())
+        self.assertIn("Privacy & Security", macos.screen_capture_help())
+        self.assertIn("Wayland", linux.screen_capture_help())
+
+    def test_windows_enables_per_monitor_dpi_awareness(self) -> None:
+        user32 = SuccessfulUser32()
+
+        self.assertTrue(enable_dpi_awareness(user32))
+        self.assertIsNotNone(user32.context)
+
+    def test_windows_falls_back_to_legacy_dpi_awareness(self) -> None:
+        user32 = LegacyUser32()
+
+        self.assertTrue(enable_dpi_awareness(user32))
+        self.assertTrue(user32.legacy_called)
 
     def test_adapter_delegates_foreground_window_access(self) -> None:
         window = WindowInfo(title="Example", app_name="Browser")
