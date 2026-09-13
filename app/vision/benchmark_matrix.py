@@ -76,3 +76,12 @@ def matrix() -> dict[str, Any]:
         "disclaimer": experimental_disclaimer(),
         "product_block": None,
     }
+
+
+def job_count() -> int:
+    return (
+        len(PRIMARY_CONFIGS)
+        * len(CONTEXT_CONFIGS)
+        * len(ALGORITHM_STAGES)
+        * len(SCREEN_SCENES)
+    )
