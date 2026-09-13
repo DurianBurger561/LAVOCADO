@@ -1,4 +1,4 @@
-"""Fuse NudeNet candidates with optional local context evidence."""
+"""Classify primary-detector evidence. Viddexa only ranks tiles."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import numpy as np
 
 from app import config
 from app.vision.capture import CapturedFrame
+from app.vision.nudenet_adapter import detections_to_evidence
 from app.vision.regions import (
     Region,
     crop_region,
@@ -16,17 +17,25 @@ from app.vision.regions import (
     map_box_to_original,
     tile_regions,
 )
+from app.vision.violation_policy import (
+    ViolationEvidence,
+    VisualViolationClassification,
+    evidence_to_dict,
+    is_borderline_score,
+    strongest_evidence,
+    threshold_for_label,
+)
 
 
 class ContextSensor(Protocol):
-    """Context classifier interface used by the decision engine."""
+    """Tile-ranking classifier interface used by the decision engine."""
 
     def classify(self, bgr_image: np.ndarray) -> dict[str, float] | None:
         ...
 
 
 class LocalNudityDetector(Protocol):
-    """NudeNet interface reused for local rescue rechecks."""
+    """Primary detector interface reused for ROI and tile rechecks."""
 
     def check(self, image: np.ndarray) -> dict[str, Any]:
         ...
@@ -40,7 +49,11 @@ class _RescueSchedule:
 
 
 class DecisionEngine:
-    """Apply conservative context confirmation to NudeNet results."""
+    """Turn visual evidence into VIOLATION / UNCERTAIN / CLEAR.
+
+    Inputs are detector evidence, the current frame, and settings. Application
+    names, hostnames, and viewing-purpose flags are not accepted.
+    """
 
     def __init__(
         self,
@@ -74,22 +87,79 @@ class DecisionEngine:
         captured_frame: CapturedFrame,
         *,
         monitor_index: int = 1,
+        extra_evidence: list[ViolationEvidence] | None = None,
     ) -> dict[str, Any]:
         """Return a candidate decision without retaining image pixels."""
 
         result = dict(nudenet_result)
+        frame_sequence = int(getattr(captured_frame, "sequence", 0) or 0)
+        extra = list(extra_evidence or [])
+        if extra:
+            existing = result.get("evidence")
+            payload = list(existing) if isinstance(existing, list) else []
+            payload.extend(evidence_to_dict(item) for item in extra)
+            result["evidence"] = payload
         if bool(result.get("blocked")):
-            return self._strong_nudenet_result(result, captured_frame)
+            return self._strong_primary_result(result, captured_frame)
 
-        borderline = self._strongest_borderline(result.get("check_points", []))
+        evidence = self._collect_evidence(result, extra_evidence, frame_sequence)
+        strong = [
+            item
+            for item in evidence
+            if (threshold := threshold_for_label(item.label)) is not None
+            and item.confidence >= threshold
+        ]
+        if strong:
+            return self._violation_from_evidence(
+                result, captured_frame, strongest_evidence(strong)
+            )
+
+        borderline = self._strongest_borderline_evidence(evidence)
         if borderline is None:
-            base = self._with_metadata(result, source="nudenet_none")
+            borderline_detection = self._strongest_borderline(
+                result.get("check_points", [])
+            )
+            if borderline_detection is None:
+                base = self._with_metadata(
+                    result,
+                    source="nudenet_none",
+                    classification=VisualViolationClassification.CLEAR,
+                )
+            else:
+                base = self._evaluate_borderline(
+                    result, captured_frame, borderline_detection
+                )
+                if bool(base.get("blocked")):
+                    return base
         else:
-            base = self._evaluate_borderline(result, captured_frame, borderline)
+            detection = {
+                "class": borderline.label,
+                "score": borderline.confidence,
+                "box": None if borderline.bbox is None else list(borderline.bbox),
+                "threshold": threshold_for_label(borderline.label),
+            }
+            base = self._evaluate_borderline(result, captured_frame, detection)
             if bool(base.get("blocked")):
                 return base
 
         return self._evaluate_rescue(base, captured_frame, monitor_index)
+
+    def _collect_evidence(
+        self,
+        result: dict[str, Any],
+        extra_evidence: list[ViolationEvidence] | None,
+        frame_sequence: int,
+    ) -> list[ViolationEvidence]:
+        checkpoints = result.get("check_points", [])
+        nudenet_evidence = (
+            detections_to_evidence(
+                checkpoints, model="nudenet", frame_sequence=frame_sequence
+            )
+            if isinstance(checkpoints, list)
+            else []
+        )
+        extra = list(extra_evidence or [])
+        return nudenet_evidence + extra
 
     def _evaluate_borderline(
         self,
@@ -97,7 +167,7 @@ class DecisionEngine:
         captured_frame: CapturedFrame,
         borderline: dict[str, Any],
     ) -> dict[str, Any]:
-        """Allow only local Porn context to confirm borderline NudeNet."""
+        """Recheck a borderline box on the original-resolution crop."""
 
         label = str(borderline["class"])
         score = float(borderline["score"])
@@ -109,14 +179,22 @@ class DecisionEngine:
             nudenet_label=label,
             nudenet_score=score,
             threshold=threshold,
+            classification=VisualViolationClassification.UNCERTAIN,
         )
-        if self.context_classifier is None or not isinstance(box, (list, tuple)):
+        original = getattr(captured_frame, "original_frame", None)
+        model = getattr(captured_frame, "model_frame", None)
+        if (
+            self.local_detector is None
+            or not isinstance(box, (list, tuple))
+            or not isinstance(original, np.ndarray)
+            or not hasattr(model, "shape")
+        ):
             return base
 
         crop_result = make_context_crop(
-            captured_frame.original_frame,
+            original,
             box,
-            captured_frame.model_frame.shape,
+            model.shape,
             self.crop_expansion,
         )
         if crop_result is None:
@@ -124,31 +202,29 @@ class DecisionEngine:
         crop, region = crop_result
         base["region"] = region
 
-        context_scores = self.context_classifier.classify(crop)
-        if context_scores is None:
-            return base
-        context_label, context_score = max(
-            context_scores.items(),
-            key=lambda item: item[1],
-        )
-        base["context_label"] = context_label
-        base["context_score"] = float(context_score)
-        base["context_scores"] = dict(context_scores)
-
-        porn_score = float(context_scores.get("porn", 0.0))
-        if porn_score < self.porn_confirm_threshold:
+        local_result = dict(self.local_detector.check(crop))
+        base["local_check_points"] = local_result.get("check_points", [])
+        base["local_box"] = local_result.get("box")
+        if not bool(local_result.get("blocked")):
             return base
 
+        confirmed_label = local_result.get("label")
+        confidence = float(local_result.get("confidence", 0.0))
+        confirmed_threshold = threshold_for_label(str(confirmed_label))
         base.update(
             {
                 "blocked": True,
+                "classification": VisualViolationClassification.VIOLATION.value,
                 "reason": (
-                    f"{label} borderline score {score:.2f} confirmed by "
-                    f"local context porn score {porn_score:.2f}"
+                    f"{confirmed_label} ROI recheck score {confidence:.2f} "
+                    f"after borderline {label} score {score:.2f}"
                 ),
-                "label": label,
-                "confidence": score,
-                "source": "nudenet_borderline_context",
+                "label": confirmed_label,
+                "confidence": confidence,
+                "source": "nudenet_roi",
+                "nudenet_label": None if confirmed_label is None else str(confirmed_label),
+                "nudenet_score": confidence,
+                "threshold": confirmed_threshold,
             }
         )
         return base
@@ -159,46 +235,42 @@ class DecisionEngine:
         captured_frame: CapturedFrame,
         monitor_index: int,
     ) -> dict[str, Any]:
-        """Use one rotating context tile to propose a local NudeNet recheck."""
+        """Rank tiles with Viddexa, then recheck the highest-risk tile."""
 
+        original = getattr(captured_frame, "original_frame", None)
         if (
             not self.rescue_enabled
             or self.context_classifier is None
             or self.local_detector is None
+            or not isinstance(original, np.ndarray)
         ):
             return base
         regions = tile_regions(
-            captured_frame.original_frame.shape,
+            original.shape,
             self.rescue_rows,
             self.rescue_columns,
         )
         if not regions:
             return base
 
-        tile_index, was_pinned = self._select_rescue_tile(
-            monitor_index,
-            len(regions),
-        )
-        region = regions[tile_index]
-        tile = crop_region(captured_frame.original_frame, region)
-        if tile is None:
+        ranked = self._rank_tiles(original, regions)
+        if not ranked:
             return base
 
-        base["rescue_tile_index"] = tile_index
-        base["rescue_region"] = region
-        context_scores = self.context_classifier.classify(tile)
-        if context_scores is None:
-            return base
+        tile_index, was_pinned = self._select_ranked_tile(monitor_index, ranked)
+        chosen = next((item for item in ranked if item[1] == tile_index), ranked[0])
+        risk, tile_index, region, context_scores, tile = chosen
         context_label, context_score = max(
             context_scores.items(),
             key=lambda item: item[1],
         )
+        base["rescue_tile_index"] = tile_index
+        base["rescue_region"] = region
         base["context_label"] = context_label
         base["context_score"] = float(context_score)
         base["context_scores"] = dict(context_scores)
 
-        porn_score = float(context_scores.get("porn", 0.0))
-        if porn_score < self.rescue_porn_threshold:
+        if not was_pinned and risk < self.rescue_porn_threshold:
             return base
 
         local_result = dict(self.local_detector.check(tile))
@@ -214,13 +286,14 @@ class DecisionEngine:
 
         label = local_result.get("label")
         confidence = float(local_result.get("confidence", 0.0))
-        threshold = config.BLOCK_THRESHOLDS.get(str(label))
+        threshold = threshold_for_label(str(label))
         base.update(
             {
                 "blocked": True,
+                "classification": VisualViolationClassification.VIOLATION.value,
                 "reason": (
                     f"local rescue found {label} score {confidence:.2f} "
-                    f"after context porn score {porn_score:.2f}"
+                    f"after tile rank score {risk:.2f}"
                 ),
                 "label": label,
                 "confidence": confidence,
@@ -233,29 +306,55 @@ class DecisionEngine:
         )
         return base
 
-    def _select_rescue_tile(
+    def _rank_tiles(
+        self,
+        original: np.ndarray,
+        regions: tuple[Region, ...],
+    ) -> list[tuple[float, int, Region, dict[str, float], np.ndarray]]:
+        ranked: list[tuple[float, int, Region, dict[str, float], np.ndarray]] = []
+        assert self.context_classifier is not None
+        for tile_index, region in enumerate(regions):
+            tile = crop_region(original, region)
+            if tile is None:
+                continue
+            context_scores = self.context_classifier.classify(tile)
+            if context_scores is None:
+                continue
+            risk = max(
+                float(context_scores.get("porn", 0.0)),
+                float(context_scores.get("hentai", 0.0)),
+            )
+            ranked.append((risk, tile_index, region, dict(context_scores), tile))
+        ranked.sort(key=lambda item: (-item[0], item[1]))
+        return ranked
+
+    def _select_ranked_tile(
         self,
         monitor_index: int,
-        tile_count: int,
+        ranked: list[tuple[float, int, Region, dict[str, float], np.ndarray]],
     ) -> tuple[int, bool]:
         schedule = self._rescue_schedules.setdefault(
             monitor_index,
             _RescueSchedule(),
         )
+        tile_count = len(ranked)
         if schedule.pinned_tile_index is not None:
-            tile_index = schedule.pinned_tile_index % tile_count
+            pinned = schedule.pinned_tile_index
             schedule.pinned_checks_remaining -= 1
             if schedule.pinned_checks_remaining <= 0:
                 schedule.pinned_tile_index = None
                 schedule.pinned_checks_remaining = 0
-            return tile_index, True
+            if any(item[1] == pinned for item in ranked):
+                return pinned, True
 
-        tile_index = schedule.next_tile_index % tile_count
-        schedule.next_tile_index = (tile_index + 1) % tile_count
+        if not ranked:
+            return 0, False
+        tile_index = ranked[0][1]
+        schedule.next_tile_index = (tile_index + 1) % max(1, tile_count)
         return tile_index, False
 
     def reset(self) -> None:
-        """Clear pinned and rotating rescue state after an intervention."""
+        """Clear pinned and ranking state after an intervention or bypass."""
 
         self._rescue_schedules.clear()
 
@@ -269,21 +368,27 @@ class DecisionEngine:
             "pinned_checks_remaining": schedule.pinned_checks_remaining,
         }
 
-    def _strong_nudenet_result(
+    def _strong_primary_result(
         self,
         result: dict[str, Any],
         captured_frame: CapturedFrame,
     ) -> dict[str, Any]:
         box = result.get("box")
         region: Region | None = None
-        if isinstance(box, (list, tuple)):
+        model = getattr(captured_frame, "model_frame", None)
+        original = getattr(captured_frame, "original_frame", None)
+        if (
+            isinstance(box, (list, tuple))
+            and hasattr(model, "shape")
+            and hasattr(original, "shape")
+        ):
             region = map_box_to_original(
                 box,
-                captured_frame.model_frame.shape,
-                captured_frame.original_frame.shape,
+                model.shape,
+                original.shape,
             )
         label = result.get("label")
-        threshold = config.BLOCK_THRESHOLDS.get(str(label))
+        threshold = threshold_for_label(str(label))
         return self._with_metadata(
             result,
             source="nudenet_full",
@@ -291,7 +396,55 @@ class DecisionEngine:
             nudenet_label=None if label is None else str(label),
             nudenet_score=float(result.get("confidence", 0.0)),
             threshold=threshold,
+            classification=VisualViolationClassification.VIOLATION,
         )
+
+    def _violation_from_evidence(
+        self,
+        result: dict[str, Any],
+        captured_frame: CapturedFrame,
+        evidence: ViolationEvidence | None,
+    ) -> dict[str, Any]:
+        if evidence is None:
+            return self._strong_primary_result(result, captured_frame)
+        box = None if evidence.bbox is None else list(evidence.bbox)
+        payload = dict(result)
+        payload.update(
+            {
+                "blocked": True,
+                "label": evidence.label,
+                "confidence": evidence.confidence,
+                "box": box,
+                "reason": (
+                    f"{evidence.label} "
+                    f"(score {evidence.confidence:.2f}, {evidence.model})"
+                ),
+                "evidence": list(result.get("evidence") or [])
+                or [evidence_to_dict(evidence)],
+            }
+        )
+        decided = self._strong_primary_result(payload, captured_frame)
+        decided["source"] = (
+            "yolo_sexual_act"
+            if evidence.evidence_type.value == "sexual_act"
+            else f"{evidence.model}_full"
+        )
+        return decided
+
+    def _strongest_borderline_evidence(
+        self,
+        evidence: list[ViolationEvidence],
+    ) -> ViolationEvidence | None:
+        candidates: list[ViolationEvidence] = []
+        for item in evidence:
+            threshold = threshold_for_label(item.label)
+            if threshold is None:
+                continue
+            if is_borderline_score(
+                item.confidence, threshold, self.borderline_margin
+            ):
+                candidates.append(item)
+        return strongest_evidence(candidates)
 
     def _strongest_borderline(
         self,
@@ -304,11 +457,10 @@ class DecisionEngine:
             if not isinstance(detection, dict):
                 continue
             label = str(detection.get("class", ""))
-            threshold = config.BLOCK_THRESHOLDS.get(label)
+            threshold = threshold_for_label(label)
             score = float(detection.get("score", 0.0))
-            if (
-                threshold is not None
-                and threshold - self.borderline_margin <= score < threshold
+            if threshold is not None and is_borderline_score(
+                score, threshold, self.borderline_margin
             ):
                 candidate = dict(detection)
                 candidate["threshold"] = threshold
@@ -332,7 +484,24 @@ class DecisionEngine:
         nudenet_label: str | None = None,
         nudenet_score: float = 0.0,
         threshold: float | None = None,
+        classification: VisualViolationClassification | None = None,
     ) -> dict[str, Any]:
+        if classification is None:
+            classification = (
+                VisualViolationClassification.VIOLATION
+                if bool(result.get("blocked"))
+                else VisualViolationClassification.CLEAR
+            )
+        evidence_payload = result.get("evidence")
+        if not isinstance(evidence_payload, list):
+            evidence_payload = [
+                evidence_to_dict(item)
+                for item in detections_to_evidence(
+                    result.get("check_points", [])
+                    if isinstance(result.get("check_points"), list)
+                    else []
+                )
+            ]
         result.update(
             {
                 "source": source,
@@ -347,6 +516,9 @@ class DecisionEngine:
                 "rescue_region": None,
                 "local_check_points": None,
                 "local_box": None,
+                "classification": classification.value,
+                "blocked": classification is VisualViolationClassification.VIOLATION,
+                "evidence": evidence_payload,
             }
         )
         return result

@@ -142,6 +142,8 @@ class WebDashboardTests(unittest.TestCase):
         self.assertIn('id="rule-confirmation"', html)
         self.assertIn("Visual protection will be completely disabled", script)
         self.assertIn("You are responsible for content", script)
+        self.assertIn("medical, educational, artistic, news", script)
+        self.assertIn("LAVOCADO does not determine viewing intent", html)
         self.assertEqual(html.count('class="button ghost pick-app"'), 2)
         self.assertIn('"begin_app_pick"', script)
         self.assertIn('"get_app_pick_result"', script)

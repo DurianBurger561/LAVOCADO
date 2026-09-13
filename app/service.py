@@ -32,7 +32,10 @@ from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.overlay import Overlay
+from app.vision.pipeline import VisionPipeline
 from app.vision.temporal import TemporalVerifier
+from app.vision.violation_policy import VisualViolationClassification
+from app.vision.yolo_adapter import load_yolo_adapter
 
 LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +98,12 @@ class LavocadoService:
                 context_classifier,
                 local_rescue_detector,
             )
+        yolo_adapter = load_yolo_adapter() if uses_default_detector else None
+        self.vision_pipeline = VisionPipeline(
+            self.detector,
+            self.decision_engine,
+            yolo_adapter=yolo_adapter,
+        )
         context_sensor = getattr(self.decision_engine, "context_classifier", None)
         if not config.CONTEXT_MODEL_ENABLED:
             context_status = "disabled"
@@ -284,24 +293,41 @@ class LavocadoService:
             )
             if not schedule.scan:
                 continue
-            nudenet_result = dict(self.detector.check(captured_frame.model_frame))
-            result = self.decision_engine.evaluate(
-                nudenet_result,
+            result = self.vision_pipeline.evaluate(
                 captured_frame,
                 monitor_index=monitor_index,
             )
             result["monitor_index"] = monitor_index
             results.append(result)
 
-            is_candidate = bool(result["blocked"])
-            self.change_scheduler.record_candidate(monitor_index, is_candidate)
-            has_candidate = has_candidate or is_candidate
+            classification = str(result.get("classification") or "")
+            is_violation = (
+                classification == VisualViolationClassification.VIOLATION.value
+                or (not classification and bool(result.get("blocked")))
+            )
+            is_uncertain = (
+                classification == VisualViolationClassification.UNCERTAIN.value
+            )
+            self.change_scheduler.record_candidate(monitor_index, is_violation)
+            if is_uncertain:
+                request_focus = getattr(
+                    self.change_scheduler,
+                    "request_focused_verification",
+                    None,
+                )
+                if callable(request_focus):
+                    request_focus(monitor_index)
+            has_candidate = has_candidate or is_violation
             verifier = self._verifiers.get(monitor_index)
             if verifier is None:
                 verifier = self._verifier_factory()
                 self._verifiers[monitor_index] = verifier
 
-            confirmed = verifier.update(is_candidate)
+            confirmed = verifier.update(
+                is_violation,
+                frame_sequence=getattr(captured_frame, "sequence", None),
+                region=result.get("region"),
+            )
             rescue_status = self._decision_rescue_status(monitor_index)
             self.diagnostics.record_scan(
                 monitor_index=monitor_index,
@@ -354,6 +380,9 @@ class LavocadoService:
         reset_decisions = getattr(self.decision_engine, "reset", None)
         if callable(reset_decisions):
             reset_decisions()
+        reset_pipeline = getattr(self.vision_pipeline, "reset", None)
+        if callable(reset_pipeline):
+            reset_pipeline()
         self.change_scheduler.reset()
 
     def _enter_bypass(self) -> None:

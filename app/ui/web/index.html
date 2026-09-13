@@ -62,7 +62,7 @@
                 <dd id="diag-model">NudeNet 640m</dd>
               </div>
               <div>
-                <dt>Context model</dt>
+                <dt>Tile-rank model</dt>
                 <dd id="diag-context-model">Not started</dd>
               </div>
               <div>
@@ -158,14 +158,14 @@
 
             <div class="signal-pair">
               <div class="mini-signal">
-                <span class="signal-name">Context</span>
+                <span class="signal-name">Tile rank</span>
                 <strong id="context-label">No result</strong>
                 <span id="context-score" class="muted">—</span>
               </div>
               <div class="mini-signal">
                 <span class="signal-name">Decision</span>
                 <strong id="decision-source">No candidate</strong>
-                <span class="muted">Requires explicit evidence</span>
+                <span class="muted">Visual violation only; tile rank cannot block</span>
               </div>
             </div>
 
@@ -210,7 +210,7 @@
               <h2 id="rules-heading">Protection rules</h2>
             </div>
           </div>
-          <p id="rules-hint" class="muted">Rules are loaded locally. Stop protection to edit them; changes apply on the next start.</p>
+          <p id="rules-hint" class="muted">Rules are loaded locally. Stop protection to edit them; changes apply on the next start. LAVOCADO does not determine viewing intent; whitelist trusted medical, educational, artistic, or news sources yourself.</p>
           <p id="rules-message" class="rules-message" role="status" aria-live="polite"></p>
           <div class="rules-grid">
             <div class="rule-group" data-rule-group="blocked_applications">
@@ -228,7 +228,7 @@
             </div>
             <div class="rule-group" data-rule-group="whitelisted_applications">
               <h3>Whitelisted applications</h3>
-              <p class="muted">Bypass visual protection unless a blacklist matches.</p>
+              <p class="muted">Completely bypass visual protection for trusted apps (medical, education, art, news). You are responsible for content displayed in this context.</p>
               <ul id="whitelisted-applications-list" class="rule-list"></ul>
               <form class="rule-form" data-rule-group="whitelisted_applications">
                 <label for="whitelisted-applications-input">Executable name, desktop app ID, or bundle ID</label>
@@ -257,7 +257,7 @@
             </div>
             <div class="rule-group" data-rule-group="whitelisted_websites">
               <h3>Whitelisted websites</h3>
-              <p class="muted">Bypass visual protection for the active site unless a blacklist matches.</p>
+              <p class="muted">Completely bypass visual protection for trusted sites (medical, education, art, news). You are responsible for content displayed in this context.</p>
               <ul id="whitelisted-websites-list" class="rule-list"></ul>
               <form class="rule-form" data-rule-group="whitelisted_websites">
                 <label for="whitelisted-websites-input">Website hostname or HTTPS URL</label>

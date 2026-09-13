@@ -110,6 +110,11 @@ class ChangeScheduler:
 
         if not is_candidate:
             return
+        self.request_focused_verification(monitor_index)
+
+    def request_focused_verification(self, monitor_index: int) -> None:
+        """Force follow-up scans after UNCERTAIN or VIOLATION evidence."""
+
         schedule = self._schedules.get(monitor_index)
         if schedule is not None:
             schedule.forced_checks_remaining = max(

@@ -6,9 +6,13 @@
 
 <p align="center"><a href="README.md"><b>🇬🇧🇺🇸🇨🇦🇦🇺🇳🇿English<b></a> | <a href="README.zh.md"><b>🇨🇳中文<b></a></p>
 
-LAVOCADO is a local-first desktop protection tool. It monitors each connected
-display independently, confirms visual risk across multiple frames, and covers
+LAVOCADO is a local-first desktop protection tool. It detects visually explicit
+content in protected contexts, confirms it across multiple frames, and covers
 only the display that triggered protection.
+
+LAVOCADO does not determine viewing intent. Trusted applications or websites
+can be whitelisted to bypass visual protection for medical, educational,
+artistic, news, or other user-approved purposes.
 
 Screenshots are processed locally and are not stored or sent to an LLM.
 The primary whole-screen detector uses NudeNet 640m at 640-pixel inference.
@@ -60,7 +64,10 @@ subdomains.
 
 Adding a whitelist asks you to confirm that visual protection will be skipped
 while that app or site is active, unless a higher-priority blacklist also
-matches. You are responsible for content shown in a whitelisted context.
+matches. Use the whitelist for trusted medical, educational, artistic, news,
+or other non-pornographic sources that may still contain explicit anatomy.
+You are responsible for content shown in a whitelisted context. LAVOCADO does
+not treat a whitelist as a safety certification.
 
 LAVOCADO first identifies the foreground application. If it is a supported
 browser, it also reads the active-tab hostname through the platform
@@ -78,10 +85,13 @@ A blacklist always wins over a whitelist. With no matching rules, protection
 runs the existing vision pipeline unchanged.
 
 - `FORCE_BLOCK` immediately covers the display that contains the foreground
-  window. NudeNet, tile rescue, and temporal confirmation are skipped.
+  window. NudeNet, YOLO, tile ranking, and temporal confirmation are skipped.
 - `FULL_BYPASS` skips the entire vision pipeline while that context is active,
   then resumes from a fresh state when it leaves.
-- `NORMAL` runs capture, detection, and 2-of-3 confirmation as before.
+- `NORMAL` runs capture and visual-violation detection. Vision only asks
+  whether the frame violates LAVOCADO's visual content rules; it does not
+  classify medical, art, education, or news purpose. Confirmed violations
+  still require 2-of-3 fresh frames before protection.
 
 Live diagnostics show only coarse availability: whether an application was
 identified, whether it is a browser, whether the website is known, and the

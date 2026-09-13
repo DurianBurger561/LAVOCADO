@@ -83,6 +83,7 @@ class DiagnosticsStore:
             },
             "context": {"label": None, "score": None},
             "decision_source": None,
+            "classification": None,
             "temporal": [],
             "rescue": {
                 "tile_index": None,
@@ -186,6 +187,7 @@ class DiagnosticsStore:
                 "score": self._optional_float(decision.get("context_score")),
             },
             "decision_source": self._optional_string(decision.get("source")),
+            "classification": self._optional_string(decision.get("classification")),
             "temporal": [int(value) for value in temporal],
             "rescue": self._rescue_summary(decision, rescue_status or {}),
         }
@@ -248,10 +250,14 @@ class DiagnosticsStore:
             status = "none"
         elif source == "nudenet_borderline":
             status = "borderline"
+        elif source == "nudenet_roi":
+            status = "roi_confirmed"
         elif source == "nudenet_borderline_context":
             status = "context_confirmed"
         elif source == "rescue_tile":
             status = "rescued"
+        elif source == "yolo_sexual_act":
+            status = "strong"
         elif threshold is None:
             status = "observed"
         elif score >= threshold:

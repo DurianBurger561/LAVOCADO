@@ -130,9 +130,10 @@ class DiagnosticsStoreTests(unittest.TestCase):
             elapsed_ms=183.26,
             scanned_at="2026-09-12T01:02:03.456+00:00",
             decision={
-                "source": "nudenet_borderline_context",
+                "source": "nudenet_roi",
+                "classification": "violation",
                 "nudenet_label": "FEMALE_BREAST_EXPOSED",
-                "nudenet_score": 0.58,
+                "nudenet_score": 0.80,
                 "threshold": 0.65,
                 "context_label": "porn",
                 "context_score": 0.91,
@@ -152,9 +153,10 @@ class DiagnosticsStoreTests(unittest.TestCase):
         self.assertEqual(snapshot["model"], "NudeNet 640m")
         self.assertEqual(snapshot["last_scan_ms"], 183.3)
         self.assertEqual(snapshot["monitor_index"], 2)
-        self.assertEqual(snapshot["nudenet"]["status"], "context_confirmed")
+        self.assertEqual(snapshot["nudenet"]["status"], "roi_confirmed")
         self.assertEqual(snapshot["context"], {"label": "porn", "score": 0.91})
-        self.assertEqual(snapshot["decision_source"], "nudenet_borderline_context")
+        self.assertEqual(snapshot["decision_source"], "nudenet_roi")
+        self.assertEqual(snapshot["classification"], "violation")
         self.assertEqual(snapshot["temporal"], [0, 1, 1])
         self.assertEqual(snapshot["rescue"]["pinned_tile_index"], 1)
         self.assertEqual(snapshot["monitors"]["2"]["last_scan_ms"], 183.3)

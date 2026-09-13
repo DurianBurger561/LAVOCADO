@@ -113,6 +113,9 @@ class FakeChangeScheduler:
     def record_candidate(self, monitor_index: int, is_candidate: bool) -> None:
         self.candidates.append((monitor_index, is_candidate))
 
+    def request_focused_verification(self, monitor_index: int) -> None:
+        self.candidates.append((monitor_index, True))
+
     def reset(self) -> None:
         self.reset_count += 1
 
@@ -193,8 +196,9 @@ class FakeDecisionEngine:
         captured: FakeCapturedFrame,
         *,
         monitor_index: int,
+        extra_evidence: object | None = None,
     ) -> dict[str, object]:
-        del monitor_index
+        del monitor_index, extra_evidence
         self.original_frames.append(captured.original_frame)
         return result
 
@@ -209,8 +213,9 @@ class SequenceDecisionEngine:
         _captured: FakeCapturedFrame,
         *,
         monitor_index: int,
+        extra_evidence: object | None = None,
     ) -> dict[str, object]:
-        del monitor_index
+        del monitor_index, extra_evidence
         candidate = next(self._candidates)
         promoted = dict(result)
         promoted.update(

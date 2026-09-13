@@ -292,11 +292,11 @@ const ruleGroups = [
 const whitelistWarnings = {
   whitelisted_applications: [
     "Add application to whitelist?",
-    "Visual protection will be completely disabled while this application is active, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed by this application.",
+    "Whitelisted applications and websites completely bypass visual protection.\n\nUse the whitelist for trusted contexts such as medical, educational, artistic, news, or other non-pornographic use cases that may contain visually explicit content.\n\nVisual protection will be completely disabled while this application is active, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed in whitelisted contexts.",
   ],
   whitelisted_websites: [
     "Add website to whitelist?",
-    "Visual protection will be completely disabled while this website is the active tab, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content shown on this website.",
+    "Whitelisted applications and websites completely bypass visual protection.\n\nUse the whitelist for trusted contexts such as medical, educational, artistic, news, or other non-pornographic use cases that may contain visually explicit content.\n\nVisual protection will be completely disabled while this website is the active tab, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed in whitelisted contexts.",
   ],
 };
 
@@ -336,7 +336,7 @@ function renderRules(response) {
   text(
     "rules-hint",
     ui.canEditRules
-      ? "Changes are stored locally and apply the next time protection starts."
+      ? "Changes are stored locally and apply the next time protection starts. Whitelist trusted medical, educational, artistic, or news sources; LAVOCADO does not determine viewing intent."
       : "Stop protection before editing rules. Current rules remain active until it stops.",
   );
   document.querySelectorAll(".rule-form input, .rule-form select, .rule-form button")
