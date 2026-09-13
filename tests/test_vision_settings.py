@@ -10,15 +10,21 @@ class VisionSettingsTests(unittest.TestCase):
     def test_snapshot_covers_the_vision_settings_group(self) -> None:
         snapshot = vision_settings_snapshot()
 
-        self.assertEqual(snapshot["primary_detector"], "nudenet")
-        self.assertEqual(snapshot["primary_detectors"], ["nudenet"])
+        self.assertEqual(snapshot["primary_detector"], "nudenet_640m")
+        self.assertEqual(snapshot["primary_detectors"], ["nudenet_640m"])
         self.assertFalse(snapshot["yolo"]["requested"])
         self.assertTrue(snapshot["yolo"]["maps_sexual_act"])
         self.assertEqual(snapshot["context_model"]["role"], "tile_ranking")
         self.assertFalse(snapshot["context_model"]["can_block"])
         self.assertEqual(snapshot["detection_mode"]["id"], "visual_violation")
         self.assertFalse(snapshot["detection_mode"]["evaluates_viewing_intent"])
-        self.assertIn("FEMALE_GENITALIA_EXPOSED", snapshot["thresholds"])
+        self.assertIn(
+            "FEMALE_GENITALIA_EXPOSED",
+            snapshot["thresholds"]["nudenet_640m"],
+        )
+        self.assertIn("breast", snapshot["thresholds"]["yolo11_nsfw_small"])
+        self.assertIn("proposal", snapshot["thresholds"]["nudenet_640m"]["FEMALE_BREAST_EXPOSED"])
+        self.assertIn("strong", snapshot["thresholds"]["yolo11_nsfw_small"]["breast"])
         self.assertEqual(snapshot["tile"]["rows"] * snapshot["tile"]["columns"], 4)
         self.assertEqual(snapshot["temporal"]["required_hits"], 2)
         self.assertEqual(snapshot["intent_modes"], [])

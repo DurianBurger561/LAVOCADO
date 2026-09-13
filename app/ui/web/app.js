@@ -150,7 +150,7 @@ function renderTemporal(values) {
 }
 
 function renderDiagnostics(data) {
-  text("diag-model", data.model || "NudeNet");
+  text("diag-model", data.model || humanize(data.primary_detector, "NudeNet"));
   const contextStatus = humanize(data.context_status, "Unknown");
   text("diag-context-model", `${data.context_model || "Context model"} · ${contextStatus}`);
   text("diag-yolo", humanize(data.yolo_status, "Disabled"));
@@ -227,12 +227,145 @@ function renderDiagnostics(data) {
       : "Visual violation only; tile rank cannot block",
   );
   renderTemporal(data.temporal);
+  renderScanPlan(data);
 
   const rescue = data.rescue || {};
   const tile = rescue.tile_index === null || rescue.tile_index === undefined ? "—" : Number(rescue.tile_index) + 1;
   text("rescue-tile", tile);
   text("rescue-pin", String(rescue.pinned_checks_remaining || 0));
   renderFailureExplorer(data);
+}
+
+function renderScanPlan(data) {
+  const scan = data.scan || {};
+  const mode = scan.mode || "monitoring";
+  text("scan-mode", humanize(mode, "Monitoring"));
+  element("scan-mode").className = `signal-tag ${mode === "focused" ? "capture-healthy" : "neutral"}`;
+  text(
+    "scan-total-ms",
+    scan.total_ms === null || scan.total_ms === undefined ? "—" : `${formatNumber(scan.total_ms, 0)} ms`,
+  );
+  text(
+    "scan-interval-ms",
+    scan.target_interval_ms === null || scan.target_interval_ms === undefined
+      ? "—"
+      : `${formatNumber(scan.target_interval_ms, 0)} ms`,
+  );
+  const full = data.full || data.nudenet || {};
+  text(
+    "scan-full",
+    full.label
+      ? `${humanize(full.status, "None")} · ${humanize(full.label)} ${formatNumber(full.confidence || full.score)}`
+      : humanize(full.status, "None"),
+  );
+  const ranking = ((data.tiles || {}).ranking) || [];
+  text(
+    "scan-tiles",
+    ranking.length
+      ? ranking.slice(0, 4).map((item) => `#${Number(item.index) + 1} ${formatNumber(item.priority)}`).join(" · ")
+      : "—",
+  );
+  const track = data.track || {};
+  text(
+    "scan-track",
+    track.active
+      ? `${humanize(track.source, "Track")} · ${track.fresh_hits || 0} hits · ${formatNumber(track.evidence)}`
+      : "Inactive",
+  );
+  const shadow = data.shadow || {};
+  text(
+    "scan-shadow",
+    shadow.agreement
+      ? `${humanize(shadow.agreement)} · ${formatNumber(shadow.latency_ms, 0)} ms`
+      : "Off",
+  );
+}
+
+function modelStatusLabel(status) {
+  const labels = {
+    available: "Available",
+    missing: "Not downloaded",
+    invalid: "Failed verification",
+    downloading: "Downloading",
+    failed: "Download failed",
+    fallback: "Using fallback",
+  };
+  return labels[status] || humanize(status, "Unknown");
+}
+
+function renderModelStatus(models) {
+  const list = element("model-status-list");
+  if (!list) return;
+  list.replaceChildren();
+  (Array.isArray(models) ? models : []).forEach((model) => {
+    const item = document.createElement("li");
+    const textWrap = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = model.label || model.id;
+    const detail = document.createElement("span");
+    detail.className = "muted";
+    const revision = model.revision ? ` · ${String(model.revision).slice(0, 12)}` : "";
+    detail.textContent = `${modelStatusLabel(model.status)}${revision}`;
+    if (model.fallback) {
+      detail.textContent += ` · fallback ${model.fallback}`;
+    }
+    if (model.error) {
+      detail.textContent += ` · ${model.error}`;
+    }
+    textWrap.append(title, document.createElement("br"), detail);
+    item.append(textWrap);
+    if (model.status !== "available" && model.status !== "downloading") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button ghost";
+      button.textContent = "Download";
+      button.dataset.modelId = model.id;
+      button.addEventListener("click", () => downloadRequiredModel(model.id));
+      item.append(button);
+    }
+    list.append(item);
+  });
+}
+
+async function refreshModelStatus() {
+  if (ui.inFlight.has("model-status")) return;
+  ui.inFlight.add("model-status");
+  try {
+    const payload = assertResponse(await invoke("get_model_status"));
+    renderModelStatus(payload.models || []);
+  } catch (_error) {
+    renderModelStatus([]);
+  } finally {
+    ui.inFlight.delete("model-status");
+  }
+}
+
+async function downloadRequiredModel(modelId) {
+  if (ui.inFlight.has("model-download")) return;
+  ui.inFlight.add("model-download");
+  try {
+    const result = assertResponse(await invoke("download_model", modelId));
+    showVisionMessage(result.message || "Download started.");
+    await refreshModelStatus();
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Download failed.", true);
+  } finally {
+    ui.inFlight.delete("model-download");
+  }
+}
+
+async function downloadAllRequiredModels() {
+  if (ui.inFlight.has("model-download-all")) return;
+  ui.inFlight.add("model-download-all");
+  try {
+    const result = assertResponse(await invoke("download_all_models"));
+    renderModelStatus(result.models || []);
+    showVisionMessage(result.message || "Required model downloads started.");
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Download failed.", true);
+  } finally {
+    ui.inFlight.delete("model-download-all");
+  }
 }
 
 function renderFailureExplorer(data) {
@@ -511,6 +644,12 @@ async function beginAppPick(form) {
   }
 }
 
+function setSelectValue(id, value) {
+  const target = element(id);
+  if (!target || value === undefined || value === null) return;
+  target.value = String(value);
+}
+
 function renderVisionSettings(settings) {
   const detectors = Array.isArray(settings.primary_detectors)
     ? settings.primary_detectors.join(" + ")
@@ -519,40 +658,242 @@ function renderVisionSettings(settings) {
   const yolo = settings.yolo || {};
   text(
     "vision-yolo",
-    yolo.requested
-      ? "Optional primary detector · sexual-act + anatomy"
-      : "Off unless an existing local YOLO11 model is configured",
+    settings.primary_detector === "yolo11_nsfw_small" || yolo.requested
+      ? "Required download · primary when selected"
+      : "Required download · independent thresholds, NudeNet fallback if missing",
   );
   const contextModel = settings.context_model || {};
+  const contextName = contextModel.name || (settings.context && settings.context.model) || "Viddexa";
   text(
     "vision-context-model",
-    `${contextModel.name || "Viddexa"} · ranks tiles, cannot block`,
+    `${humanize(contextName, "Viddexa")} · ranks tiles, cannot block`,
   );
   const mode = settings.detection_mode || {};
   text("vision-detection-mode", mode.label || "Visual violation only");
-  const thresholds = settings.thresholds && typeof settings.thresholds === "object"
-    ? Object.entries(settings.thresholds)
-      .map(([label, score]) => `${humanize(label)} ${formatNumber(score)}`)
+  const thresholdTables = settings.thresholds || {};
+  const nudenetTable = thresholdTables.nudenet_640m || thresholdTables.legacy_strong || {};
+  const thresholds = typeof nudenetTable === "object"
+    ? Object.entries(nudenetTable)
+      .map(([label, pair]) => {
+        const strong = pair && typeof pair === "object" ? pair.strong : pair;
+        return `${humanize(label)} ${formatNumber(strong)}`;
+      })
       .join(" · ")
     : "";
   text("vision-thresholds", thresholds || "—");
-  const tile = settings.tile || {};
+  const tile = settings.tile || settings.tiles || {};
   text(
     "vision-tile",
     tile.enabled === false
       ? "Off"
-      : `${tile.rows || 2} × ${tile.columns || 2} ranking`,
+      : `${tile.rows || 2} × ${tile.columns || 2} overlap ${Math.round((tile.overlap || 0.15) * 100)}%`,
   );
   const roi = settings.roi || {};
+  const expansion = roi.expansion || (settings.recheck && settings.recheck.crop_expansion);
   text(
     "vision-roi",
-    `Expand ${formatNumber(roi.expansion, 2)} · margin ${formatNumber(roi.borderline_margin, 2)}`,
+    `Expand ${formatNumber(expansion, 2)} · margin ${formatNumber(roi.borderline_margin, 2)}`,
   );
   const temporal = settings.temporal || {};
   text(
     "vision-temporal",
-    `${temporal.required_hits || 2} / ${temporal.window_size || 3} fresh frames`,
+    `${temporal.required_hits || temporal.min_fresh_hits || 2} / ${temporal.window_size || 3} fresh frames`,
   );
+
+  const schema = settings.schema || settings;
+  const detector = schema.detector || {};
+  const context = schema.context || {};
+  const tiles = schema.tiles || tile;
+  const scan = schema.scan || settings.scan || {};
+  const recheck = schema.recheck || {};
+  const shadow = schema.shadow || {};
+  setSelectValue("vision-primary-select", detector.primary || settings.primary_detector);
+  setSelectValue("vision-context-select", context.model || contextName);
+  setSelectValue("vision-preset-select", settings.preset || schema.preset || "balanced");
+  setSelectValue("vision-tile-enabled-select", tiles.enabled === false ? "false" : "true");
+  const interval = Number(scan.normal_interval_ms || 750);
+  const speed = interval <= 550 ? "fast" : interval >= 900 ? "slow" : "balanced";
+  setSelectValue("vision-scan-speed-select", speed);
+  setSelectValue("vision-grid-select", `${tiles.rows || 2}x${tiles.columns || 2}`);
+  setSelectValue("vision-full-input-select", detector.full_input_size || 640);
+  setSelectValue("vision-tile-input-select", detector.tile_input_size || 640);
+  setSelectValue("vision-overlap-select", Math.round((tiles.overlap || 0.15) * 100));
+  setSelectValue("vision-checks-select", tiles.checks_per_scan || 1);
+  setSelectValue("vision-max-skip-select", tiles.max_skip || 3);
+  setSelectValue("vision-crop-select", recheck.crop_expansion || 1.75);
+  setSelectValue("vision-shadow-select", shadow.enabled ? "true" : "false");
+  setSelectValue("vision-recheck-select", recheck.enabled === false ? "false" : "true");
+  setSelectValue("vision-proposal-select", recheck.proposal_margin || 0.10);
+  setSelectValue("vision-adaptive-select", scan.adaptive === false ? "false" : "true");
+  setSelectValue("vision-change-select", scan.change_sensitivity || 0.01);
+  setSelectValue("vision-active-monitor-select", scan.active_monitor_priority === false ? "false" : "true");
+  const temporalSchema = schema.temporal || settings.temporal || {};
+  setSelectValue("vision-confirmation-select", temporalSchema.confirmation || "boolean");
+  setSelectValue("vision-fresh-hits-select", temporalSchema.min_fresh_hits || temporalSchema.required_hits || 2);
+  setSelectValue("vision-evidence-select", temporalSchema.evidence_threshold || 2.5);
+  setSelectValue("vision-decay-select", temporalSchema.decay || 0.5);
+  renderThresholdTable(thresholdTables);
+}
+
+function visionFormPayload() {
+  const grid = element("vision-grid-select").value.split("x");
+  const speed = element("vision-scan-speed-select").value;
+  const intervals = { slow: [1000, 250], balanced: [750, 150], fast: [500, 100] };
+  const [normalMs, candidateMs] = intervals[speed] || intervals.balanced;
+  return {
+    preset: element("vision-preset-select").value,
+    detector: {
+      primary: element("vision-primary-select").value,
+      full_input_size: Number(element("vision-full-input-select").value),
+      tile_input_size: Number(element("vision-tile-input-select").value),
+    },
+    context: { model: element("vision-context-select").value },
+    tiles: {
+      enabled: element("vision-tile-enabled-select").value === "true",
+      rows: Number(grid[0] || 2),
+      columns: Number(grid[1] || 2),
+      overlap: Number(element("vision-overlap-select").value) / 100,
+      checks_per_scan: Number(element("vision-checks-select").value),
+      max_skip: Number(element("vision-max-skip-select").value),
+    },
+    recheck: {
+      enabled: element("vision-recheck-select").value === "true",
+      crop_expansion: Number(element("vision-crop-select").value),
+      proposal_margin: Number(element("vision-proposal-select").value),
+    },
+    scan: {
+      normal_interval_ms: normalMs,
+      candidate_interval_ms: candidateMs,
+      adaptive: element("vision-adaptive-select").value === "true",
+      change_sensitivity: Number(element("vision-change-select").value),
+      active_monitor_priority: element("vision-active-monitor-select").value === "true",
+    },
+    temporal: {
+      confirmation: element("vision-confirmation-select").value,
+      min_fresh_hits: Number(element("vision-fresh-hits-select").value),
+      evidence_threshold: Number(element("vision-evidence-select").value),
+      decay: Number(element("vision-decay-select").value),
+    },
+    shadow: { enabled: element("vision-shadow-select").value === "true" },
+    thresholds: collectThresholdTables(),
+  };
+}
+
+function thresholdSteps() {
+  return [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75];
+}
+
+function renderThresholdTable(tables) {
+  const root = element("vision-threshold-table");
+  if (!root) return;
+  root.replaceChildren();
+  const groups = [
+    ["nudenet_640m", "NudeNet 640m", tables.nudenet_640m || {}],
+    ["yolo11_nsfw_small", "YOLO11 NSFW Small", tables.yolo11_nsfw_small || {}],
+  ];
+  groups.forEach(([model, title, rows]) => {
+    const heading = document.createElement("p");
+    heading.className = "signal-name";
+    heading.textContent = title;
+    root.append(heading);
+    Object.entries(rows).forEach(([label, pair]) => {
+      const row = document.createElement("div");
+      row.className = "vision-threshold-row";
+      const name = document.createElement("span");
+      name.className = "muted";
+      name.textContent = humanize(label);
+      row.append(
+        name,
+        thresholdSelect(model, label, "proposal", pair && pair.proposal),
+        thresholdSelect(model, label, "strong", pair && pair.strong),
+      );
+      root.append(row);
+    });
+  });
+}
+
+function thresholdSelect(model, label, kind, value) {
+  const wrap = document.createElement("label");
+  wrap.textContent = kind === "proposal" ? "Proposal" : "Strong";
+  const select = document.createElement("select");
+  select.dataset.thresholdModel = model;
+  select.dataset.thresholdLabel = label;
+  select.dataset.thresholdKind = kind;
+  thresholdSteps().forEach((step) => {
+    const option = document.createElement("option");
+    option.value = step.toFixed(2);
+    option.textContent = step.toFixed(2);
+    select.append(option);
+  });
+  if (value !== undefined && value !== null) select.value = Number(value).toFixed(2);
+  wrap.append(select);
+  return wrap;
+}
+
+function collectThresholdTables() {
+  const tables = { nudenet_640m: {}, yolo11_nsfw_small: {} };
+  document.querySelectorAll("[data-threshold-model]").forEach((node) => {
+    const model = node.dataset.thresholdModel;
+    const label = node.dataset.thresholdLabel;
+    const kind = node.dataset.thresholdKind;
+    if (!tables[model]) tables[model] = {};
+    if (!tables[model][label]) tables[model][label] = {};
+    tables[model][label][kind] = Number(node.value);
+  });
+  return tables;
+}
+
+function showVisionMessage(message, isError = false) {
+  const target = element("vision-settings-message");
+  if (!target) return;
+  target.textContent = message || "";
+  target.classList.toggle("error", isError);
+}
+
+async function saveVisionSettings(event) {
+  event.preventDefault();
+  if (ui.inFlight.has("vision-save")) return;
+  ui.inFlight.add("vision-save");
+  try {
+    const result = assertResponse(await invoke("save_vision_settings", visionFormPayload()));
+    renderVisionSettings(result.settings || {});
+    showVisionMessage(result.message || "Settings saved.");
+    refreshStatus();
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Could not save settings.", true);
+  } finally {
+    ui.inFlight.delete("vision-save");
+  }
+}
+
+async function resetVisionSettings() {
+  if (ui.inFlight.has("vision-reset")) return;
+  ui.inFlight.add("vision-reset");
+  try {
+    const result = assertResponse(await invoke("reset_vision_settings"));
+    renderVisionSettings(result.settings || {});
+    showVisionMessage(result.message || "Experimental defaults restored.");
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Could not reset settings.", true);
+  } finally {
+    ui.inFlight.delete("vision-reset");
+  }
+}
+
+async function applyVisionPreset() {
+  if (ui.inFlight.has("vision-preset")) return;
+  ui.inFlight.add("vision-preset");
+  try {
+    const result = assertResponse(
+      await invoke("apply_vision_preset", element("vision-preset-select").value),
+    );
+    renderVisionSettings(result.settings || {});
+    showVisionMessage(result.message || "Preset applied.");
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Could not apply preset.", true);
+  } finally {
+    ui.inFlight.delete("vision-preset");
+  }
 }
 
 async function refreshVisionSettings() {
@@ -572,6 +913,14 @@ async function initializeDashboard() {
   element("stop-button").addEventListener("click", () => runAction("stop_protection"));
   element("test-button").addEventListener("click", () => runAction("test_intervention"));
   element("refresh-history").addEventListener("click", refreshEvents);
+  const visionForm = element("vision-settings-form");
+  if (visionForm) visionForm.addEventListener("submit", saveVisionSettings);
+  const resetButton = element("vision-reset-button");
+  if (resetButton) resetButton.addEventListener("click", resetVisionSettings);
+  const downloadAll = element("vision-download-all");
+  if (downloadAll) downloadAll.addEventListener("click", downloadAllRequiredModels);
+  const presetSelect = element("vision-preset-select");
+  if (presetSelect) presetSelect.addEventListener("change", applyVisionPreset);
   document.querySelectorAll(".rule-form").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -587,8 +936,10 @@ async function initializeDashboard() {
     refreshEvents(),
     refreshRules(),
     refreshVisionSettings(),
+    refreshModelStatus(),
   ]);
   ui.timers.push(window.setInterval(refreshDiagnostics, 500));
+  ui.timers.push(window.setInterval(refreshModelStatus, 4000));
   ui.timers.push(window.setInterval(refreshStatus, 1000));
   ui.timers.push(window.setInterval(refreshEvents, 2000));
   ui.timers.push(window.setInterval(refreshRules, 2000));

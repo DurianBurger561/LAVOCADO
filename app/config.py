@@ -8,16 +8,27 @@ CHECK_INTERVAL = 0.75
 # Maximum width/height retained for the whole-screen NudeNet pass.
 MODEL_FRAME_MAX_EDGE = 640
 
-# NudeNet model input sizes. The 320 value is used only when the optional
+# NudeNet model input sizes. The 320 value is used only when the required
 # 640m model asset is unavailable or cannot be loaded.
 NUDENET_INFERENCE_RESOLUTION = 640
 NUDENET_FALLBACK_INFERENCE_RESOLUTION = 320
 
-# Optional local context classifier. Its weights are downloaded by Transformers
-# during development and are never sent screenshots over the network.
+# Required local context classifier. Weights are downloaded from Hugging Face
+# with a pinned revision and never receive screenshots over the network.
 CONTEXT_MODEL_ENABLED = True
 CONTEXT_MODEL_NAME = "viddexa/nsfw-detection-2-mini"
 CONTEXT_MODEL_REVISION = "15f61cddc0a1a2a9176f018fb6838ef92c8163cc"
+CONTEXT_MINI_MODEL_NAME = CONTEXT_MODEL_NAME
+CONTEXT_MINI_MODEL_REVISION = CONTEXT_MODEL_REVISION
+CONTEXT_NANO_MODEL_NAME = "viddexa/nsfw-detection-2-nano"
+CONTEXT_NANO_MODEL_REVISION = "12e57200346246b37382f746e4d94d10b014f6a1"
+
+# Selectable primary detector and context ranker. Env overrides are for
+# development; persisted vision_settings.json wins when present.
+PRIMARY_DETECTOR = os.environ.get("LAVOCADO_PRIMARY_DETECTOR", "nudenet_640m")
+CONTEXT_RANKER = os.environ.get("LAVOCADO_CONTEXT_MODEL", "viddexa_mini")
+YOLO_FULL_INPUT_SIZE = 640
+YOLO_TILE_INPUT_SIZE = 640
 
 # Conservative starting values for benchmark calibration, not scientifically
 # validated optimal thresholds.
@@ -29,11 +40,14 @@ CONTEXT_PORN_RESCUE_THRESHOLD = 0.97
 CONTEXT_SEXY_CAN_BLOCK = False
 CONTEXT_HENTAI_CAN_BLOCK = False
 YOLO_ENABLED = False
-# Optional existing YOLO11 NSFW weights. Set LAVOCADO_YOLO_MODEL to a local
-# .pt or .onnx file; LAVOCADO never trains or downloads this model.
+# Required YOLO11 NSFW Small weights are downloaded from a pinned Hugging Face
+# file. Set LAVOCADO_YOLO_MODEL to override the local path.
 RESCUE_ENABLED = True
 RESCUE_TILE_ROWS = 2
 RESCUE_TILE_COLUMNS = 2
+RESCUE_TILE_OVERLAP = 0.15
+RESCUE_CHECKS_PER_SCAN = 1
+RESCUE_MAX_TILE_SKIP = 3
 
 # Conservative screen-change scheduling. Native dirty-region metadata is used
 # when available; otherwise a small grayscale map avoids retaining full frames.

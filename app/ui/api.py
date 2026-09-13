@@ -3,11 +3,25 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from threading import RLock
 from typing import Any
 
+from app.settings.presets import apply_preset
+from app.settings.schema import merge_vision_settings
+from app.settings.storage import (
+    load_vision_settings,
+    public_settings_view,
+    reset_vision_settings,
+    save_vision_settings,
+)
 from app.ui.controller import ProtectionStatus
 from app.ui.rules import RuleConflict, RuleEditor
+from app.vision.model_lifecycle import (
+    inspect_models,
+    start_download,
+    start_download_all,
+)
 from app.vision.settings import vision_settings_snapshot
 
 
@@ -15,13 +29,15 @@ class DashboardAPI:
     """Expose only control and privacy-safe read operations to JavaScript."""
 
     def __init__(
-        self, controller, recorder, diagnostics=None, rule_store=None, app_picker=None
+        self, controller, recorder, diagnostics=None, rule_store=None, app_picker=None,
+        data_dir=None,
     ) -> None:
         self.controller = controller
         self.recorder = recorder
         self.diagnostics = controller if diagnostics is None else diagnostics
         self.rule_editor = None if rule_store is None else RuleEditor(rule_store)
         self.app_picker = app_picker
+        self._data_dir = None if data_dir is None else Path(data_dir)
         self._rule_lock = RLock()
 
     def start_protection(self) -> dict[str, Any]:
@@ -80,9 +96,127 @@ class DashboardAPI:
 
     def get_vision_settings(self) -> dict[str, Any]:
         try:
-            return {"ok": True, "settings": vision_settings_snapshot()}
+            settings = load_vision_settings(self._data_dir)
+            snapshot = vision_settings_snapshot(settings)
+            snapshot.update(public_settings_view(settings))
+            return {"ok": True, "settings": snapshot}
         except Exception as error:  # noqa: BLE001 - JSON API boundary
             return self._error_result("Could not read vision settings", error)
+
+    def save_vision_settings(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        try:
+            current = load_vision_settings(self._data_dir)
+            merged = merge_vision_settings(current, payload or {})
+            if self._data_dir is not None:
+                save_vision_settings(merged, self._data_dir)
+            restarted = self._safe_restart_protection()
+            snapshot = vision_settings_snapshot(merged)
+            snapshot.update(public_settings_view(merged))
+            return {
+                "ok": True,
+                "settings": snapshot,
+                "restarted": restarted,
+                "message": (
+                    "Settings saved. Protection was restarted to apply the models."
+                    if restarted
+                    else "Settings saved. They apply the next time protection starts."
+                ),
+            }
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not save vision settings", error)
+
+    def apply_vision_preset(self, name: str) -> dict[str, Any]:
+        try:
+            current = load_vision_settings(self._data_dir)
+            merged = apply_preset(str(name), current)
+            if self._data_dir is not None:
+                save_vision_settings(merged, self._data_dir)
+            restarted = self._safe_restart_protection()
+            snapshot = vision_settings_snapshot(merged)
+            snapshot.update(public_settings_view(merged))
+            return {
+                "ok": True,
+                "settings": snapshot,
+                "restarted": restarted,
+                "message": "Preset applied. Values remain experimental until benchmarked.",
+            }
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not apply detection preset", error)
+
+    def reset_vision_settings(self) -> dict[str, Any]:
+        try:
+            if self._data_dir is not None:
+                settings = reset_vision_settings(self._data_dir)
+            else:
+                from app.settings.schema import sanitize_vision_settings
+
+                settings = sanitize_vision_settings(None)
+            restarted = self._safe_restart_protection()
+            snapshot = vision_settings_snapshot(settings)
+            snapshot.update(public_settings_view(settings))
+            return {
+                "ok": True,
+                "settings": snapshot,
+                "restarted": restarted,
+                "message": "Experimental defaults restored.",
+            }
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not reset vision settings", error)
+
+    def get_model_status(self) -> dict[str, Any]:
+        try:
+            models = inspect_models(data_dir=self._data_dir)
+            return {"ok": True, "models": models}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not read model status", error)
+
+    def download_model(self, model_id: str) -> dict[str, Any]:
+        try:
+            row = start_download(str(model_id), data_dir=self._data_dir)
+            return {
+                "ok": True,
+                "model": row,
+                "message": (
+                    f"{row['label']} download started."
+                    if row.get("status") == "downloading"
+                    else f"{row['label']} status: {row.get('status')}."
+                ),
+            }
+        except ValueError:
+            return {"ok": False, "message": "Unknown model."}
+        except RuntimeError as error:
+            return {"ok": False, "message": str(error)}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not start model download", error)
+
+    def download_all_models(self) -> dict[str, Any]:
+        try:
+            models = start_download_all(data_dir=self._data_dir)
+            return {
+                "ok": True,
+                "models": models,
+                "message": "Required model downloads started.",
+            }
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not start model downloads", error)
+
+    def download_optional_model(self, model_id: str) -> dict[str, Any]:
+        return self.download_model(model_id)
+
+    def _safe_restart_protection(self) -> bool:
+        status = getattr(self.controller, "status", None)
+        from app.ui.controller import ProtectionStatus as _Status
+
+        running = status is _Status.RUNNING if status is not None else False
+        if not running:
+            return False
+        stop = getattr(self.controller, "stop", None)
+        start = getattr(self.controller, "start", None)
+        if not callable(stop) or not callable(start):
+            return False
+        stop()
+        start()
+        return True
 
     def test_intervention(self) -> dict[str, Any]:
         try:

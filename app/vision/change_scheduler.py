@@ -38,6 +38,7 @@ class ChangeScheduler:
         change_ratio_threshold: float = config.CHANGE_RATIO_THRESHOLD,
         periodic_scan_interval: int = config.CHANGE_PERIODIC_SCAN_INTERVAL,
         candidate_followup_checks: int = config.CONFIRMATION_WINDOW_SIZE - 1,
+        adaptive: bool = True,
     ) -> None:
         if map_max_edge < 1:
             raise ValueError("map_max_edge must be positive")
@@ -54,6 +55,7 @@ class ChangeScheduler:
         self.change_ratio_threshold = change_ratio_threshold
         self.periodic_scan_interval = periodic_scan_interval
         self.candidate_followup_checks = candidate_followup_checks
+        self.adaptive = adaptive
         self._schedules: dict[int, _MonitorSchedule] = {}
 
     def should_scan(
@@ -67,6 +69,8 @@ class ChangeScheduler:
 
         if not vision_allowed:
             return ChangeDecision(False, "policy_skip", 0.0)
+        if not self.adaptive:
+            return ChangeDecision(True, "always", 1.0)
 
         current_gray = self._grayscale_map(captured.original_frame)
         if current_gray is None:

@@ -41,6 +41,7 @@ class Capturer:
         monitor_index: int | None = config.MONITOR_INDEX,
         *,
         backend: ScreenCaptureBackend | None = None,
+        model_frame_max_edge: int | None = None,
     ) -> None:
         self._capture = (
             platform_adapter.create_screen_capture() if backend is None else backend
@@ -50,6 +51,9 @@ class Capturer:
         self._monitors: list[MonitorInfo] = self._capture.monitors()
         self._monitor_by_index = {monitor.index: monitor for monitor in self._monitors}
         self._monitor_index = self._select_monitor_index(monitor_index)
+        self._model_frame_max_edge = int(
+            config.MODEL_FRAME_MAX_EDGE if model_frame_max_edge is None else model_frame_max_edge
+        )
 
     @property
     def monitor_indexes(self) -> tuple[int, ...]:
@@ -85,7 +89,7 @@ class Capturer:
         rgb_frame = np.ascontiguousarray(original_frame[:, :, ::-1])
         model_image = Image.fromarray(rgb_frame, mode="RGB")
         model_image.thumbnail(
-            (config.MODEL_FRAME_MAX_EDGE, config.MODEL_FRAME_MAX_EDGE),
+            (self._model_frame_max_edge, self._model_frame_max_edge),
             Image.Resampling.LANCZOS,
         )
         model_rgb = np.asarray(model_image, dtype=np.uint8)

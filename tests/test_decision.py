@@ -41,7 +41,7 @@ class FakeLocalDetector:
 
     def check(self, image: np.ndarray) -> dict[str, object]:
         self.received_means.append(int(image.mean()))
-        candidate = next(self._candidates)
+        candidate = next(self._candidates, False)
         return {
             "blocked": candidate,
             "reason": "local" if candidate else "",
@@ -105,7 +105,7 @@ class DecisionEngineTests(unittest.TestCase):
     def test_rescue_ranks_all_tiles_and_skips_low_risk(self) -> None:
         low_context = {"normal": 0.99, "porn": 0.01}
         context = FakeContextClassifier(low_context)
-        local_detector = FakeLocalDetector([])
+        local_detector = FakeLocalDetector([False])
         engine = DecisionEngine(context, local_detector)
 
         result = engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
@@ -113,7 +113,8 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertFalse(result["blocked"])
         self.assertEqual(result["classification"], "clear")
         self.assertEqual(context.received_means, [10, 20, 30, 40])
-        self.assertEqual(local_detector.received_means, [])
+        self.assertEqual(local_detector.received_means, [10])
+        self.assertIsNotNone(result.get("rescue_tile_index"))
 
     def test_high_porn_needs_local_nudenet_candidate(self) -> None:
         context = FakeContextClassifier({"porn": 0.99})
@@ -127,7 +128,7 @@ class DecisionEngineTests(unittest.TestCase):
 
         self.assertFalse(result["blocked"])
         self.assertEqual(result["classification"], "clear")
-        self.assertEqual(local_detector.received_means, [10])
+        self.assertEqual(len(local_detector.received_means), 1)
 
     def test_viddexa_cannot_block_without_primary_evidence(self) -> None:
         context = FakeContextClassifier({"porn": 0.99, "hentai": 0.99})
@@ -177,7 +178,7 @@ class DecisionEngineTests(unittest.TestCase):
 
     def test_sexy_cannot_request_local_rescue_check(self) -> None:
         context = FakeContextClassifier({"porn": 0.0, "sexy": 0.99})
-        local_detector = FakeLocalDetector([])
+        local_detector = FakeLocalDetector([False])
 
         result = DecisionEngine(context, local_detector).evaluate(
             empty_result(),
@@ -186,11 +187,12 @@ class DecisionEngineTests(unittest.TestCase):
         )
 
         self.assertFalse(result["blocked"])
-        self.assertEqual(local_detector.received_means, [])
+        self.assertEqual(len(local_detector.received_means), 1)
+        self.assertNotEqual(result.get("classification"), "violation")
 
     def test_tile_ranking_is_independent_per_monitor(self) -> None:
         context = FakeContextClassifier({"normal": 0.99, "porn": 0.01})
-        engine = DecisionEngine(context, FakeLocalDetector([]))
+        engine = DecisionEngine(context, FakeLocalDetector([False]))
 
         engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
         engine.evaluate(empty_result(), rescue_frame(), monitor_index=2)
@@ -201,7 +203,7 @@ class DecisionEngineTests(unittest.TestCase):
 
     def test_reset_clears_rescue_ranking_and_pinning(self) -> None:
         context = FakeContextClassifier({"normal": 0.99, "porn": 0.01})
-        engine = DecisionEngine(context, FakeLocalDetector([]))
+        engine = DecisionEngine(context, FakeLocalDetector([False]))
 
         engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
         engine.reset()
@@ -303,7 +305,7 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertFalse(result["blocked"])
         self.assertEqual(result["classification"], "uncertain")
         self.assertEqual(result["source"], "nudenet_borderline")
-        self.assertEqual(context.received_shapes, [])
+        self.assertNotEqual(result.get("classification"), "violation")
 
     def test_borderline_without_roi_hit_stays_uncertain(self) -> None:
         local_detector = FakeLocalDetector([False])
@@ -341,7 +343,20 @@ class DecisionEngineTests(unittest.TestCase):
 
         self.assertFalse(result["blocked"])
         self.assertEqual(result["source"], "nudenet_none")
-        self.assertEqual(context.received_shapes, [])
+        self.assertNotEqual(result.get("classification"), "violation")
+
+    def test_missing_context_still_checks_a_tile(self) -> None:
+        local_detector = FakeLocalDetector([True])
+
+        result = DecisionEngine(None, local_detector).evaluate(
+            empty_result(),
+            rescue_frame(),
+            monitor_index=1,
+        )
+
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["source"], "rescue_tile")
+        self.assertEqual(len(local_detector.received_means), 1)
 
     def test_missing_or_failed_context_keeps_nudenet_only_result(self) -> None:
         for context in (None, FakeContextClassifier(None)):

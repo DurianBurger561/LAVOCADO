@@ -308,6 +308,100 @@ main {
   font-size: 12px;
 }
 
+.vision-form {
+  margin-bottom: 18px;
+}
+
+.vision-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+.vision-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.vision-form select {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--panel-raised);
+  font: inherit;
+  font-size: 12px;
+}
+
+.vision-advanced {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(11, 16, 32, 0.42);
+}
+
+.vision-advanced summary {
+  cursor: pointer;
+  color: var(--lavender);
+  font-size: 12px;
+}
+
+.vision-advanced .vision-form-grid {
+  margin-top: 12px;
+}
+
+.vision-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.model-status-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-status-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.model-status-list li:last-child {
+  border-bottom: 0;
+}
+
+.vision-threshold-block {
+  grid-column: 1 / -1;
+}
+
+.vision-threshold-table {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.vision-threshold-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.vision-threshold-row .muted {
+  font-size: 11px;
+}
+
 .rules-message {
   min-height: 18px;
   margin-bottom: 10px;

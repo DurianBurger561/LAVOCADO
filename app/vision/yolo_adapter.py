@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
@@ -31,7 +32,7 @@ def yolo_is_requested(
     enabled: bool | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> bool:
-    """Return whether the operator asked for the optional YOLO primary detector."""
+    """Return whether YOLO11 NSFW Small should load as the primary detector."""
 
     if enabled is None:
         enabled = config.YOLO_ENABLED
@@ -108,12 +109,19 @@ def detections_to_evidence(
 class UltralyticsYoloModel:
     """Adapt an ultralytics YOLO object to the detect() protocol."""
 
-    def __init__(self, model: Any) -> None:
+    def __init__(self, model: Any, *, imgsz: int | None = None) -> None:
         self._model = model
+        self.imgsz = imgsz
 
     def detect(self, image: np.ndarray) -> list[dict[str, Any]]:
         rgb = np.ascontiguousarray(image[:, :, ::-1])
-        results = self._model.predict(rgb, verbose=False)
+        kwargs: dict[str, Any] = {"verbose": False}
+        if self.imgsz is not None:
+            kwargs["imgsz"] = int(self.imgsz)
+        try:
+            results = self._model.predict(rgb, **kwargs)
+        except TypeError:
+            results = self._model.predict(rgb, verbose=False)
         detections: list[dict[str, Any]] = []
         for result in results:
             names = getattr(result, "names", {}) or {}
@@ -200,8 +208,9 @@ def load_yolo_adapter(
     enabled: bool | None = None,
     model_factory: Callable[[], YoloDetectionModel] | None = None,
     environ: Mapping[str, str] | None = None,
+    data_dir: str | Path | None = None,
 ) -> Yolo11Adapter | None:
-    """Load an optional local YOLO model. Missing deps never crash protection."""
+    """Load the pinned YOLO11 NSFW Small model. Missing deps never crash protection."""
 
     environ = os.environ if environ is None else environ
     if not yolo_is_requested(enabled=enabled, environ=environ):
@@ -209,7 +218,10 @@ def load_yolo_adapter(
         return None
     factory = model_factory
     if factory is None:
-        model_path = resolve_yolo_model_path(environ=environ)
+        model_path = resolve_yolo_model_path(
+            environ=environ,
+            data_dir=None if data_dir is None else Path(data_dir),
+        )
         if model_path is None:
             LOGGER.info("YOLO11 weights are unavailable; continuing NudeNet-only")
             return None

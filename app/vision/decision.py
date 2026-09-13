@@ -8,16 +8,26 @@ from typing import Any, Protocol
 import numpy as np
 
 from app import config
+from app.settings.schema import VisionSettings, default_vision_settings
 from app.vision.capture import CapturedFrame
+from app.vision.change_map import build_change_map, tile_change_scores
+from app.vision.evidence import evidence_from_confidence
 from app.vision.nudenet_adapter import detections_to_evidence
 from app.vision.regions import (
     Region,
     crop_region,
     make_context_crop,
     map_box_to_original,
+    overlapping_tile_regions,
+    subdivide_region,
     tile_regions,
 )
+from app.vision.scheduler import ScanPlan, VisionScheduler
+from app.vision.tiles import TileState, mark_checked, rank_tiles
+from app.vision.tracking import CandidateTracker, box_to_region
 from app.vision.violation_policy import (
+    DetectionTier,
+    ThresholdPolicy,
     ViolationEvidence,
     ViolationEvidenceType,
     VisualViolationClassification,
@@ -25,6 +35,7 @@ from app.vision.violation_policy import (
     is_borderline_score,
     strongest_evidence,
     threshold_for_label,
+    tier_for_score,
 )
 
 
@@ -69,6 +80,11 @@ class DecisionEngine:
         rescue_rows: int = config.RESCUE_TILE_ROWS,
         rescue_columns: int = config.RESCUE_TILE_COLUMNS,
         pin_followup_checks: int = config.CONFIRMATION_WINDOW_SIZE - 1,
+        settings: VisionSettings | None = None,
+        tracker: CandidateTracker | None = None,
+        tile_overlap: float | None = None,
+        max_tile_skip: int | None = None,
+        checks_per_scan: int | None = None,
     ) -> None:
         self.context_classifier = context_classifier
         self.local_detector = local_detector
@@ -76,11 +92,29 @@ class DecisionEngine:
         self.crop_expansion = crop_expansion
         self.porn_confirm_threshold = porn_confirm_threshold
         self.rescue_enabled = rescue_enabled
+        # Kept for diagnostics compatibility. Viddexa no longer gates tile checks.
         self.rescue_porn_threshold = rescue_porn_threshold
         self.rescue_rows = rescue_rows
         self.rescue_columns = rescue_columns
         self.pin_followup_checks = max(0, pin_followup_checks)
+        self.settings = settings or default_vision_settings()
+        self.tile_overlap = (
+            float(config.RESCUE_TILE_OVERLAP) if tile_overlap is None else tile_overlap
+        )
+        self.max_tile_skip = (
+            int(config.RESCUE_MAX_TILE_SKIP) if max_tile_skip is None else max_tile_skip
+        )
+        self.checks_per_scan = (
+            int(config.RESCUE_CHECKS_PER_SCAN) if checks_per_scan is None else checks_per_scan
+        )
+        self.tracker = tracker or CandidateTracker()
+        self.threshold_policy = ThresholdPolicy.from_settings(self.settings)
+        self.scheduler = VisionScheduler(self.settings)
         self._rescue_schedules: dict[int, _RescueSchedule] = {}
+        self._tiles: dict[int, list[TileState]] = {}
+        self._previous_gray: dict[int, object] = {}
+        self._scan_ids: dict[int, int] = {}
+        self._last_plan: dict[int, ScanPlan] = {}
 
     def evaluate(
         self,
@@ -89,6 +123,8 @@ class DecisionEngine:
         *,
         monitor_index: int = 1,
         extra_evidence: list[ViolationEvidence] | None = None,
+        scan_plan: ScanPlan | None = None,
+        is_active_monitor: bool = True,
     ) -> dict[str, Any]:
         """Return a candidate decision without retaining image pixels."""
 
@@ -102,8 +138,44 @@ class DecisionEngine:
             payload = list(existing) if isinstance(existing, list) else []
             payload.extend(evidence_to_dict(item) for item in extra)
             result["evidence"] = payload
+
+        plan = scan_plan
+        if plan is None:
+            active = self.tracker.active_track(monitor_index)
+            if active is not None:
+                original = getattr(captured_frame, "original_frame", None)
+                roi = active.box
+                if isinstance(original, np.ndarray):
+                    predicted = self.tracker.predicted_roi(
+                        active, original.shape, self.crop_expansion
+                    )
+                    if predicted is not None:
+                        roi = predicted
+                        active.box = predicted
+                plan = ScanPlan(
+                    mode="focused",
+                    run_full=False,
+                    tile_indexes=(),
+                    roi=roi,
+                    subdivide=False,
+                    input_size=self.settings.detector.tile_input_size,
+                    interval_ms=self.settings.scan.candidate_interval_ms,
+                )
+                self._last_plan[monitor_index] = plan
+        if plan is not None and plan.mode == "focused" and plan.roi is not None:
+            focused = self._evaluate_focused(
+                result,
+                captured_frame,
+                monitor_index,
+                plan.roi,
+                frame_sequence,
+            )
+            return self._finalize_decision(
+                focused, captured_frame, monitor_index, frame_sequence
+            )
+
         if bool(result.get("blocked")):
-            return self._confirm_primary_candidate(
+            decided = self._confirm_primary_candidate(
                 result,
                 captured_frame,
                 None,
@@ -111,13 +183,18 @@ class DecisionEngine:
                 candidate_source="anatomy_candidate",
                 fallback=self._strong_primary_result(result, captured_frame),
             )
+            return self._finalize_decision(
+                decided, captured_frame, monitor_index, frame_sequence
+            )
 
         evidence = self._collect_evidence(result, extra_evidence, frame_sequence)
         strong = [
             item
             for item in evidence
-            if (threshold := threshold_for_label(item.label)) is not None
-            and item.confidence >= threshold
+            if self.threshold_policy.tier(
+                item.confidence, item.label, item.model
+            )
+            is DetectionTier.STRONG
         ]
         if strong:
             chosen = strongest_evidence(strong)
@@ -125,7 +202,7 @@ class DecisionEngine:
                 chosen is not None
                 and chosen.evidence_type is ViolationEvidenceType.SEXUAL_ACT
             )
-            return self._confirm_primary_candidate(
+            decided = self._confirm_primary_candidate(
                 result,
                 captured_frame,
                 chosen,
@@ -138,6 +215,9 @@ class DecisionEngine:
                 fallback=self._violation_from_evidence(
                     result, captured_frame, chosen
                 ),
+            )
+            return self._finalize_decision(
+                decided, captured_frame, monitor_index, frame_sequence
             )
 
         borderline = self._strongest_borderline_evidence(evidence)
@@ -156,19 +236,36 @@ class DecisionEngine:
                     result, captured_frame, borderline_detection
                 )
                 if bool(base.get("blocked")):
-                    return base
+                    return self._finalize_decision(
+                        base, captured_frame, monitor_index, frame_sequence
+                    )
         else:
             detection = {
                 "class": borderline.label,
                 "score": borderline.confidence,
                 "box": None if borderline.bbox is None else list(borderline.bbox),
-                "threshold": threshold_for_label(borderline.label),
+                "threshold": self.threshold_policy.strong(
+                    borderline.label, borderline.model
+                ),
             }
             base = self._evaluate_borderline(result, captured_frame, detection)
             if bool(base.get("blocked")):
-                return base
+                return self._finalize_decision(
+                    base, captured_frame, monitor_index, frame_sequence
+                )
 
-        return self._evaluate_rescue(base, captured_frame, monitor_index)
+        if plan is None:
+            plan = self.prepare_scan(
+                captured_frame,
+                monitor_index,
+                is_active_monitor=is_active_monitor,
+            )
+        decided = self._evaluate_rescue(
+            base, captured_frame, monitor_index, plan=plan
+        )
+        return self._finalize_decision(
+            decided, captured_frame, monitor_index, frame_sequence
+        )
 
     def _collect_evidence(
         self,
@@ -211,7 +308,11 @@ class DecisionEngine:
             label = result.get("label")
             score = float(result.get("confidence", 0.0) or 0.0)
             box = result.get("box")
-        if self.local_detector is None or not isinstance(box, (list, tuple)):
+        if (
+            not self.settings.recheck.enabled
+            or self.local_detector is None
+            or not isinstance(box, (list, tuple))
+        ):
             return fallback
         detection = {
             "class": str(label),
@@ -257,7 +358,8 @@ class DecisionEngine:
         original = getattr(captured_frame, "original_frame", None)
         model = getattr(captured_frame, "model_frame", None)
         if (
-            self.local_detector is None
+            not self.settings.recheck.enabled
+            or self.local_detector is None
             or not isinstance(box, (list, tuple))
             or not isinstance(original, np.ndarray)
             or not hasattr(model, "shape")
@@ -307,77 +409,112 @@ class DecisionEngine:
         base: dict[str, Any],
         captured_frame: CapturedFrame,
         monitor_index: int,
+        plan: ScanPlan | None = None,
     ) -> dict[str, Any]:
-        """Rank tiles with Viddexa, then recheck the highest-risk tile."""
+        """Check priority tiles. Viddexa only orders them; it never vetoes."""
 
         original = getattr(captured_frame, "original_frame", None)
         if (
             not self.rescue_enabled
-            or self.context_classifier is None
             or self.local_detector is None
             or not isinstance(original, np.ndarray)
         ):
             return base
-        regions = tile_regions(
-            original.shape,
-            self.rescue_rows,
-            self.rescue_columns,
-        )
-        if not regions:
+
+        tiles = self._tiles_for(monitor_index, original)
+        if not tiles:
             return base
 
-        ranked = self._rank_tiles(original, regions)
-        if not ranked:
-            return base
+        tile_indexes = list(plan.tile_indexes) if plan is not None else []
+        if not tile_indexes:
+            ranked = rank_tiles(tiles, max_skip=self.max_tile_skip)
+            tile_indexes = [item.index for item in ranked[: max(1, self.checks_per_scan)]]
 
-        tile_index, was_pinned = self._select_ranked_tile(monitor_index, ranked)
-        chosen = next((item for item in ranked if item[1] == tile_index), ranked[0])
-        risk, tile_index, region, context_scores, tile = chosen
-        context_label, context_score = max(
-            context_scores.items(),
-            key=lambda item: item[1],
-        )
-        base["rescue_tile_index"] = tile_index
-        base["rescue_region"] = region
-        base["context_label"] = context_label
-        base["context_score"] = float(context_score)
-        base["context_scores"] = dict(context_scores)
+        ranking_payload = [
+            {"index": tile.index, "priority": tile.priority_score}
+            for tile in rank_tiles(list(tiles), max_skip=self.max_tile_skip)
+        ]
+        base["tile_ranking"] = ranking_payload
 
-        if not was_pinned and risk < self.rescue_porn_threshold:
-            return base
+        checked: set[int] = set()
+        scan_id = self._scan_ids.get(monitor_index, 0)
+        decided = base
+        for tile_index in tile_indexes:
+            tile_state = next((item for item in tiles if item.index == tile_index), None)
+            if tile_state is None:
+                continue
+            crop = crop_region(original, tile_state.region)
+            if crop is None:
+                continue
+            checked.add(tile_index)
+            context_scores = dict(tile_state.context_scores)
+            if context_scores:
+                context_label, context_score = max(
+                    context_scores.items(),
+                    key=lambda item: item[1],
+                )
+            else:
+                context_label, context_score = "none", 0.0
+            schedule = self._rescue_schedules.setdefault(
+                monitor_index, _RescueSchedule()
+            )
+            schedule.next_tile_index = (tile_index + 1) % max(1, len(tiles))
+            decided["rescue_tile_index"] = tile_index
+            decided["rescue_region"] = tile_state.region
+            decided["context_label"] = context_label
+            decided["context_score"] = float(context_score)
+            decided["context_scores"] = context_scores or None
 
-        local_result = dict(self.local_detector.check(tile))
-        base["local_check_points"] = local_result.get("check_points", [])
-        base["local_box"] = local_result.get("box")
-        if not bool(local_result.get("blocked")):
-            return base
+            local_result = dict(self.local_detector.check(crop))
+            decided["local_check_points"] = local_result.get("check_points", [])
+            decided["local_box"] = local_result.get("box")
+            if bool(local_result.get("blocked")):
+                if self.pin_followup_checks:
+                    schedule = self._rescue_schedules.setdefault(
+                        monitor_index, _RescueSchedule()
+                    )
+                    schedule.pinned_tile_index = tile_index
+                    schedule.pinned_checks_remaining = self.pin_followup_checks
+                label = local_result.get("label")
+                confidence = float(local_result.get("confidence", 0.0))
+                threshold = threshold_for_label(str(label))
+                decided.update(
+                    {
+                        "blocked": True,
+                        "classification": VisualViolationClassification.VIOLATION.value,
+                        "reason": (
+                            f"local rescue found {label} score {confidence:.2f} "
+                            f"after tile priority {tile_state.priority_score:.2f}"
+                        ),
+                        "label": label,
+                        "confidence": confidence,
+                        "source": "rescue_tile",
+                        "region": tile_state.region,
+                        "nudenet_label": label,
+                        "nudenet_score": confidence,
+                        "threshold": threshold,
+                        "tier": DetectionTier.STRONG.value,
+                    }
+                )
+                mark_checked(tiles, checked, scan_id)
+                return decided
 
-        if not was_pinned and self.pin_followup_checks:
-            schedule = self._rescue_schedules[monitor_index]
-            schedule.pinned_tile_index = tile_index
-            schedule.pinned_checks_remaining = self.pin_followup_checks
+            if (
+                plan is not None
+                and plan.subdivide
+                and tile_state.context_score >= 0.6
+                and tile_state.change_score >= 0.4
+            ):
+                subdivided = self._evaluate_subtiles(
+                    decided, original, tile_state, monitor_index
+                )
+                if bool(subdivided.get("blocked")):
+                    checked.add(tile_index)
+                    mark_checked(tiles, checked, scan_id)
+                    return subdivided
 
-        label = local_result.get("label")
-        confidence = float(local_result.get("confidence", 0.0))
-        threshold = threshold_for_label(str(label))
-        base.update(
-            {
-                "blocked": True,
-                "classification": VisualViolationClassification.VIOLATION.value,
-                "reason": (
-                    f"local rescue found {label} score {confidence:.2f} "
-                    f"after tile rank score {risk:.2f}"
-                ),
-                "label": label,
-                "confidence": confidence,
-                "source": "rescue_tile",
-                "region": region,
-                "nudenet_label": label,
-                "nudenet_score": confidence,
-                "threshold": threshold,
-            }
-        )
-        return base
+        mark_checked(tiles, checked, scan_id)
+        return decided
 
     def _rank_tiles(
         self,
@@ -430,6 +567,295 @@ class DecisionEngine:
         """Clear pinned and ranking state after an intervention or bypass."""
 
         self._rescue_schedules.clear()
+        self._tiles.clear()
+        self._previous_gray.clear()
+        self._scan_ids.clear()
+        self._last_plan.clear()
+        self.tracker.reset()
+        self.scheduler.reset()
+
+    def prepare_scan(
+        self,
+        captured_frame: CapturedFrame,
+        monitor_index: int,
+        *,
+        is_active_monitor: bool = True,
+    ) -> ScanPlan:
+        """Refresh tile scores and ask the scheduler what to inspect next."""
+
+        original = getattr(captured_frame, "original_frame", None)
+        tiles: list[TileState] = []
+        change_map = None
+        if isinstance(original, np.ndarray):
+            tiles = self._tiles_for(monitor_index, original)
+            previous = self._previous_gray.get(monitor_index)
+            change_map = build_change_map(
+                original,
+                previous if isinstance(previous, np.ndarray) else None,
+            )
+            if change_map is not None:
+                self._previous_gray[monitor_index] = change_map.gray
+                scores = tile_change_scores(
+                    change_map,
+                    tuple(tile.region for tile in tiles),
+                    original.shape,
+                )
+                for tile, score in zip(tiles, scores, strict=False):
+                    tile.change_score = score
+            self._refresh_context_scores(original, tiles)
+        self._scan_ids[monitor_index] = self._scan_ids.get(monitor_index, 0) + 1
+        active = self.tracker.active_track(monitor_index)
+        predicted = None
+        if active is not None and isinstance(original, np.ndarray):
+            predicted = self.tracker.predicted_roi(
+                active, original.shape, self.crop_expansion
+            )
+            if predicted is not None:
+                active.box = predicted
+        plan = self.scheduler.plan(
+            monitor_index=monitor_index,
+            tiles=tiles,
+            change_map=change_map,
+            active_track=active,
+            is_active_monitor=is_active_monitor,
+        )
+        self._last_plan[monitor_index] = plan
+        return plan
+
+    def _tiles_for(self, monitor_index: int, original: np.ndarray) -> list[TileState]:
+        regions = overlapping_tile_regions(
+            original.shape,
+            self.rescue_rows,
+            self.rescue_columns,
+            self.tile_overlap,
+        )
+        if not regions:
+            regions = tile_regions(
+                original.shape, self.rescue_rows, self.rescue_columns
+            )
+        existing = self._tiles.get(monitor_index)
+        if existing is not None and len(existing) == len(regions):
+            for tile, region in zip(existing, regions, strict=False):
+                tile.region = region
+            return existing
+        tiles = [
+            TileState(index=index, region=region)
+            for index, region in enumerate(regions)
+        ]
+        self._tiles[monitor_index] = tiles
+        return tiles
+
+    def _refresh_context_scores(
+        self, original: np.ndarray, tiles: list[TileState]
+    ) -> None:
+        crops = [crop_region(original, tile.region) for tile in tiles]
+        classify_batch = getattr(self.context_classifier, "classify_batch", None)
+        if callable(classify_batch):
+            valid = [crop for crop in crops if crop is not None]
+            results = classify_batch(valid) if valid else []
+            result_index = 0
+            for tile, crop in zip(tiles, crops, strict=False):
+                if crop is None:
+                    continue
+                if result_index < len(results):
+                    item = results[result_index]
+                    scores = getattr(item, "scores", None) or {}
+                    tile.context_scores = dict(scores)
+                    tile.context_score = float(
+                        max(
+                            float(scores.get("porn", 0.0) or 0.0),
+                            float(scores.get("hentai", 0.0) or 0.0),
+                        )
+                    )
+                    result_index += 1
+            return
+        if self.context_classifier is None:
+            for tile in tiles:
+                tile.context_score = 0.0
+                tile.context_scores = {}
+            return
+        for tile, crop in zip(tiles, crops, strict=False):
+            if crop is None:
+                continue
+            scores = self.context_classifier.classify(crop)
+            if not scores:
+                tile.context_score = 0.0
+                tile.context_scores = {}
+                continue
+            tile.context_scores = dict(scores)
+            tile.context_score = max(
+                float(scores.get("porn", 0.0) or 0.0),
+                float(scores.get("hentai", 0.0) or 0.0),
+            )
+
+    def _evaluate_focused(
+        self,
+        result: dict[str, Any],
+        captured_frame: CapturedFrame,
+        monitor_index: int,
+        roi: Region,
+        frame_sequence: int,
+    ) -> dict[str, Any]:
+        original = getattr(captured_frame, "original_frame", None)
+        base = self._with_metadata(
+            result,
+            source="focused_roi",
+            region=roi,
+            classification=VisualViolationClassification.CLEAR,
+        )
+        if self.local_detector is None or not isinstance(original, np.ndarray):
+            return base
+        crop = crop_region(original, roi)
+        if crop is None:
+            return base
+        local_result = dict(self.local_detector.check(crop))
+        base["local_check_points"] = local_result.get("check_points", [])
+        base["local_box"] = local_result.get("box")
+        base["region"] = roi
+        if not bool(local_result.get("blocked")):
+            track = self.tracker.active_track(monitor_index)
+            if track is not None:
+                self.tracker.mark_miss(track, decay=self.settings.temporal.decay)
+            base["source"] = "focused_miss"
+            return base
+        label = local_result.get("label")
+        confidence = float(local_result.get("confidence", 0.0))
+        threshold = threshold_for_label(str(label))
+        base.update(
+            {
+                "blocked": True,
+                "classification": VisualViolationClassification.VIOLATION.value,
+                "reason": (
+                    f"{label} focused ROI score {confidence:.2f} "
+                    f"on fresh frame {frame_sequence}"
+                ),
+                "label": label,
+                "confidence": confidence,
+                "source": "focused_roi",
+                "nudenet_label": label,
+                "nudenet_score": confidence,
+                "threshold": threshold,
+                "tier": DetectionTier.STRONG.value,
+            }
+        )
+        return base
+
+    def _evaluate_subtiles(
+        self,
+        base: dict[str, Any],
+        original: np.ndarray,
+        tile_state: TileState,
+        monitor_index: int,
+    ) -> dict[str, Any]:
+        del monitor_index
+        if self.local_detector is None:
+            return base
+        subtiles = subdivide_region(tile_state.region)
+        if not subtiles:
+            return base
+        scored: list[tuple[float, Region, np.ndarray]] = []
+        for region in subtiles:
+            crop = crop_region(original, region)
+            if crop is None:
+                continue
+            scores = None
+            if self.context_classifier is not None:
+                scores = self.context_classifier.classify(crop)
+            risk = 0.0
+            if scores:
+                risk = max(
+                    float(scores.get("porn", 0.0) or 0.0),
+                    float(scores.get("hentai", 0.0) or 0.0),
+                )
+            scored.append((risk, region, crop))
+        if not scored:
+            return base
+        scored.sort(key=lambda item: -item[0])
+        _risk, region, crop = scored[0]
+        local_result = dict(self.local_detector.check(crop))
+        base["local_check_points"] = local_result.get("check_points", [])
+        base["local_box"] = local_result.get("box")
+        if not bool(local_result.get("blocked")):
+            return base
+        label = local_result.get("label")
+        confidence = float(local_result.get("confidence", 0.0))
+        base.update(
+            {
+                "blocked": True,
+                "classification": VisualViolationClassification.VIOLATION.value,
+                "reason": (
+                    f"coarse-to-fine found {label} score {confidence:.2f}"
+                ),
+                "label": label,
+                "confidence": confidence,
+                "source": "subtile",
+                "region": region,
+                "nudenet_label": label,
+                "nudenet_score": confidence,
+                "threshold": threshold_for_label(str(label)),
+                "tier": DetectionTier.STRONG.value,
+            }
+        )
+        return base
+
+    def _finalize_decision(
+        self,
+        decided: dict[str, Any],
+        captured_frame: CapturedFrame,
+        monitor_index: int,
+        frame_sequence: int,
+    ) -> dict[str, Any]:
+        plan = self._last_plan.get(monitor_index)
+        if plan is not None:
+            decided["scan_mode"] = plan.mode
+            decided["scan_interval_ms"] = plan.interval_ms
+        label = decided.get("label") or decided.get("nudenet_label")
+        score = float(decided.get("confidence") or decided.get("nudenet_score") or 0.0)
+        if label and "tier" not in decided:
+            model = None
+            payload = decided.get("evidence")
+            if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+                model = payload[0].get("model")
+            decided["tier"] = self.threshold_policy.tier(
+                score, str(label), None if model is None else str(model)
+            ).value
+            if decided["tier"] == DetectionTier.IGNORE.value:
+                decided["tier"] = tier_for_score(
+                    score, str(label), margin=self.borderline_margin
+                ).value
+        hit_ids: set[int] = set()
+        if bool(decided.get("blocked")):
+            region = decided.get("region")
+            if isinstance(region, (list, tuple)) and len(region) == 4:
+                mapped = box_to_region(region, xywh=False)
+                region = mapped or tuple(int(v) for v in region)
+            else:
+                region = box_to_region(decided.get("box"), xywh=True)
+            track = self.tracker.match_or_create(
+                monitor_index=monitor_index,
+                box=region if isinstance(region, tuple) else None,
+                label=None if label is None else str(label),
+                confidence=score,
+                source=str(decided.get("source") or "unknown"),
+                frame_sequence=frame_sequence,
+                evidence_delta=evidence_from_confidence(
+                    score, None if label is None else str(label)
+                ),
+            )
+            if track is not None:
+                hit_ids.add(track.id)
+                decided["track_id"] = track.id
+                decided["track_fresh_hits"] = track.fresh_frame_hits
+                decided["track_evidence"] = track.evidence_score
+                decided["region"] = track.box
+        self.tracker.mark_monitor_misses(
+            monitor_index,
+            hit_ids=hit_ids,
+            decay=self.settings.temporal.decay,
+            frame_sequence=frame_sequence,
+        )
+        del captured_frame
+        return decided
 
     def rescue_status(self, monitor_index: int) -> dict[str, int | None]:
         """Return scalar scheduling state without exposing any image data."""
@@ -510,11 +936,11 @@ class DecisionEngine:
     ) -> ViolationEvidence | None:
         candidates: list[ViolationEvidence] = []
         for item in evidence:
-            threshold = threshold_for_label(item.label)
-            if threshold is None:
-                continue
-            if is_borderline_score(
-                item.confidence, threshold, self.borderline_margin
+            if (
+                self.threshold_policy.tier(
+                    item.confidence, item.label, item.model
+                )
+                is DetectionTier.PROPOSAL
             ):
                 candidates.append(item)
         return strongest_evidence(candidates)
@@ -530,10 +956,17 @@ class DecisionEngine:
             if not isinstance(detection, dict):
                 continue
             label = str(detection.get("class", ""))
-            threshold = threshold_for_label(label)
             score = float(detection.get("score", 0.0))
-            if threshold is not None and is_borderline_score(
-                score, threshold, self.borderline_margin
+            model = detection.get("model")
+            threshold = self.threshold_policy.strong(
+                label, None if model is None else str(model)
+            ) or threshold_for_label(label)
+            if threshold is not None and (
+                self.threshold_policy.tier(
+                    score, label, None if model is None else str(model)
+                )
+                is DetectionTier.PROPOSAL
+                or is_borderline_score(score, threshold, self.borderline_margin)
             ):
                 candidate = dict(detection)
                 candidate["threshold"] = threshold

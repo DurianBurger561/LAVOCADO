@@ -190,6 +190,39 @@
               <span>Pinned checks <strong id="rescue-pin">0</strong></span>
             </div>
 
+            <div class="capture-card" aria-labelledby="scan-plan-heading">
+              <div class="capture-heading">
+                <span id="scan-plan-heading" class="signal-name">Scan plan</span>
+                <span id="scan-mode" class="signal-tag neutral">Monitoring</span>
+              </div>
+              <dl class="capture-list">
+                <div>
+                  <dt>Duration</dt>
+                  <dd id="scan-total-ms">—</dd>
+                </div>
+                <div>
+                  <dt>Target interval</dt>
+                  <dd id="scan-interval-ms">—</dd>
+                </div>
+                <div>
+                  <dt>Full detector</dt>
+                  <dd id="scan-full">None</dd>
+                </div>
+                <div>
+                  <dt>Tile ranking</dt>
+                  <dd id="scan-tiles">—</dd>
+                </div>
+                <div>
+                  <dt>Track</dt>
+                  <dd id="scan-track">Inactive</dd>
+                </div>
+                <div>
+                  <dt>Shadow</dt>
+                  <dd id="scan-shadow">Off</dd>
+                </div>
+              </dl>
+            </div>
+
             <div class="capture-card explorer-card" aria-labelledby="explorer-heading">
               <div class="capture-heading">
                 <span id="explorer-heading" class="signal-name">Failure explorer</span>
@@ -325,11 +358,216 @@
               <p class="section-label">VISUAL DETECTION</p>
               <h2 id="vision-settings-heading">Vision settings</h2>
             </div>
+            <span id="vision-experimental-badge" class="signal-tag capture-fallback">Experimental Defaults</span>
           </div>
           <p class="muted">
             Vision only judges whether the current frame violates LAVOCADO's visual content rules.
-            There is no medical, art, education, or news mode.
+            There is no medical, art, education, or news mode. Changing models restarts protection.
           </p>
+          <p id="vision-settings-message" class="rules-message" role="status" aria-live="polite"></p>
+          <div class="capture-card" aria-labelledby="model-status-heading">
+            <div class="capture-heading">
+              <span id="model-status-heading" class="signal-name">Required models</span>
+              <button id="vision-download-all" class="button ghost" type="button">Download all</button>
+            </div>
+            <p class="muted">NudeNet, YOLO11 NSFW Small, Viddexa Nano, and Viddexa Mini must be downloaded from their pinned sources before use.</p>
+            <ul id="model-status-list" class="model-status-list"></ul>
+          </div>
+          <form id="vision-settings-form" class="vision-form">
+            <div class="vision-form-grid">
+              <label>
+                Primary detector
+                <select id="vision-primary-select" name="primary">
+                  <option value="nudenet_640m">NudeNet 640m</option>
+                  <option value="yolo11_nsfw_small">YOLO11 NSFW Small</option>
+                </select>
+              </label>
+              <label>
+                Context model
+                <select id="vision-context-select" name="context">
+                  <option value="off">Off</option>
+                  <option value="viddexa_nano">Viddexa Nano</option>
+                  <option value="viddexa_mini">Viddexa Mini</option>
+                </select>
+              </label>
+              <label>
+                Detection mode
+                <select id="vision-preset-select" name="preset">
+                  <option value="low_cpu">Low CPU</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="high_recall">High Recall</option>
+                </select>
+              </label>
+              <label>
+                Tile detection
+                <select id="vision-tile-enabled-select" name="tiles_enabled">
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>
+                Scan speed
+                <select id="vision-scan-speed-select" name="scan_speed">
+                  <option value="slow">Slow</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="fast">Fast</option>
+                </select>
+              </label>
+              <label>
+                Tile grid
+                <select id="vision-grid-select" name="grid">
+                  <option value="2x2">2 × 2</option>
+                  <option value="3x3">3 × 3</option>
+                </select>
+              </label>
+            </div>
+            <details class="vision-advanced">
+              <summary>Advanced detection settings</summary>
+              <div class="vision-form-grid">
+                <label>
+                  Full-screen input size
+                  <select id="vision-full-input-select" name="full_input_size">
+                    <option value="640">640</option>
+                    <option value="960">960</option>
+                    <option value="1280">1280</option>
+                  </select>
+                </label>
+                <label>
+                  Tile input size
+                  <select id="vision-tile-input-select" name="tile_input_size">
+                    <option value="640">640</option>
+                    <option value="960">960</option>
+                  </select>
+                </label>
+                <label>
+                  Tile overlap
+                  <select id="vision-overlap-select" name="overlap">
+                    <option value="0">0%</option>
+                    <option value="10">10%</option>
+                    <option value="15">15%</option>
+                    <option value="20">20%</option>
+                    <option value="25">25%</option>
+                  </select>
+                </label>
+                <label>
+                  Tiles per scan
+                  <select id="vision-checks-select" name="checks_per_scan">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                  </select>
+                </label>
+                <label>
+                  Max skipped scans
+                  <select id="vision-max-skip-select" name="max_skip">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="6">6</option>
+                    <option value="8">8</option>
+                  </select>
+                </label>
+                <label>
+                  Crop expansion
+                  <select id="vision-crop-select" name="crop_expansion">
+                    <option value="1.25">1.25×</option>
+                    <option value="1.5">1.5×</option>
+                    <option value="1.75">1.75×</option>
+                    <option value="2.0">2.0×</option>
+                    <option value="2.5">2.5×</option>
+                  </select>
+                </label>
+                <label>
+                  Shadow compare
+                  <select id="vision-shadow-select" name="shadow">
+                    <option value="false">Off</option>
+                    <option value="true">YOLO11 shadow</option>
+                  </select>
+                </label>
+                <label>
+                  Local recheck
+                  <select id="vision-recheck-select" name="recheck_enabled">
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                  </select>
+                </label>
+                <div class="vision-threshold-block">
+                  <p class="signal-name">Per-model thresholds</p>
+                  <p class="muted">Experimental starting points. NudeNet and YOLO11 keep independent proposal/strong values.</p>
+                  <div id="vision-threshold-table" class="vision-threshold-table"></div>
+                </div>
+                <label>
+                  Proposal sensitivity
+                  <select id="vision-proposal-select" name="proposal_margin">
+                    <option value="0.05">0.05</option>
+                    <option value="0.10">0.10</option>
+                    <option value="0.15">0.15</option>
+                    <option value="0.20">0.20</option>
+                  </select>
+                </label>
+                <label>
+                  Adaptive scan
+                  <select id="vision-adaptive-select" name="adaptive">
+                    <option value="true">Enabled</option>
+                    <option value="false">Every frame</option>
+                  </select>
+                </label>
+                <label>
+                  Screen change sensitivity
+                  <select id="vision-change-select" name="change_sensitivity">
+                    <option value="0.005">0.5%</option>
+                    <option value="0.01">1%</option>
+                    <option value="0.02">2%</option>
+                    <option value="0.05">5%</option>
+                  </select>
+                </label>
+                <label>
+                  Active monitor priority
+                  <select id="vision-active-monitor-select" name="active_monitor_priority">
+                    <option value="true">Enabled</option>
+                    <option value="false">Equal</option>
+                  </select>
+                </label>
+                <label>
+                  Temporal confirmation
+                  <select id="vision-confirmation-select" name="confirmation">
+                    <option value="boolean">Boolean 2/3</option>
+                    <option value="evidence">Evidence score</option>
+                    <option value="both">Boolean and evidence</option>
+                  </select>
+                </label>
+                <label>
+                  Temporal fresh hits
+                  <select id="vision-fresh-hits-select" name="min_fresh_hits">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                  </select>
+                </label>
+                <label>
+                  Evidence threshold
+                  <select id="vision-evidence-select" name="evidence_threshold">
+                    <option value="1.5">1.5</option>
+                    <option value="2.0">2.0</option>
+                    <option value="2.5">2.5</option>
+                    <option value="3.0">3.0</option>
+                    <option value="3.5">3.5</option>
+                  </select>
+                </label>
+                <label>
+                  Evidence decay
+                  <select id="vision-decay-select" name="decay">
+                    <option value="0.3">0.3</option>
+                    <option value="0.5">0.5</option>
+                    <option value="0.7">0.7</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+            <div class="vision-form-actions">
+              <button id="vision-save-button" class="button primary" type="submit">Save detection settings</button>
+              <button id="vision-reset-button" class="button ghost" type="button">Reset to experimental defaults</button>
+            </div>
+          </form>
           <dl class="capture-list vision-settings-list">
             <div>
               <dt>Primary detector</dt>
