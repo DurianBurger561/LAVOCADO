@@ -6,29 +6,27 @@ from pathlib import Path
 sys.path.insert(0, SPECPATH)
 
 from packaging.spec_common import (
-    USER_APP_NAME,
-    USER_EXCLUDES,
+    DEVELOPER_APP_NAME,
+    DEVELOPER_BUNDLE_NAME,
+    developer_datas,
+    developer_hiddenimports,
     macos_plist,
     platform_collect,
-    user_datas,
 )
 
 platform_binaries, platform_data, platform_hidden_imports = platform_collect()
 analysis = Analysis(
-    ["main.py"],
+    ["developer_main.py"],
     pathex=[],
     binaries=platform_binaries,
-    datas=user_datas(Path(SPECPATH)) + platform_data,
-    hiddenimports=platform_hidden_imports,
+    datas=developer_datas(Path(SPECPATH)) + platform_data,
+    hiddenimports=developer_hiddenimports(platform_hidden_imports),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=list(USER_EXCLUDES),
+    excludes=[],
     noarchive=False,
     optimize=0,
-)
-analysis.pure = type(analysis.pure)(
-    [item for item in analysis.pure if not str(item[0]).startswith("developer")]
 )
 pyz = PYZ(analysis.pure)
 
@@ -37,7 +35,7 @@ executable = EXE(
     analysis.scripts,
     [],
     exclude_binaries=True,
-    name=USER_APP_NAME,
+    name=DEVELOPER_APP_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -55,13 +53,13 @@ bundle = COLLECT(
     analysis.datas,
     strip=False,
     upx=False,
-    name=USER_APP_NAME,
+    name=DEVELOPER_APP_NAME,
 )
 
 if sys.platform == "darwin":
     app = BUNDLE(
         bundle,
-        name="LAVOCADO.app",
-        bundle_identifier="org.lavocado.desktop",
+        name=f"{DEVELOPER_BUNDLE_NAME}.app",
+        bundle_identifier="org.lavocado.desktop.developer",
         info_plist=macos_plist(),
     )

@@ -908,6 +908,30 @@ async function refreshVisionSettings() {
   }
 }
 
+function setAppView(view) {
+  const known = new Set(["home", "protection", "history", "settings"]);
+  if (!known.has(view)) {
+    return;
+  }
+  document.querySelectorAll("#app-nav .nav-button").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.view === view);
+  });
+  const showHero = view === "home" || view === "protection";
+  const showLive = view === "home" || view === "protection";
+  document.querySelectorAll(".hero").forEach((node) => {
+    node.hidden = !showHero;
+  });
+  document.querySelectorAll(".dashboard-grid").forEach((node) => {
+    node.hidden = !showLive;
+  });
+  document.querySelectorAll(".history").forEach((node) => {
+    node.hidden = view !== "history";
+  });
+  document.querySelectorAll(".rules, .vision-settings").forEach((node) => {
+    node.hidden = view !== "settings";
+  });
+}
+
 async function initializeDashboard() {
   element("start-button").addEventListener("click", () => runAction("start_protection"));
   element("stop-button").addEventListener("click", () => runAction("stop_protection"));
@@ -929,6 +953,13 @@ async function initializeDashboard() {
     const picker = form.querySelector(".pick-app");
     if (picker) picker.addEventListener("click", () => beginAppPick(form));
   });
+
+  if (!document.getElementById("benchmark-lab")) {
+    document.querySelectorAll("#app-nav .nav-button").forEach((button) => {
+      button.addEventListener("click", () => setAppView(button.dataset.view));
+    });
+    setAppView("home");
+  }
 
   await Promise.all([
     refreshStatus(),

@@ -12,6 +12,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = PROJECT_ROOT / "app" / "ui" / "web"
 
 
+def _packaging_source() -> str:
+    return "\n".join(
+        [
+            (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8"),
+            (PROJECT_ROOT / "packaging" / "spec_common.py").read_text(encoding="utf-8"),
+        ]
+    )
+
+
 class EventHook:
     def __init__(self) -> None:
         self.handlers = []
@@ -113,6 +122,9 @@ class WebDashboardTests(unittest.TestCase):
 
         self.assertIn('href="styles.css"', html)
         self.assertIn('src="app.js"', html)
+        self.assertIn('id="app-nav"', html)
+        self.assertIn('data-view="home"', html)
+        self.assertNotIn('data-view="developer"', html)
         self.assertIn('addEventListener("pywebviewready"', script)
         for method in (
             "start_protection",
@@ -273,24 +285,23 @@ class WebDashboardTests(unittest.TestCase):
         self.assertIn('sys_platform == "linux"', requirements)
 
     def test_pyinstaller_spec_bundles_all_web_resources(self) -> None:
-        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
-
+        spec = _packaging_source()
         self.assertIn('"app" / "ui" / "web"', spec)
         self.assertIn('"app/ui/web"', spec)
 
     def test_windows_packaging_includes_generated_uia_interface(self) -> None:
-        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        spec = _packaging_source()
         self.assertIn('GetModule("UIAutomationCore.dll")', spec)
         self.assertIn('"comtypes.gen.UIAutomationClient"', spec)
 
     def test_macos_packaging_includes_accessibility_framework(self) -> None:
-        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        spec = _packaging_source()
         requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
         self.assertIn('"ApplicationServices"', spec)
         self.assertIn('pyobjc-framework-ApplicationServices', requirements)
 
     def test_linux_packaging_includes_atspi_reader(self) -> None:
-        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        spec = _packaging_source()
         requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
         self.assertIn('"gi.repository.Atspi"', spec)
         self.assertIn('get_gi_typelibs(', spec)

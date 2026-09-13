@@ -70,6 +70,27 @@ button {
   margin-bottom: 30px;
 }
 
+.edition-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 22px;
+}
+
+.nav-button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--text);
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.nav-button.is-active {
+  border-color: var(--green);
+  color: var(--green);
+}
+
 .brand {
   gap: 14px;
 }
