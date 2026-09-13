@@ -124,6 +124,7 @@ class WebDashboardTests(unittest.TestCase):
             "get_rules",
             "add_rule",
             "remove_rule",
+            "get_vision_settings",
         ):
             self.assertIn(method, script)
         self.assertNotIn("innerHTML", script)
@@ -144,6 +145,12 @@ class WebDashboardTests(unittest.TestCase):
         self.assertIn("You are responsible for content", script)
         self.assertIn("medical, educational, artistic, news", script)
         self.assertIn("LAVOCADO does not determine viewing intent", html)
+        self.assertIn('id="vision-settings-heading"', html)
+        self.assertIn("VISUAL DETECTION", html)
+        self.assertIn("There is no medical, art, education, or news mode.", html)
+        self.assertNotIn("Medical Mode", html)
+        self.assertNotIn("Art Mode", html)
+        self.assertNotIn("Education Mode", html)
         self.assertEqual(html.count('class="button ghost pick-app"'), 2)
         self.assertIn('"begin_app_pick"', script)
         self.assertIn('"get_app_pick_result"', script)
@@ -172,12 +179,31 @@ class WebDashboardTests(unittest.TestCase):
         for field in (
             "foreground-application", "foreground-browser", "foreground-website",
             "foreground-app-rule", "foreground-website-rule", "foreground-effective",
-            "foreground-policy",
+            "foreground-policy", "foreground-vision-called",
         ):
             with self.subTest(field=field):
                 self.assertIn(f'id="{field}"', html)
                 self.assertIn(f'"{field}"', script)
         self.assertIn("data.foreground_context", script)
+
+    def test_dashboard_renders_vision_settings_group(self) -> None:
+        html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+        for field in (
+            "vision-primary-detector",
+            "vision-context-model",
+            "vision-detection-mode",
+            "vision-thresholds",
+            "vision-tile",
+            "vision-roi",
+            "vision-temporal",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(f'id="{field}"', html)
+                self.assertIn(f'"{field}"', script)
+        self.assertIn('"get_vision_settings"', script)
+        self.assertIn("decision-classification", script)
 
     def test_dashboard_names_native_and_mss_capture_modes(self) -> None:
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")

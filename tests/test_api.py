@@ -99,6 +99,15 @@ class DashboardAPITests(unittest.TestCase):
         self.assertEqual(payloads[1]["events"][0]["label"], "TEST_LABEL")
         self.assertEqual(payloads[2]["diagnostics"]["temporal"], [0, 1, 1])
 
+    def test_vision_settings_exclude_intent_modes(self) -> None:
+        payload = self.api.get_vision_settings()
+
+        json.dumps(payload)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["settings"]["detection_mode"]["id"], "visual_violation")
+        self.assertEqual(payload["settings"]["intent_modes"], [])
+        self.assertFalse(payload["settings"]["context_model"]["can_block"])
+
     def test_errors_are_returned_without_exposing_exception_text(self) -> None:
         api = DashboardAPI(BrokenController(), self.recorder, FakeDiagnostics())
 

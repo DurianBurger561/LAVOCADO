@@ -297,11 +297,13 @@ main {
   gap: 20px;
 }
 
-.rules {
+.rules,
+.vision-settings {
   padding: 26px 28px;
 }
 
-.rules > .muted {
+.rules > .muted,
+.vision-settings > .muted {
   margin: -12px 0 14px;
   font-size: 12px;
 }

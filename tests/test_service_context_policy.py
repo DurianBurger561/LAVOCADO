@@ -185,6 +185,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
             "application_rule": "full_bypass",
             "website_rule": "force_block",
             "effective_policy": "force_block",
+            "vision_called": False,
         })
 
     def test_application_blacklist_blocks_without_a_known_website(self) -> None:
@@ -351,6 +352,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
             "application_rule": "normal",
             "website_rule": "normal",
             "effective_policy": "normal",
+            "vision_called": True,
         }
 
         for name, store, availability in cases:

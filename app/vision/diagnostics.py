@@ -60,6 +60,7 @@ class DiagnosticsStore:
                 "application_rule": "normal",
                 "website_rule": "normal",
                 "effective_policy": "normal",
+                "vision_called": True,
             },
             "capture": {
                 "preferred_backend": None,
@@ -160,6 +161,7 @@ class DiagnosticsStore:
                 else policy.action.value if policy is not None else "normal"
             ),
         }
+        foreground["vision_called"] = foreground["effective_policy"] == "normal"
         with self._lock:
             self._snapshot["foreground_context"] = foreground
 

@@ -8,6 +8,7 @@ from typing import Any
 
 from app.ui.controller import ProtectionStatus
 from app.ui.rules import RuleConflict, RuleEditor
+from app.vision.settings import vision_settings_snapshot
 
 
 class DashboardAPI:
@@ -76,6 +77,12 @@ class DashboardAPI:
             return {"ok": True, "diagnostics": self.diagnostics.snapshot()}
         except Exception as error:  # noqa: BLE001 - JSON API boundary
             return self._error_result("Could not read diagnostics", error)
+
+    def get_vision_settings(self) -> dict[str, Any]:
+        try:
+            return {"ok": True, "settings": vision_settings_snapshot()}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not read vision settings", error)
 
     def test_intervention(self) -> dict[str, Any]:
         try:

@@ -204,6 +204,7 @@ function renderDiagnostics(data) {
   text("foreground-effective", humanize(effectivePolicy, "Normal"));
   text("foreground-policy", humanize(effectivePolicy, "Normal"));
   element("foreground-policy").className = `signal-tag context-policy ${effectivePolicy}`;
+  text("foreground-vision-called", foreground.vision_called === false ? "No" : "Yes");
 
   const nude = data.nudenet || {};
   text("nude-label", humanize(nude.label, "No detection"));
@@ -218,6 +219,12 @@ function renderDiagnostics(data) {
   text("context-label", humanize(context.label, "No result"));
   text("context-score", context.score === null || context.score === undefined ? "—" : formatNumber(context.score));
   text("decision-source", humanize(data.decision_source));
+  text(
+    "decision-classification",
+    data.classification
+      ? humanize(data.classification, "Clear")
+      : "Visual violation only; tile rank cannot block",
+  );
   renderTemporal(data.temporal);
 
   const rescue = data.rescue || {};
@@ -479,6 +486,55 @@ async function beginAppPick(form) {
   }
 }
 
+function renderVisionSettings(settings) {
+  const detectors = Array.isArray(settings.primary_detectors)
+    ? settings.primary_detectors.join(" + ")
+    : settings.primary_detector;
+  text("vision-primary-detector", humanize(detectors, "Nudenet"));
+  const contextModel = settings.context_model || {};
+  text(
+    "vision-context-model",
+    `${contextModel.name || "Viddexa"} · ranks tiles, cannot block`,
+  );
+  const mode = settings.detection_mode || {};
+  text("vision-detection-mode", mode.label || "Visual violation only");
+  const thresholds = settings.thresholds && typeof settings.thresholds === "object"
+    ? Object.entries(settings.thresholds)
+      .map(([label, score]) => `${humanize(label)} ${formatNumber(score)}`)
+      .join(" · ")
+    : "";
+  text("vision-thresholds", thresholds || "—");
+  const tile = settings.tile || {};
+  text(
+    "vision-tile",
+    tile.enabled === false
+      ? "Off"
+      : `${tile.rows || 2} × ${tile.columns || 2} ranking`,
+  );
+  const roi = settings.roi || {};
+  text(
+    "vision-roi",
+    `Expand ${formatNumber(roi.expansion, 2)} · margin ${formatNumber(roi.borderline_margin, 2)}`,
+  );
+  const temporal = settings.temporal || {};
+  text(
+    "vision-temporal",
+    `${temporal.required_hits || 2} / ${temporal.window_size || 3} fresh frames`,
+  );
+}
+
+async function refreshVisionSettings() {
+  if (ui.inFlight.has("vision-settings")) return;
+  ui.inFlight.add("vision-settings");
+  try {
+    renderVisionSettings(assertResponse(await invoke("get_vision_settings")).settings || {});
+  } catch (_error) {
+    renderVisionSettings({});
+  } finally {
+    ui.inFlight.delete("vision-settings");
+  }
+}
+
 async function initializeDashboard() {
   element("start-button").addEventListener("click", () => runAction("start_protection"));
   element("stop-button").addEventListener("click", () => runAction("stop_protection"));
@@ -493,7 +549,13 @@ async function initializeDashboard() {
     if (picker) picker.addEventListener("click", () => beginAppPick(form));
   });
 
-  await Promise.all([refreshStatus(), refreshDiagnostics(), refreshEvents(), refreshRules()]);
+  await Promise.all([
+    refreshStatus(),
+    refreshDiagnostics(),
+    refreshEvents(),
+    refreshRules(),
+    refreshVisionSettings(),
+  ]);
   ui.timers.push(window.setInterval(refreshDiagnostics, 500));
   ui.timers.push(window.setInterval(refreshStatus, 1000));
   ui.timers.push(window.setInterval(refreshEvents, 2000));

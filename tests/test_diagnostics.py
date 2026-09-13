@@ -52,6 +52,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             "application_rule": "full_bypass",
             "website_rule": "force_block",
             "effective_policy": "force_block",
+            "vision_called": False,
         })
         serialized = json.dumps(store.snapshot())
         for forbidden in ("Private", "private.example", "secret", "chrome.exe"):
@@ -65,6 +66,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             "application_rule": "normal",
             "website_rule": "normal",
             "effective_policy": "normal",
+            "vision_called": True,
         })
 
     def test_nonbrowser_and_legacy_blocklist_override(self) -> None:
@@ -87,6 +89,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
         self.assertFalse(foreground["is_browser"])
         self.assertEqual(foreground["website_state"], "not_browser")
         self.assertEqual(foreground["effective_policy"], "force_block")
+        self.assertFalse(foreground["vision_called"])
 
     def test_records_privacy_safe_capture_status(self) -> None:
         store = make_store()

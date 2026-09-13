@@ -141,6 +141,10 @@
                   <dt>Effective policy</dt>
                   <dd id="foreground-effective">Normal</dd>
                 </div>
+                <div>
+                  <dt>Vision called</dt>
+                  <dd id="foreground-vision-called">Yes</dd>
+                </div>
               </dl>
             </div>
 
@@ -165,7 +169,7 @@
               <div class="mini-signal">
                 <span class="signal-name">Decision</span>
                 <strong id="decision-source">No candidate</strong>
-                <span class="muted">Visual violation only; tile rank cannot block</span>
+                <span id="decision-classification" class="muted">Visual violation only; tile rank cannot block</span>
               </div>
             </div>
 
@@ -272,6 +276,49 @@
               </form>
             </div>
           </div>
+        </section>
+
+        <section class="panel vision-settings" aria-labelledby="vision-settings-heading">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">VISUAL DETECTION</p>
+              <h2 id="vision-settings-heading">Vision settings</h2>
+            </div>
+          </div>
+          <p class="muted">
+            Vision only judges whether the current frame violates LAVOCADO's visual content rules.
+            There is no medical, art, education, or news mode.
+          </p>
+          <dl class="capture-list vision-settings-list">
+            <div>
+              <dt>Primary detector</dt>
+              <dd id="vision-primary-detector">NudeNet</dd>
+            </div>
+            <div>
+              <dt>Context model</dt>
+              <dd id="vision-context-model">Tile ranking</dd>
+            </div>
+            <div>
+              <dt>Detection mode</dt>
+              <dd id="vision-detection-mode">Visual violation only</dd>
+            </div>
+            <div>
+              <dt>Thresholds</dt>
+              <dd id="vision-thresholds">—</dd>
+            </div>
+            <div>
+              <dt>Tile</dt>
+              <dd id="vision-tile">—</dd>
+            </div>
+            <div>
+              <dt>ROI</dt>
+              <dd id="vision-roi">—</dd>
+            </div>
+            <div>
+              <dt>Temporal</dt>
+              <dd id="vision-temporal">2 / 3</dd>
+            </div>
+          </dl>
         </section>
 
         <section class="panel history" aria-labelledby="history-heading">
