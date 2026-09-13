@@ -539,6 +539,10 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(recorder.events[0].trigger_type, "blocklist")
         self.assertIsNone(recorder.events[0].confidence)
         self.assertEqual(intervention.generate_count, 1)
+        self.assertEqual(
+            service.diagnostics.snapshot()["foreground_context"]["effective_policy"],
+            "force_block",
+        )
 
 
 if __name__ == "__main__":

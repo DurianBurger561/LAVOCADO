@@ -8,6 +8,12 @@ from threading import Lock
 from typing import Any
 
 from app import config
+from app.context.models import (
+    ContextPolicyAction,
+    ContextPolicyResult,
+    ForegroundContext,
+    WebsiteContextState,
+)
 from app.platforms.capture.models import CaptureBackendStatus
 
 
@@ -47,6 +53,14 @@ class DiagnosticsStore:
             "inference_resolution": inference_resolution,
             "context_model": context_model,
             "context_status": context_status,
+            "foreground_context": {
+                "application_available": False,
+                "is_browser": None,
+                "website_state": "unavailable",
+                "application_rule": "normal",
+                "website_rule": "normal",
+                "effective_policy": "normal",
+            },
             "capture": {
                 "preferred_backend": None,
                 "active_backend": None,
@@ -102,6 +116,51 @@ class DiagnosticsStore:
         }
         with self._lock:
             self._snapshot["capture"] = capture
+
+    def record_foreground_context(
+        self,
+        context: ForegroundContext | None,
+        policy: ContextPolicyResult | None,
+        *,
+        effective_override: ContextPolicyAction | None = None,
+    ) -> None:
+        """Publish only rule actions and coarse availability, never context identity."""
+
+        application_available = bool(
+            context is not None and context.application.identifier
+        )
+        if not application_available:
+            browser = None
+            website_state = "unavailable"
+        elif context is not None and context.is_browser:
+            browser = True
+            website_state = (
+                "known"
+                if context.website is not None
+                and context.website.state is WebsiteContextState.KNOWN
+                else "unknown"
+            )
+        else:
+            browser = False
+            website_state = "not_browser"
+
+        foreground = {
+            "application_available": application_available,
+            "is_browser": browser,
+            "website_state": website_state,
+            "application_rule": (
+                policy.app_action.value if policy is not None else "normal"
+            ),
+            "website_rule": (
+                policy.website_action.value if policy is not None else "normal"
+            ),
+            "effective_policy": (
+                effective_override.value if effective_override is not None
+                else policy.action.value if policy is not None else "normal"
+            ),
+        }
+        with self._lock:
+            self._snapshot["foreground_context"] = foreground
 
     def record_scan(
         self,

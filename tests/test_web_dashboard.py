@@ -163,6 +163,20 @@ class WebDashboardTests(unittest.TestCase):
                 self.assertIn(f'id="{field}"', html)
                 self.assertIn(f'"{field}"', script)
 
+    def test_dashboard_renders_coarse_foreground_context(self) -> None:
+        html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+        for field in (
+            "foreground-application", "foreground-browser", "foreground-website",
+            "foreground-app-rule", "foreground-website-rule", "foreground-effective",
+            "foreground-policy",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(f'id="{field}"', html)
+                self.assertIn(f'"{field}"', script)
+        self.assertIn("data.foreground_context", script)
+
     def test_dashboard_names_native_and_mss_capture_modes(self) -> None:
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
 

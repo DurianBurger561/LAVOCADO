@@ -235,7 +235,11 @@ class LavocadoService:
 
         blocklist_result = self.watcher.check()
         blocked_result = self._blocklist_detection(blocklist_result)
+        context = self.context_store.latest()
         if blocked_result is not None:
+            self.diagnostics.record_foreground_context(
+                context, None, effective_override=ContextPolicyAction.FORCE_BLOCK
+            )
             self._leave_bypass()
             monitor_index = int(blocked_result["monitor_index"])
             self._show_intervention(
@@ -245,9 +249,11 @@ class LavocadoService:
             )
             return [blocked_result]
 
-        context = self.context_store.latest()
-        if context is not None:
-            policy_result = self.context_policy.evaluate(context)
+        policy_result = (
+            self.context_policy.evaluate(context) if context is not None else None
+        )
+        self.diagnostics.record_foreground_context(context, policy_result)
+        if policy_result is not None:
             if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
                 self._leave_bypass()
                 result, monitor_index, trigger_type = self._context_rule_detection(

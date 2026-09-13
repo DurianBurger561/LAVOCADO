@@ -646,6 +646,21 @@ main {
   background: rgba(255, 115, 138, 0.12);
 }
 
+.signal-tag.context-policy.force_block {
+  color: var(--danger);
+  background: rgba(255, 115, 138, 0.12);
+}
+
+.signal-tag.context-policy.full_bypass {
+  color: var(--amber);
+  background: rgba(244, 201, 122, 0.12);
+}
+
+.signal-tag.context-policy.normal {
+  color: var(--green);
+  background: rgba(85, 203, 136, 0.12);
+}
+
 .meter {
   height: 5px;
   margin: 13px 0 8px;

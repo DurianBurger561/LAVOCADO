@@ -60,6 +60,12 @@ function captureMode(capture) {
   };
 }
 
+function ruleLabel(action) {
+  if (action === "force_block") return "Blocked";
+  if (action === "full_bypass") return "Whitelisted";
+  return "No rule";
+}
+
 function showMessage(message, isError = false) {
   const target = element("action-message");
   target.textContent = message || "";
@@ -186,6 +192,18 @@ function renderDiagnostics(data) {
   }
   text("capture-health", captureHealth);
   element("capture-health").className = `signal-tag ${captureHealthClass}`;
+
+  const foreground = data.foreground_context || {};
+  const effectivePolicy = foreground.effective_policy || "normal";
+  text("foreground-application", foreground.application_available ? "Available" : "Unavailable");
+  text("foreground-browser", foreground.is_browser === null || foreground.is_browser === undefined
+    ? "—" : foreground.is_browser ? "Yes" : "No");
+  text("foreground-website", humanize(foreground.website_state, "Unavailable"));
+  text("foreground-app-rule", ruleLabel(foreground.application_rule));
+  text("foreground-website-rule", ruleLabel(foreground.website_rule));
+  text("foreground-effective", humanize(effectivePolicy, "Normal"));
+  text("foreground-policy", humanize(effectivePolicy, "Normal"));
+  element("foreground-policy").className = `signal-tag context-policy ${effectivePolicy}`;
 
   const nude = data.nudenet || {};
   text("nude-label", humanize(nude.label, "No detection"));

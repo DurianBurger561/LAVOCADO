@@ -178,6 +178,14 @@ class ServiceContextPolicyTests(unittest.TestCase):
         self.assertEqual(recorder.events[0].trigger_type, "website_rule")
         self.assertEqual(recorder.events[0].label, "blocked.example")
         self.assertEqual(results[0]["monitor_index"], 2)
+        self.assertEqual(service.diagnostics.snapshot()["foreground_context"], {
+            "application_available": True,
+            "is_browser": True,
+            "website_state": "known",
+            "application_rule": "full_bypass",
+            "website_rule": "force_block",
+            "effective_policy": "force_block",
+        })
 
     def test_application_blacklist_blocks_without_a_known_website(self) -> None:
         recorder = FakeRecorder()
@@ -287,6 +295,10 @@ class ServiceContextPolicyTests(unittest.TestCase):
         self.assertEqual(service.check_once(), [])
         self.assertEqual(service.state, State.BYPASSED)
         self.assertEqual(capturer.grabbed_indexes, [])
+        self.assertEqual(
+            service.diagnostics.snapshot()["foreground_context"]["effective_policy"],
+            "full_bypass",
+        )
 
     def test_manual_intervention_restores_bypassed_state(self) -> None:
         overlay = FakeOverlay()

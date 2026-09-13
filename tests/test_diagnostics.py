@@ -3,6 +3,14 @@
 import json
 import unittest
 
+from app.context.models import (
+    ApplicationContext,
+    ContextPolicyAction,
+    ContextPolicyResult,
+    ForegroundContext,
+    WebsiteContext,
+    WebsiteContextState,
+)
 from app.platforms.capture import CaptureBackendStatus
 from app.vision.diagnostics import DiagnosticsStore
 
@@ -17,6 +25,69 @@ def make_store() -> DiagnosticsStore:
 
 
 class DiagnosticsStoreTests(unittest.TestCase):
+    def test_foreground_diagnostics_are_coarse_and_clear_when_unavailable(self) -> None:
+        store = make_store()
+        context = ForegroundContext(
+            ApplicationContext(
+                "chrome.exe", "Private Window Title", "chrome.exe", "42", 0.0
+            ),
+            True,
+            WebsiteContext(
+                WebsiteContextState.KNOWN, "chromium",
+                "private.example/path?q=secret", "test", 0.0,
+            ),
+            0.0,
+        )
+        policy = ContextPolicyResult(
+            ContextPolicyAction.FORCE_BLOCK,
+            ContextPolicyAction.FULL_BYPASS,
+            ContextPolicyAction.FORCE_BLOCK,
+        )
+
+        store.record_foreground_context(context, policy)
+        self.assertEqual(store.snapshot()["foreground_context"], {
+            "application_available": True,
+            "is_browser": True,
+            "website_state": "known",
+            "application_rule": "full_bypass",
+            "website_rule": "force_block",
+            "effective_policy": "force_block",
+        })
+        serialized = json.dumps(store.snapshot())
+        for forbidden in ("Private", "private.example", "secret", "chrome.exe"):
+            self.assertNotIn(forbidden, serialized)
+
+        store.record_foreground_context(None, None)
+        self.assertEqual(store.snapshot()["foreground_context"], {
+            "application_available": False,
+            "is_browser": None,
+            "website_state": "unavailable",
+            "application_rule": "normal",
+            "website_rule": "normal",
+            "effective_policy": "normal",
+        })
+
+    def test_nonbrowser_and_legacy_blocklist_override(self) -> None:
+        store = make_store()
+        context = ForegroundContext(
+            ApplicationContext("code", "Code", "code", "1", 0.0),
+            False, None, 0.0,
+        )
+        policy = ContextPolicyResult(
+            ContextPolicyAction.NORMAL,
+            ContextPolicyAction.NORMAL,
+            ContextPolicyAction.NORMAL,
+        )
+
+        store.record_foreground_context(
+            context, policy, effective_override=ContextPolicyAction.FORCE_BLOCK
+        )
+
+        foreground = store.snapshot()["foreground_context"]
+        self.assertFalse(foreground["is_browser"])
+        self.assertEqual(foreground["website_state"], "not_browser")
+        self.assertEqual(foreground["effective_policy"], "force_block")
+
     def test_records_privacy_safe_capture_status(self) -> None:
         store = make_store()
 
