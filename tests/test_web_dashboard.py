@@ -90,6 +90,7 @@ class WebDashboardTests(unittest.TestCase):
             webview_module=webview,
             controller=controller,
             recorder=recorder,
+            rule_store=object(),
         )
 
         args, options = webview.window_call
@@ -120,10 +121,27 @@ class WebDashboardTests(unittest.TestCase):
             "get_events",
             "get_diagnostics",
             "test_intervention",
+            "get_rules",
+            "add_rule",
+            "remove_rule",
         ):
             self.assertIn(method, script)
         self.assertNotIn("innerHTML", script)
         self.assertNotIn("eval(", script)
+
+    def test_dashboard_has_four_rule_groups_and_whitelist_confirmation(self) -> None:
+        html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+        for group in (
+            "blocked_applications", "whitelisted_applications",
+            "blocked_websites", "whitelisted_websites",
+        ):
+            self.assertIn(f'data-rule-group="{group}"', html)
+            self.assertIn(f'"{group}"', script)
+        self.assertIn('id="rule-confirmation"', html)
+        self.assertIn("Visual protection will be completely disabled", script)
+        self.assertIn("You are responsible for content", script)
 
     def test_dashboard_renders_capture_backend_diagnostics(self) -> None:
         html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")

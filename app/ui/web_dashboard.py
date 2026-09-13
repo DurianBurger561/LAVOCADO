@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app import config
+from app.context.settings import RuleSettingsStore
 from app.intervention.recorder import EventRecorder
 from app.platforms import PlatformAdapter
 from app.ui.api import DashboardAPI
@@ -27,6 +29,7 @@ def run_web_dashboard(
     webview_module=None,
     controller=None,
     recorder=None,
+    rule_store=None,
     root: Path | None = None,
 ) -> None:
     """Open the local web dashboard on the GUI main thread."""
@@ -44,7 +47,11 @@ def run_web_dashboard(
     recorder = recorder or EventRecorder(
         platform_adapter.default_data_dir() / "events.db"
     )
-    api = DashboardAPI(controller, recorder, controller)
+    rule_store = rule_store or RuleSettingsStore(
+        platform_adapter.default_data_dir() / "events.db",
+        legacy_blocked_apps=config.BLOCKED_APPS,
+    )
+    api = DashboardAPI(controller, recorder, controller, rule_store)
     closed = False
 
     def close_resources() -> None:

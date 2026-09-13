@@ -3,6 +3,7 @@
 const ui = {
   inFlight: new Set(),
   timers: [],
+  canEditRules: false,
 };
 
 const element = (id) => document.getElementById(id);
@@ -60,6 +61,12 @@ function captureMode(capture) {
 
 function showMessage(message, isError = false) {
   const target = element("action-message");
+  target.textContent = message || "";
+  target.classList.toggle("error", isError);
+}
+
+function showRuleMessage(message, isError = false) {
+  const target = element("rules-message");
   target.textContent = message || "";
   target.classList.toggle("error", isError);
 }
@@ -249,9 +256,165 @@ async function runAction(method) {
     showMessage(response.message || "Done.");
     renderStatus(response);
     await refreshDiagnostics();
+    await refreshRules();
   } catch (error) {
     showMessage(error instanceof Error ? error.message : "Local request failed.", true);
     await refreshStatus();
+  }
+}
+
+const ruleGroups = [
+  "blocked_applications",
+  "whitelisted_applications",
+  "blocked_websites",
+  "whitelisted_websites",
+];
+
+const whitelistWarnings = {
+  whitelisted_applications: [
+    "Add application to whitelist?",
+    "Visual protection will be completely disabled while this application is active, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed by this application.",
+  ],
+  whitelisted_websites: [
+    "Add website to whitelist?",
+    "Visual protection will be completely disabled while this website is the active tab, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content shown on this website.",
+  ],
+};
+
+function confirmRule(title, body) {
+  return new Promise((resolve) => {
+    const backdrop = element("rule-confirmation");
+    const accept = element("rule-confirm-accept");
+    const cancel = element("rule-confirm-cancel");
+    text("rule-confirm-title", title);
+    text("rule-confirm-body", body);
+    backdrop.hidden = false;
+    accept.focus();
+
+    function finish(accepted) {
+      backdrop.hidden = true;
+      accept.removeEventListener("click", onAccept);
+      cancel.removeEventListener("click", onCancel);
+      document.removeEventListener("keydown", onKeydown);
+      resolve(accepted);
+    }
+    function onAccept() { finish(true); }
+    function onCancel() { finish(false); }
+    function onKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      }
+    }
+    accept.addEventListener("click", onAccept);
+    cancel.addEventListener("click", onCancel);
+    document.addEventListener("keydown", onKeydown);
+  });
+}
+
+function renderRules(response) {
+  ui.canEditRules = Boolean(response.can_edit);
+  text(
+    "rules-hint",
+    ui.canEditRules
+      ? "Changes are stored locally and apply the next time protection starts."
+      : "Stop protection before editing rules. Current rules remain active until it stops.",
+  );
+  document.querySelectorAll(".rule-form input, .rule-form select, .rule-form button")
+    .forEach((control) => { control.disabled = !ui.canEditRules; });
+
+  ruleGroups.forEach((group) => {
+    const list = element(`${group.replaceAll("_", "-")}-list`);
+    list.replaceChildren();
+    const rules = Array.isArray(response.rules?.[group]) ? response.rules[group] : [];
+    if (rules.length === 0) {
+      const item = document.createElement("li");
+      item.className = "rule-empty";
+      item.textContent = "No rules yet";
+      list.appendChild(item);
+    }
+    rules.forEach((rule) => {
+      const item = document.createElement("li");
+      const value = document.createElement("span");
+      value.className = "rule-value";
+      value.textContent = rule.identifier || rule.domain;
+      item.appendChild(value);
+      if (rule.match_mode) {
+        const mode = document.createElement("span");
+        mode.className = "rule-mode";
+        mode.textContent = rule.match_mode === "exact_host" ? "Exact host" : "Subdomains";
+        item.appendChild(mode);
+      }
+      if (!rule.enabled) {
+        const disabled = document.createElement("span");
+        disabled.className = "rule-mode";
+        disabled.textContent = "Disabled";
+        item.appendChild(disabled);
+      }
+      const remove = document.createElement("button");
+      remove.className = "text-button rule-remove";
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.disabled = !ui.canEditRules;
+      remove.setAttribute("aria-label", `Remove ${value.textContent}`);
+      remove.addEventListener("click", () => removeRule(group, rule));
+      item.appendChild(remove);
+      list.appendChild(item);
+    });
+  });
+}
+
+async function refreshRules() {
+  if (ui.inFlight.has("rules") || ui.inFlight.has("rule-change")) return;
+  ui.inFlight.add("rules");
+  try {
+    renderRules(assertResponse(await invoke("get_rules")));
+  } catch (error) {
+    showRuleMessage(error instanceof Error ? error.message : "Could not load rules.", true);
+  } finally {
+    ui.inFlight.delete("rules");
+  }
+}
+
+async function addRule(form) {
+  if (ui.inFlight.has("rule-change") || !ui.canEditRules) return;
+  ui.inFlight.add("rule-change");
+  const group = form.dataset.ruleGroup;
+  const value = form.elements.namedItem("value").value.trim();
+  const matchMode = form.elements.namedItem("match_mode")?.value || "exact_host";
+  try {
+    if (whitelistWarnings[group]) {
+      const [title, body] = whitelistWarnings[group];
+      if (!await confirmRule(title, body)) return;
+    }
+    let response = await invoke("add_rule", group, value, matchMode, false);
+    if (response?.conflict) {
+      if (!await confirmRule("Replace conflicting rule?", response.message)) return;
+      response = await invoke("add_rule", group, value, matchMode, true);
+    }
+    renderRules(assertResponse(response));
+    form.reset();
+    showRuleMessage(response.message);
+  } catch (error) {
+    showRuleMessage(error instanceof Error ? error.message : "Could not add rule.", true);
+  } finally {
+    ui.inFlight.delete("rule-change");
+  }
+}
+
+async function removeRule(group, rule) {
+  if (ui.inFlight.has("rule-change") || !ui.canEditRules) return;
+  ui.inFlight.add("rule-change");
+  try {
+    const response = assertResponse(await invoke(
+      "remove_rule", group, rule.identifier || rule.domain, rule.match_mode || "exact_host",
+    ));
+    renderRules(response);
+    showRuleMessage(response.message);
+  } catch (error) {
+    showRuleMessage(error instanceof Error ? error.message : "Could not remove rule.", true);
+  } finally {
+    ui.inFlight.delete("rule-change");
   }
 }
 
@@ -260,11 +423,18 @@ async function initializeDashboard() {
   element("stop-button").addEventListener("click", () => runAction("stop_protection"));
   element("test-button").addEventListener("click", () => runAction("test_intervention"));
   element("refresh-history").addEventListener("click", refreshEvents);
+  document.querySelectorAll(".rule-form").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      addRule(form);
+    });
+  });
 
-  await Promise.all([refreshStatus(), refreshDiagnostics(), refreshEvents()]);
+  await Promise.all([refreshStatus(), refreshDiagnostics(), refreshEvents(), refreshRules()]);
   ui.timers.push(window.setInterval(refreshDiagnostics, 500));
   ui.timers.push(window.setInterval(refreshStatus, 1000));
   ui.timers.push(window.setInterval(refreshEvents, 2000));
+  ui.timers.push(window.setInterval(refreshRules, 2000));
 }
 
 window.addEventListener("pywebviewready", initializeDashboard, { once: true });

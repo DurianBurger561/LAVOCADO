@@ -3,22 +3,27 @@
 from __future__ import annotations
 
 from datetime import datetime
+from threading import RLock
 from typing import Any
 
 from app.ui.controller import ProtectionStatus
+from app.ui.rules import RuleConflict, RuleEditor
 
 
 class DashboardAPI:
     """Expose only control and privacy-safe read operations to JavaScript."""
 
-    def __init__(self, controller, recorder, diagnostics=None) -> None:
+    def __init__(self, controller, recorder, diagnostics=None, rule_store=None) -> None:
         self.controller = controller
         self.recorder = recorder
         self.diagnostics = controller if diagnostics is None else diagnostics
+        self.rule_editor = None if rule_store is None else RuleEditor(rule_store)
+        self._rule_lock = RLock()
 
     def start_protection(self) -> dict[str, Any]:
         try:
-            started = self.controller.start()
+            with self._rule_lock:
+                started = self.controller.start()
             return self._action_result(
                 started,
                 "Protection started.",
@@ -79,6 +84,71 @@ class DashboardAPI:
             )
         except Exception as error:  # noqa: BLE001 - JSON API boundary
             return self._error_result("Could not test intervention", error)
+
+    def get_rules(self) -> dict[str, Any]:
+        try:
+            with self._rule_lock:
+                editor = self._require_rule_editor()
+                rules = editor.snapshot()
+                can_edit = self._can_edit_rules()
+            return {"ok": True, "rules": rules, "can_edit": can_edit}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not read protection rules", error)
+
+    def add_rule(
+        self,
+        group: str,
+        value: str,
+        match_mode: str = "exact_host",
+        replace_conflict: bool = False,
+    ) -> dict[str, Any]:
+        try:
+            with self._rule_lock:
+                editor = self._require_rule_editor()
+                if not self._can_edit_rules():
+                    return self._rules_running_result()
+                if not isinstance(replace_conflict, bool):
+                    raise TypeError("Invalid replacement choice.")
+                editor.add(group, value, match_mode, replace_conflict)
+                rules = editor.snapshot()
+            return {"ok": True, "rules": rules, "can_edit": True,
+                    "message": "Rule saved. It will apply when protection starts."}
+        except RuleConflict as error:
+            return {"ok": False, "conflict": True, "message": str(error)}
+        except (TypeError, ValueError):
+            return {"ok": False, "message": "Invalid rule value or match mode."}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not save protection rule", error)
+
+    def remove_rule(
+        self, group: str, value: str, match_mode: str = "exact_host"
+    ) -> dict[str, Any]:
+        try:
+            with self._rule_lock:
+                editor = self._require_rule_editor()
+                if not self._can_edit_rules():
+                    return self._rules_running_result()
+                changed = editor.remove(group, value, match_mode)
+                rules = editor.snapshot()
+            return {"ok": True, "rules": rules, "can_edit": True, "changed": changed,
+                    "message": "Rule removed. Changes apply when protection starts."}
+        except (TypeError, ValueError):
+            return {"ok": False, "message": "Invalid rule value or match mode."}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not remove protection rule", error)
+
+    def _require_rule_editor(self) -> RuleEditor:
+        if self.rule_editor is None:
+            raise RuntimeError("Rule storage is unavailable")
+        return self.rule_editor
+
+    def _can_edit_rules(self) -> bool:
+        return self.controller.status in (ProtectionStatus.STOPPED, ProtectionStatus.FAILED)
+
+    @staticmethod
+    def _rules_running_result() -> dict[str, Any]:
+        return {"ok": False, "can_edit": False,
+                "message": "Stop protection before editing rules."}
 
     def _action_result(
         self,
