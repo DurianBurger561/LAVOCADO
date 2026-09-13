@@ -6,7 +6,6 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from app import config
 from app.build_edition import DEVELOPER_APP_NAME
 from app.context.settings import RuleSettingsStore
 from app.intervention.recorder import EventRecorder
@@ -103,7 +102,6 @@ def run_developer_dashboard(
     )
     rule_store = rule_store or RuleSettingsStore(
         platform_adapter.default_data_dir() / "events.db",
-        legacy_blocked_apps=config.BLOCKED_APPS,
     )
     app_picker = app_picker or ForegroundAppPicker(
         platform_adapter.get_foreground_application

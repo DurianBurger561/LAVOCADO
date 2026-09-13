@@ -26,10 +26,9 @@ one guided breath, and a ready stage before enabling the continue button.
 
 When protection is triggered, LAVOCADO stores only the UTC time, trigger type,
 confidence, monitor number, and whether the intervention was shown. Vision
-events may also store the detector class. Application-rule, website-rule, and
-legacy blocklist events store a null label, so application identifiers and
-hostnames are not written to history. It does not store screenshots, full URLs,
-or window titles.
+events may also store the detector class. Application-rule and website-rule
+events store a null label, so application identifiers and hostnames are not
+written to history. It does not store screenshots, full URLs, or window titles.
 
 The SQLite event database is stored in the current user's application-data
 directory:
@@ -108,6 +107,12 @@ hostname, window title, or URL.
 The durable product rules are in
 [context-first visual protection](docs/context-first-vision.md).
 
+On macOS, foreground-application details require Accessibility permission for
+the terminal or packaged application. On X11 Linux, install `xprop` and
+`xwininfo` (provided by `x11-utils` on Ubuntu). WSL can only inspect window
+metadata that WSLg exposes; use a native Windows build to match all Windows
+applications.
+
 ## Optional AI support message
 
 LAVOCADO works without an API key and uses a built-in local message by default.
@@ -128,28 +133,6 @@ Only a fixed request for a supportive message is sent. Screenshots, detector
 labels, confidence values, monitor numbers, URLs, and window titles are never
 included. API response storage is disabled for this request. Set
 `LAVOCADO_OPENAI_MODEL` to override the default model.
-
-## Legacy foreground-window blocklist
-
-Prefer the dashboard rules above. `BLOCKED_APPS` in `app/config.py` remains
-only for ambiguous name or title terms that cannot be stored as a stable
-application identifier:
-
-```python
-BLOCKED_APPS = ["Steam", "reddit.com"]
-```
-
-When a term matches, LAVOCADO uses the foreground window's center to cover only
-the display containing that window. Window metadata is checked in memory and is
-not stored or sent to the AI service. An empty list disables this legacy
-watcher. Stable identifiers such as `chrome.exe` are migrated once to
-structured application block rules. Ambiguous terms such as `Steam` stay in the
-legacy watcher so their existing behaviour is preserved.
-
-On macOS, foreground-window details require Accessibility permission for the
-terminal or packaged application. On X11 Linux, install `xprop` and `xwininfo`
-(provided by `x11-utils` on Ubuntu). WSL can only inspect window metadata that
-WSLg exposes; use a native Windows build to match all Windows applications.
 
 ## Supported platforms
 
@@ -175,9 +158,9 @@ Website discovery is also platform-specific and lives under
 Linux AT-SPI. A failed or unavailable reader never stops visual protection;
 the website side stays UNKNOWN.
 
-Each process creates one `PlatformAdapter` and passes it to capture, blocklist,
-overlay, storage, and dashboard composition. Business modules therefore do not
-select an operating system or import a concrete platform implementation.
+Each process creates one `PlatformAdapter` and passes it to capture, overlay,
+storage, and dashboard composition. Business modules therefore do not select an
+operating system or import a concrete platform implementation.
 
 ## Setup
 

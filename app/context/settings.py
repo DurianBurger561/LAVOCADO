@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import sqlite3
-from collections.abc import Iterable
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.context.browser_registry import DEFAULT_BROWSERS
 from app.context.models import (
     ApplicationRule,
     ContextPolicyAction,
@@ -18,9 +15,6 @@ from app.context.models import (
 )
 from app.context.website.normalization import normalize_hostname
 
-_KNOWN_IDENTIFIERS = frozenset(
-    definition.application_identifier.casefold() for definition in DEFAULT_BROWSERS
-)
 _RULE_ACTIONS = frozenset(
     {ContextPolicyAction.FORCE_BLOCK, ContextPolicyAction.FULL_BYPASS}
 )
@@ -80,24 +74,12 @@ def normalize_rule_settings(settings: RuleSettings) -> RuleSettings:
     return RuleSettings(tuple(applications.values()), tuple(websites.values()))
 
 
-def unmigrated_legacy_terms(terms: Iterable[str]) -> tuple[str, ...]:
-    """Keep ambiguous old title substrings in the legacy watcher unchanged."""
-
-    return tuple(term for term in terms if _legacy_identifier(term) is None)
-
-
 class RuleSettingsStore:
     """Store only rule definitions in the existing local SQLite data file."""
 
-    def __init__(
-        self,
-        database_path: str | Path,
-        *,
-        legacy_blocked_apps: Iterable[str] = (),
-    ) -> None:
+    def __init__(self, database_path: str | Path) -> None:
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._legacy_terms = tuple(legacy_blocked_apps)
         self._initialize_database()
 
     def load(self) -> RuleSettings:
@@ -200,44 +182,7 @@ class RuleSettingsStore:
                 )
                 """
             )
-            connection.execute(
-                "CREATE TABLE IF NOT EXISTS context_rule_migrations (name TEXT PRIMARY KEY)"
-            )
-            self._migrate_legacy(connection)
-
-    def _migrate_legacy(self, connection: sqlite3.Connection) -> None:
-        if not self._legacy_terms:
-            return
-        digest = hashlib.sha256(
-            "\0".join(self._legacy_terms).encode("utf-8")
-        ).hexdigest()
-        marker = f"blocked_apps_v1:{digest}"
-        if connection.execute(
-            "SELECT 1 FROM context_rule_migrations WHERE name = ?", (marker,)
-        ).fetchone() is not None:
-            return
-        for term in self._legacy_terms:
-            identifier = _legacy_identifier(term)
-            if identifier is not None:
-                connection.execute(
-                    "INSERT INTO application_rules (identifier, action, enabled) "
-                    "VALUES (?, 'force_block', 1) "
-                    "ON CONFLICT(identifier) DO UPDATE SET action='force_block', enabled=1",
-                    (identifier,),
-                )
-        connection.execute(
-            "INSERT INTO context_rule_migrations (name) VALUES (?)", (marker,)
-        )
-
-
-def _legacy_identifier(term: str) -> str | None:
-    try:
-        identifier = normalize_application_identifier(term)
-    except (TypeError, ValueError):
-        return None
-    if identifier.endswith(".exe") or identifier in _KNOWN_IDENTIFIERS:
-        return identifier
-    return None
+            connection.execute("DROP TABLE IF EXISTS context_rule_migrations")
 
 
 def _validate_rule_fields(action: ContextPolicyAction, enabled: bool) -> None:

@@ -9,7 +9,6 @@ import numpy as np
 
 from app.vision.detectors.base import (
     DetectionEvidence,
-    check_result_from_evidence,
     to_detection_evidence,
 )
 from app.vision.yolo_adapter import (
@@ -65,15 +64,6 @@ class Yolo11NsfwDetector:
                 model.imgsz = previous
         self._last_raw = detections
         return to_detection_evidence(detections, model=self.name)
-
-    def check(self, image: np.ndarray) -> dict[str, Any]:
-        """Compatibility wrapper: apply YOLO's independent label policy."""
-
-        evidence = self.detect(image, input_size=self.default_input_size)
-        return check_result_from_evidence(
-            evidence,
-            raw_detections=self._last_raw,
-        )
 
     def last_raw_detections(self) -> list[dict[str, Any]]:
         return list(self._last_raw)

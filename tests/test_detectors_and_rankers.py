@@ -56,12 +56,13 @@ class DetectorAbstractionTests(unittest.TestCase):
         self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
         self.assertFalse(any(hasattr(item, "blocked") for item in evidence))
 
-    def test_nudenet_check_wrapper_still_thresholds(self) -> None:
-        result = NudeNetPrimaryDetector(model=FakeNudeModel()).check(
-            np.zeros((16, 16, 3), dtype=np.uint8)
+    def test_nudenet_detect_emits_typed_anatomy_evidence(self) -> None:
+        evidence = NudeNetPrimaryDetector(model=FakeNudeModel()).detect(
+            np.zeros((16, 16, 3), dtype=np.uint8),
+            input_size=640,
         )
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["label"], "FEMALE_BREAST_EXPOSED")
+        self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
+        self.assertAlmostEqual(evidence[0].confidence, 0.71)
 
     def test_yolo_uses_input_size_and_own_labels(self) -> None:
         model = FakeYolo()

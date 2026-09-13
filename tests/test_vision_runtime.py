@@ -55,9 +55,21 @@ class VisionRuntimeTests(unittest.TestCase):
                 self.evaluate_calls = 0
                 self.reset_count = 0
 
-            def evaluate(self, _frame: object, *, monitor_index: int = 1) -> dict[str, object]:
+            def evaluate(self, _frame: object, *, monitor_index: int = 1):
                 self.evaluate_calls += 1
-                return {"blocked": True, "monitor_index": monitor_index}
+                from app.vision.violation_policy import (
+                    VisualViolationClassification,
+                    VisualViolationDecision,
+                )
+
+                return VisualViolationDecision(
+                    classification=VisualViolationClassification.VIOLATION,
+                    evidence=(),
+                    reason_codes=(),
+                    primary_region=None,
+                    frame_sequence=1,
+                    monitor_index=monitor_index,
+                )
 
             def reset(self) -> None:
                 self.reset_count += 1
@@ -66,8 +78,10 @@ class VisionRuntimeTests(unittest.TestCase):
         session.enter_bypass()
         result = session.evaluate(object())
 
-        self.assertEqual(result["source"], "full_bypass")
-        self.assertFalse(result["blocked"])
+        from app.vision.violation_policy import VisualViolationClassification
+
+        self.assertEqual(result.reason_codes, ("full_bypass",))
+        self.assertIs(result.classification, VisualViolationClassification.CLEAR)
         self.assertEqual(session.pipeline.evaluate_calls, 0)
         session.exit_bypass_if_needed()
         self.assertGreaterEqual(session.pipeline.reset_count, 2)

@@ -8,7 +8,7 @@ from app.platforms.base import WindowInfo
 from app.platforms.linux import LinuxWindowProvider
 from app.platforms.macos import MacOSWindowProvider
 from app.platforms.windows import WindowsWindowProvider
-from tests.test_watcher import FakeKernel32, FakeUser32
+from tests.test_platform_modules import FakeKernel32, FakeUser32
 
 
 class ApplicationIdentityTests(unittest.TestCase):

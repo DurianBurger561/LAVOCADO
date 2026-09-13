@@ -137,10 +137,6 @@ class CachedPrimaryDetector:
         del frame, input_size
         return list(self._evidence)
 
-    def check(self, image: np.ndarray) -> dict[str, Any]:
-        del image
-        return check_result_from_evidence(self._evidence, raw_detections=self._raw)
-
 
 class BenchmarkSession:
     """One independent Vision/Decision stack. Does not touch Protection runtime."""
@@ -226,14 +222,9 @@ class BenchmarkSession:
             if cached is not None:
                 return cached
         started = time.perf_counter()
-        detect = getattr(self.detector, "detect", None)
         preprocess_ms = 0.0
-        if callable(detect):
-            evidence = detect(image, input_size=self.config.full_input_size)
-            detections = detections_payload(list(evidence or []))
-        else:
-            result = dict(self.detector.check(image))
-            detections = list(result.get("check_points") or [])
+        evidence = self.detector.detect(image, input_size=self.config.full_input_size)
+        detections = detections_payload(list(evidence or []))
         inference_ms = (time.perf_counter() - started) * 1000
         raw = RawInferenceResult(
             sample_id=sample.id,
@@ -307,8 +298,12 @@ class BenchmarkSession:
             context_model=self.config.context_model,
         )
         total_ms = (time.perf_counter() - started) * 1000
+        from app.vision.violation_policy import VisualViolationClassification
+
         predicted = (
-            EXPECTED_BLOCK if bool(decided.get("blocked")) else EXPECTED_ALLOW
+            EXPECTED_BLOCK
+            if decided.classification is VisualViolationClassification.VIOLATION
+            else EXPECTED_ALLOW
         )
         outcome = outcome_for(sample.expected, predicted, excluded=sample.excluded)
         strongest = _strongest_detection(raw.detections)
@@ -331,21 +326,27 @@ class BenchmarkSession:
             },
             "context_summary": {
                 "model": self.config.context_model,
-                "label": decided.get("context_label"),
-                "score": decided.get("context_score"),
-                "scores": decided.get("context_scores"),
-                "rescue_tile_index": decided.get("rescue_tile_index"),
+                "label": decided.context_label,
+                "score": decided.context_score,
+                "scores": None,
+                "rescue_tile_index": decided.rescue_tile_index,
                 "ranking": ranking,
             },
             "ranking": ranking,
             "decision_summary": {
-                "blocked": bool(decided.get("blocked")),
-                "classification": decided.get("classification"),
-                "source": decided.get("source"),
-                "label": decided.get("label"),
-                "confidence": decided.get("confidence"),
-                "threshold": decided.get("threshold"),
-                "evidence": decided.get("evidence"),
+                "classification": decided.classification.value,
+                "reason_codes": list(decided.reason_codes),
+                "label": decided.label,
+                "confidence": decided.confidence,
+                "threshold": decided.threshold,
+                "evidence": [
+                    {
+                        "evidence_type": item.evidence_type.value,
+                        "label": item.label,
+                        "confidence": item.confidence,
+                    }
+                    for item in decided.evidence
+                ],
             },
         }
 

@@ -13,7 +13,9 @@ from typing import TypeVar
 
 _Result = TypeVar("_Result")
 _IDENTITY_TRIGGER_TYPES = frozenset({
-    "application_rule", "website_rule", "blocklist"
+    "application_rule",
+    "website_rule",
+    "blocklist",
 })
 
 

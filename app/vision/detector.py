@@ -12,8 +12,7 @@ from nudenet import NudeDetector
 
 from app import config
 from app.vision.model_assets import resolve_nudenet_model_path
-from app.vision.nudenet_adapter import detections_to_evidence
-from app.vision.violation_policy import evidence_to_dict, threshold_for_label
+from app.vision.detectors.base import DetectionEvidence, to_detection_evidence
 
 LOGGER = logging.getLogger(__name__)
 
@@ -74,63 +73,16 @@ class Detector:
         self.model_variant = "320n-fallback"
         self.inference_resolution = config.NUDENET_FALLBACK_INFERENCE_RESOLUTION
 
-    def check(self, image: np.ndarray) -> dict[str, Any]:
-        """Return NudeNet detections plus which ones meet violation thresholds.
+    def detect(
+        self,
+        frame: np.ndarray,
+        *,
+        input_size: int = 640,
+    ) -> list[DetectionEvidence]:
+        """Run NudeNet and return typed visual evidence. No product decision."""
 
-        ``blocked`` here means “primary detector found thresholded evidence”,
-        not a protection decision. The decision engine still has to classify
-        the frame as VIOLATION / UNCERTAIN / CLEAR.
-        """
-
-        detections = list(self.model.detect(image))
-        evidence = detections_to_evidence(detections, model="nudenet")
-        evidence_payload = [evidence_to_dict(item) for item in evidence]
-        blocking_matches: list[dict[str, Any]] = []
-
-        for detection in detections:
-            label = str(detection.get("class", ""))
-            score = float(detection.get("score", 0.0))
-            threshold = threshold_for_label(label)
-
-            if threshold is not None and score >= threshold:
-                blocking_matches.append(
-                    {
-                        "label": label,
-                        "score": score,
-                        "threshold": threshold,
-                        "box": detection.get("box"),
-                    }
-                )
-
-        if not blocking_matches:
-            return {
-                "blocked": False,
-                "reason": "",
-                "label": None,
-                "confidence": 0.0,
-                "box": None,
-                "check_points": detections,
-                "evidence": evidence_payload,
-            }
-
-        strongest = max(
-            blocking_matches,
-            key=lambda match: float(match["score"]),
-        )
-
-        label = str(strongest["label"])
-        score = float(strongest["score"])
-        threshold = float(strongest["threshold"])
-
-        return {
-            "blocked": True,
-            "reason": (
-                f"{label} "
-                f"(score {score:.2f}, threshold {threshold:.2f})"
-            ),
-            "label": label,
-            "confidence": score,
-            "box": strongest.get("box"),
-            "check_points": detections,
-            "evidence": evidence_payload,
-        }
+        del input_size
+        if not isinstance(frame, np.ndarray):
+            return []
+        detections = list(self.model.detect(frame))
+        return to_detection_evidence(detections, model="nudenet")

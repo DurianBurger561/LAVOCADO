@@ -129,21 +129,18 @@ def run_protection(
         if control_input is None or control_output is None:
             raise RuntimeError("Dashboard control pipes are unavailable")
 
-    from app import config
-    from app.blocklist.watcher import WindowWatcher
     from app.context.policy.application import ApplicationPolicy
     from app.context.policy.resolver import ContextPolicyService
     from app.context.policy.website import WebsitePolicy
-    from app.context.settings import RuleSettingsStore, unmigrated_legacy_terms
+    from app.context.settings import RuleSettingsStore
     from app.service import LavocadoService
 
     try:
         settings = RuleSettingsStore(
             platform_adapter.default_data_dir() / "events.db",
-            legacy_blocked_apps=config.BLOCKED_APPS,
         ).load()
     except (OSError, sqlite3.Error, TypeError, ValueError):
-        # A damaged rule schema must not disable the legacy watcher or vision.
+        # A damaged rule schema must not disable vision.
         service = LavocadoService(platform_adapter)
     else:
         service = LavocadoService(
@@ -151,10 +148,6 @@ def run_protection(
             context_policy=ContextPolicyService(
                 ApplicationPolicy(settings.application_rules),
                 WebsitePolicy(settings.website_rules),
-            ),
-            watcher=WindowWatcher(
-                platform_adapter,
-                blocked_terms=unmigrated_legacy_terms(config.BLOCKED_APPS),
             ),
         )
     stop_event = threading.Event()

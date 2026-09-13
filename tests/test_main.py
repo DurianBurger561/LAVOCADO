@@ -13,8 +13,12 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import main
-from app import config
-from app.context.models import ContextPolicyAction, WebsiteMatchMode, WebsiteRule
+from app.context.models import (
+    ApplicationRule,
+    ContextPolicyAction,
+    WebsiteMatchMode,
+    WebsiteRule,
+)
 from app.context.settings import RuleSettings, RuleSettingsStore
 from app.intervention.recorder import RecordedEvent
 
@@ -73,10 +77,13 @@ class MainTests(unittest.TestCase):
         platform.prepare_environment.assert_called_once_with()
         run_protection.assert_called_once_with(platform, False)
 
-    def test_protection_loads_persisted_rules_and_keeps_ambiguous_legacy_terms(self) -> None:
+    def test_protection_loads_persisted_context_policy_rules(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir)
             RuleSettingsStore(data_dir / "events.db").save(RuleSettings(
+                application_rules=(
+                    ApplicationRule("chrome.exe", ContextPolicyAction.FORCE_BLOCK),
+                ),
                 website_rules=(WebsiteRule(
                     "blocked.example", ContextPolicyAction.FORCE_BLOCK,
                     WebsiteMatchMode.EXACT_HOST,
@@ -84,7 +91,6 @@ class MainTests(unittest.TestCase):
             ))
             platform = Mock(default_data_dir=Mock(return_value=data_dir))
             with (
-                patch.object(config, "BLOCKED_APPS", ["chrome.exe", "Steam"]),
                 patch("app.service.LavocadoService") as service_class,
                 patch("sys.stdout", io.StringIO()),
             ):
@@ -100,7 +106,7 @@ class MainTests(unittest.TestCase):
             [rule.domain for rule in keywords["context_policy"].website.rules],
             ["blocked.example"],
         )
-        self.assertEqual(keywords["watcher"]._blocked_terms, ("Steam",))
+        self.assertNotIn("watcher", keywords)
 
     def test_broken_rule_schema_falls_back_to_existing_protection(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

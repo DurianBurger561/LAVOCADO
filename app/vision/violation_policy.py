@@ -213,13 +213,22 @@ class ViolationEvidence:
 class VisualViolationDecision:
     classification: VisualViolationClassification
     evidence: tuple[ViolationEvidence, ...]
-    source: str
+    reason_codes: tuple[str, ...]
+    primary_region: tuple[int, int, int, int] | None
+    frame_sequence: int
     label: str | None = None
     confidence: float = 0.0
-
-    @property
-    def blocked(self) -> bool:
-        return self.classification is VisualViolationClassification.VIOLATION
+    track_id: int | None = None
+    track_evidence: float | None = None
+    track_fresh_hits: int = 0
+    monitor_index: int = 1
+    scan_mode: str | None = None
+    scan_interval_ms: float | None = None
+    context_label: str | None = None
+    context_score: float | None = None
+    rescue_tile_index: int | None = None
+    threshold: float | None = None
+    shadow: dict[str, Any] | None = None
 
 
 def normalize_model_label(label: str) -> str:
@@ -319,3 +328,134 @@ def evidence_to_dict(item: ViolationEvidence) -> dict[str, Any]:
         "model": item.model,
         "frame_sequence": item.frame_sequence,
     }
+
+
+def evidence_from_mapping(item: object) -> ViolationEvidence | None:
+    if isinstance(item, ViolationEvidence):
+        return item
+    if not isinstance(item, dict) or item.get("evidence_type") is None:
+        return None
+    try:
+        evidence_type = ViolationEvidenceType(str(item["evidence_type"]))
+        confidence = float(item.get("confidence") or 0.0)
+        frame_sequence = int(item.get("frame_sequence") or 0)
+    except (TypeError, ValueError):
+        return None
+    bbox = item.get("bbox")
+    parsed_bbox: tuple[float, float, float, float] | None = None
+    if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+        try:
+            parsed_bbox = (
+                float(bbox[0]),
+                float(bbox[1]),
+                float(bbox[2]),
+                float(bbox[3]),
+            )
+        except (TypeError, ValueError):
+            parsed_bbox = None
+    return ViolationEvidence(
+        evidence_type=evidence_type,
+        label=str(item.get("label") or ""),
+        confidence=confidence,
+        bbox=parsed_bbox,
+        model=str(item.get("model") or ""),
+        frame_sequence=frame_sequence,
+    )
+
+
+def _classification_from_payload(value: object) -> VisualViolationClassification:
+    if isinstance(value, VisualViolationClassification):
+        return value
+    raw = str(value or "").strip().lower()
+    if raw == VisualViolationClassification.VIOLATION.value:
+        return VisualViolationClassification.VIOLATION
+    if raw == VisualViolationClassification.UNCERTAIN.value:
+        return VisualViolationClassification.UNCERTAIN
+    return VisualViolationClassification.CLEAR
+
+
+def _region_from_payload(value: object) -> tuple[int, int, int, int] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        return (int(value[0]), int(value[1]), int(value[2]), int(value[3]))
+    except (TypeError, ValueError):
+        return None
+
+
+def visual_decision_from_engine_payload(
+    payload: dict[str, Any],
+    *,
+    frame_sequence: int,
+    monitor_index: int = 1,
+) -> VisualViolationDecision:
+    """Build the public vision result. Engine internals still use working dicts."""
+
+    evidence_items: list[ViolationEvidence] = []
+    raw_evidence = payload.get("evidence")
+    if isinstance(raw_evidence, list):
+        for item in raw_evidence:
+            mapped = evidence_from_mapping(item)
+            if mapped is not None:
+                evidence_items.append(mapped)
+    source = str(payload.get("source") or "").strip()
+    reason_codes = (source,) if source else ()
+    label = payload.get("label")
+    confidence = payload.get("confidence")
+    try:
+        parsed_confidence = 0.0 if confidence is None else float(confidence)
+    except (TypeError, ValueError):
+        parsed_confidence = 0.0
+    track_evidence = payload.get("track_evidence")
+    try:
+        parsed_track_evidence = (
+            None if track_evidence is None else float(track_evidence)
+        )
+    except (TypeError, ValueError):
+        parsed_track_evidence = None
+    interval = payload.get("scan_interval_ms")
+    try:
+        parsed_interval = None if interval is None else float(interval)
+    except (TypeError, ValueError):
+        parsed_interval = None
+    threshold = payload.get("threshold")
+    try:
+        parsed_threshold = None if threshold is None else float(threshold)
+    except (TypeError, ValueError):
+        parsed_threshold = None
+    track_id = payload.get("track_id")
+    parsed_track_id = track_id if isinstance(track_id, int) else None
+    fresh_hits = payload.get("track_fresh_hits")
+    try:
+        parsed_fresh_hits = 0 if fresh_hits is None else int(fresh_hits)
+    except (TypeError, ValueError):
+        parsed_fresh_hits = 0
+    rescue_index = payload.get("rescue_tile_index")
+    parsed_rescue = rescue_index if isinstance(rescue_index, int) else None
+    shadow = payload.get("shadow")
+    return VisualViolationDecision(
+        classification=_classification_from_payload(payload.get("classification")),
+        evidence=tuple(evidence_items),
+        reason_codes=reason_codes,
+        primary_region=_region_from_payload(payload.get("region")),
+        frame_sequence=int(frame_sequence),
+        label=None if label is None else str(label),
+        confidence=parsed_confidence,
+        track_id=parsed_track_id,
+        track_evidence=parsed_track_evidence,
+        track_fresh_hits=parsed_fresh_hits,
+        monitor_index=int(monitor_index),
+        scan_mode=None if payload.get("scan_mode") is None else str(payload.get("scan_mode")),
+        scan_interval_ms=parsed_interval,
+        context_label=(
+            None if payload.get("context_label") is None else str(payload.get("context_label"))
+        ),
+        context_score=(
+            None
+            if payload.get("context_score") is None
+            else float(payload.get("context_score") or 0.0)
+        ),
+        rescue_tile_index=parsed_rescue,
+        threshold=parsed_threshold,
+        shadow=dict(shadow) if isinstance(shadow, dict) else None,
+    )

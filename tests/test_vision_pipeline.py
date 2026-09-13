@@ -6,20 +6,25 @@ import numpy as np
 
 from app.vision.capture import CapturedFrame
 from app.vision.decision import DecisionEngine
+from app.vision.detectors.base import DetectionEvidence
 from app.vision.pipeline import VisionPipeline
-from app.vision.violation_policy import ViolationEvidenceType
+from app.vision.violation_policy import (
+    ViolationEvidenceType,
+    VisualViolationClassification,
+)
 from app.vision.yolo_adapter import Yolo11Adapter
 
 
 class FakeDetector:
-    def __init__(self, result: dict[str, object]) -> None:
-        self.result = result
+    def __init__(self, evidence: list[DetectionEvidence] | None = None) -> None:
+        self.evidence = list(evidence or [])
         self.checked = 0
 
-    def check(self, image: object) -> dict[str, object]:
+    def detect(self, image: object, *, input_size: int = 640) -> list[DetectionEvidence]:
+        del input_size
         self.checked += 1
         self.image = image
-        return dict(self.result)
+        return list(self.evidence)
 
 
 class FakeYolo:
@@ -35,36 +40,17 @@ def frame() -> CapturedFrame:
 
 class VisionPipelineTests(unittest.TestCase):
     def test_nudenet_only_pipeline_classifies_clear_without_yolo(self) -> None:
-        detector = FakeDetector(
-            {
-                "blocked": False,
-                "reason": "",
-                "label": None,
-                "confidence": 0.0,
-                "box": None,
-                "check_points": [],
-            }
-        )
+        detector = FakeDetector()
         pipeline = VisionPipeline(detector, DecisionEngine())
 
         result = pipeline.evaluate(frame())
 
         self.assertEqual(pipeline.evaluate_calls, 1)
         self.assertEqual(detector.checked, 1)
-        self.assertEqual(result["classification"], "clear")
-        self.assertFalse(result["blocked"])
+        self.assertIs(result.classification, VisualViolationClassification.CLEAR)
 
     def test_yolo_sexual_act_enters_visual_decision(self) -> None:
-        detector = FakeDetector(
-            {
-                "blocked": False,
-                "reason": "",
-                "label": None,
-                "confidence": 0.0,
-                "box": None,
-                "check_points": [],
-            }
-        )
+        detector = FakeDetector()
         pipeline = VisionPipeline(
             detector,
             DecisionEngine(),
@@ -73,14 +59,10 @@ class VisionPipelineTests(unittest.TestCase):
 
         result = pipeline.evaluate(frame())
 
-        self.assertEqual(result["classification"], "violation")
-        self.assertEqual(result["source"], "yolo_sexual_act")
-        evidence_types = {
-            item["evidence_type"]
-            for item in result.get("evidence", [])
-            if isinstance(item, dict)
-        }
-        self.assertIn(ViolationEvidenceType.SEXUAL_ACT.value, evidence_types)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.reason_codes, ("yolo_sexual_act",))
+        evidence_types = {item.evidence_type for item in result.evidence}
+        self.assertIn(ViolationEvidenceType.SEXUAL_ACT, evidence_types)
 
 
 if __name__ == "__main__":

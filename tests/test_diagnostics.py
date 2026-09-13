@@ -13,6 +13,10 @@ from app.context.models import (
 )
 from app.platforms.capture import CaptureBackendStatus
 from app.vision.diagnostics import DiagnosticsStore
+from app.vision.violation_policy import (
+    VisualViolationClassification,
+    VisualViolationDecision,
+)
 
 
 def make_store() -> DiagnosticsStore:
@@ -69,7 +73,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             "vision_called": True,
         })
 
-    def test_nonbrowser_and_legacy_blocklist_override(self) -> None:
+    def test_nonbrowser_and_effective_policy_override(self) -> None:
         store = make_store()
         context = ForegroundContext(
             ApplicationContext("code", "Code", "code", "1", 0.0),
@@ -132,17 +136,19 @@ class DiagnosticsStoreTests(unittest.TestCase):
             monitor_index=2,
             elapsed_ms=183.26,
             scanned_at="2026-09-12T01:02:03.456+00:00",
-            decision={
-                "source": "nudenet_roi",
-                "classification": "violation",
-                "nudenet_label": "FEMALE_BREAST_EXPOSED",
-                "nudenet_score": 0.80,
-                "threshold": 0.65,
-                "context_label": "porn",
-                "context_score": 0.91,
-                "rescue_tile_index": None,
-                "rescue_region": None,
-            },
+            decision=VisualViolationDecision(
+                classification=VisualViolationClassification.VIOLATION,
+                evidence=(),
+                reason_codes=("nudenet_roi",),
+                primary_region=None,
+                frame_sequence=1,
+                label="FEMALE_BREAST_EXPOSED",
+                confidence=0.80,
+                threshold=0.65,
+                context_label="porn",
+                context_score=0.91,
+                monitor_index=2,
+            ),
             temporal=(False, True, True),
             rescue_status={
                 "next_tile_index": 2,
@@ -170,17 +176,15 @@ class DiagnosticsStoreTests(unittest.TestCase):
         store.record_scan(
             monitor_index=1,
             elapsed_ms=10,
-            decision={
-                "source": "nudenet_none",
-                "check_points": [
-                    {"class": "FACE_FEMALE", "score": 0.80, "box": [1, 2, 3, 4]},
-                    {
-                        "class": "FEMALE_BREAST_EXPOSED",
-                        "score": 0.40,
-                        "box": [5, 6, 7, 8],
-                    },
-                ],
-            },
+            decision=VisualViolationDecision(
+                classification=VisualViolationClassification.CLEAR,
+                evidence=(),
+                reason_codes=("nudenet_none",),
+                primary_region=None,
+                frame_sequence=1,
+                label="FACE_FEMALE",
+                confidence=0.80,
+            ),
             temporal=(),
         )
 

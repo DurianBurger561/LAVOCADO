@@ -158,7 +158,9 @@ class ContextFirstAcceptanceTests(unittest.TestCase):
             {"index": 0, "scores": {"porn": 0.99}, "primary_hit": False},
         ])
 
-        self.assertFalse(result["blocked"])
+        from app.vision.violation_policy import VisualViolationClassification
+
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
         self.assertIsNone(ranking["product_block"])
 
     def test_medical_anatomy_is_vision_true_positive_and_whitelist_bypass(self) -> None:

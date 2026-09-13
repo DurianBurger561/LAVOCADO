@@ -21,16 +21,9 @@ except ImportError:
 
 
 class FakeDetector:
-    def check(self, image):
-        del image
-        return {
-            "blocked": False,
-            "reason": "",
-            "label": None,
-            "confidence": 0.0,
-            "box": None,
-            "check_points": [],
-        }
+    def detect(self, image, *, input_size: int = 640):
+        del image, input_size
+        return []
 
 
 class RunnerTests(unittest.TestCase):

@@ -1,1 +1,0 @@
-"""Foreground-window blocklist support."""

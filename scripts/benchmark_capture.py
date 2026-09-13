@@ -40,7 +40,7 @@ RESULT_PREFIX = "LAVOCADO_CAPTURE_BENCHMARK "
 class DetectorLike(Protocol):
     """Detection seam used by the benchmark and its tests."""
 
-    def check(self, image: np.ndarray) -> dict[str, Any]: ...
+    def detect(self, image: np.ndarray, *, input_size: int = 640) -> list[Any]: ...
 
 
 class MemorySampler(Protocol):
@@ -166,7 +166,7 @@ def benchmark_backend(
                     sleeper=sleeper,
                 )
                 last_sequences[monitor.id] = frame.sequence
-                detector.check(_model_frame(frame.image))
+                detector.detect(_model_frame(frame.image), input_size=640)
                 peak_rss = max(peak_rss, memory.rss_bytes())
 
         samples = {
@@ -198,7 +198,7 @@ def benchmark_backend(
                 captured_ns = clock_ns()
                 last_sequences[monitor.id] = frame.sequence
                 detection_started_ns = clock_ns()
-                decision = detector.check(_model_frame(frame.image))
+                evidence = detector.detect(_model_frame(frame.image), input_size=640)
                 decision_finished_ns = clock_ns()
 
                 sample = samples[monitor.id]
@@ -217,7 +217,7 @@ def benchmark_backend(
                         (decision_finished_ns - frame.timestamp_ns) / 1_000_000,
                     )
                 )
-                sample["candidate_count"] += int(bool(decision.get("blocked")))
+                sample["candidate_count"] += int(bool(evidence))
                 peak_rss = max(peak_rss, memory.rss_bytes())
 
         cpu_elapsed = max(0.0, cpu_clock() - cpu_started)

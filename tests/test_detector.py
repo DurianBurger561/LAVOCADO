@@ -35,11 +35,10 @@ class DetectorTests(unittest.TestCase):
             ]
         )
 
-        result = Detector(model=model).check(self.image)
+        evidence = Detector(model=model).detect(self.image)
 
-        self.assertFalse(result["blocked"])
-        self.assertIsNone(result["label"])
-        self.assertEqual(result["confidence"], 0.0)
+        self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
+        self.assertAlmostEqual(evidence[0].confidence, 0.64)
 
     def test_blocks_detection_over_its_threshold(self) -> None:
         model = FakeModel(
@@ -52,12 +51,11 @@ class DetectorTests(unittest.TestCase):
             ]
         )
 
-        result = Detector(model=model).check(self.image)
+        evidence = Detector(model=model).detect(self.image)
 
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["label"], "FEMALE_GENITALIA_EXPOSED")
-        self.assertAlmostEqual(result["confidence"], 0.81)
-        self.assertEqual(result["box"], [0, 0, 10, 10])
+        self.assertEqual(evidence[0].label, "FEMALE_GENITALIA_EXPOSED")
+        self.assertAlmostEqual(evidence[0].confidence, 0.81)
+        self.assertEqual(evidence[0].box, (0.0, 0.0, 10.0, 10.0))
 
     def test_chooses_strongest_blocking_detection(self) -> None:
         model = FakeModel(
@@ -75,10 +73,13 @@ class DetectorTests(unittest.TestCase):
             ]
         )
 
-        result = Detector(model=model).check(self.image)
+        evidence = Detector(model=model).detect(self.image)
 
-        self.assertEqual(result["label"], "FEMALE_BREAST_EXPOSED")
-        self.assertAlmostEqual(result["confidence"], 0.88)
+        self.assertEqual([item.label for item in evidence], [
+            "ANUS_EXPOSED",
+            "FEMALE_BREAST_EXPOSED",
+        ])
+        self.assertAlmostEqual(evidence[1].confidence, 0.88)
 
     def test_loads_640m_with_640_pixel_inference(self) -> None:
         calls: list[dict[str, object]] = []

@@ -10,13 +10,12 @@ system accessibility services or unrelated model libraries never log data.
 | Context → SQLite rules | User-configured application identifiers and website hostnames | `RuleSettingsStore` normalizes before saving. A URL path, query, or fragment is not stored. |
 | Context → diagnostics | Availability, browser/website state, rule actions, effective policy | No application identifier, hostname, window title, or URL in the ordinary diagnostics snapshot or Dashboard IPC. |
 | Context Policy → Vision | Rule actions only | `VisualDecisionEngine` never receives hostname, application name, URL, or medical/art/education flags. Missing context still runs Vision. |
-| Rule or legacy-window trigger → SQLite history | Trigger type, time, monitor, intervention flag | New `application_rule`, `website_rule`, and `blocklist` records always have a null label. |
+| Rule trigger → SQLite history | Trigger type, time, monitor, intervention flag | New `application_rule` and `website_rule` records always have a null label. Historical `blocklist` rows are masked on read. |
 | SQLite history → Dashboard/CLI | Event metadata | Labels on these trigger types are masked on read, including for records written by older versions. |
 | Legacy window reader → log | Fixed failure message | Native exception text and traceback are not logged; they may contain a title or address. |
 
-The legacy `BLOCKED_APPS` matcher still compares window titles in memory for
-terms that cannot be migrated to stable application identifiers. It does not
-publish the matched term in a protection result or new event record.
+Application and website policy uses `ContextPolicyService` only. Window-title
+substring matching is not a product path.
 
 Existing `events.db` files may contain labels from older versions. This change
 does not delete or rewrite them. To count affected rows without displaying

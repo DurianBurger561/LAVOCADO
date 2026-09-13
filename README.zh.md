@@ -16,7 +16,7 @@ LAVOCADO 不会判断观看目的。受信任的应用或网站可以加入白�
 
 ## 本地数据与隐私
 
-保护被触发时,LAVOCADO 只记录 UTC 时间、触发类型、置信度、显示器编号,以及是否展示了干预。视觉检测事件还可以保存检测类别。应用规则、网站规则和旧版窗口黑名单事件的标签始终为空,因此应用标识和域名不会写入历史。它不会存储截图、完整 URL 或窗口标题。
+保护被触发时,LAVOCADO 只记录 UTC 时间、触发类型、置信度、显示器编号,以及是否展示了干预。视觉检测事件还可以保存检测类别。应用规则和网站规则事件的标签始终为空,因此应用标识和域名不会写入历史。它不会存储截图、完整 URL 或窗口标题。
 
 SQLite 事件数据库存放在当前用户的应用数据目录下:
 
@@ -65,6 +65,8 @@ VisionPipeline / VisualDecisionEngine 只判断视觉证据, TemporalEngine 确�
 
 正式产品规则见 [上下文优先的视觉保护](docs/context-first-vision.zh.md)。
 
+在 macOS 上,读取前台应用信息需要为终端或打包后的应用授予"辅助功能"权限。在 X11 的 Linux 上,需安装 `xprop` 和 `xwininfo`(Ubuntu 上由 `x11-utils` 提供)。WSL 只能读取 WSLg 暴露出来的窗口元数据;若要匹配所有 Windows 应用,请使用原生 Windows 构建版本。
+
 ## 可选的 AI 支持消息
 
 LAVOCADO 无需 API key 即可运行,默认使用内置的本地消息。若想在干预的最后阶段启用一段 AI 生成的简短消息,请在启动应用前设置 OpenAI API key:
@@ -80,19 +82,6 @@ export OPENAI_API_KEY="你的-api-key"
 ```
 
 发送出去的仅仅是一个固定的"请给一句鼓励的话"的请求。截图、检测标签、置信度、显示器编号、URL、窗口标题都绝不会被包含在内。此请求已禁用 API 响应存储。设置 `LAVOCADO_OPENAI_MODEL` 可覆盖默认模型。
-
-## 旧版前台窗口黑名单
-
-请优先使用上面的仪表盘规则。`app/config.py` 中的 `BLOCKED_APPS` 只留给无法存成稳定应用标识的名称或标题关键词:
-
-```python
-BLOCKED_APPS = ["Steam", "reddit.com"]
-```
-
-当某个关键词匹配时,LAVOCADO 会以前台窗口的中心为准,只遮挡包含该窗口的那块屏幕。窗口元数据在内存中检查,不会被存储,也不会发送给 AI 服务。列表为空则禁用这段旧逻辑。
-`chrome.exe` 等可确定的旧应用标识会迁移一次,成为结构化应用黑名单规则;`Steam` 等可能是应用名或窗口标题的词仍由旧逻辑处理,避免改变原有行为。
-
-在 macOS 上,读取前台窗口信息需要为终端或打包后的应用授予"辅助功能"权限。在 X11 的 Linux 上,需安装 `xprop` 和 `xwininfo`(Ubuntu 上由 `x11-utils` 提供)。WSL 只能读取 WSLg 暴露出来的窗口元数据;若要匹配所有 Windows 应用,请使用原生 Windows 构建版本。
 
 ## 支持的平台
 
@@ -110,7 +99,7 @@ Wayland 使用桌面的 ScreenCast Portal 和 PipeWire。保护启动时请在�
 
 网站发现同样按平台实现,位于 `app/platforms/website/`:Windows UI Automation、macOS `AXUIElement`、Linux AT-SPI。读取失败或不可用时绝不会停止视觉保护,网站一侧保持 UNKNOWN。
 
-每个进程只创建一个 `PlatformAdapter`,并将其传递给截图、黑名单、遮挡、存储和仪表盘等模块。因此各业务模块无需自行判断操作系统,也无需导入具体的平台实现。
+每个进程只创建一个 `PlatformAdapter`,并将其传递给截图、遮挡、存储和仪表盘等模块。因此各业务模块无需自行判断操作系统,也无需导入具体的平台实现。
 
 ## 安装配置
 

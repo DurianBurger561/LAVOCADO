@@ -1,5 +1,7 @@
 """Tests for the process-scoped PlatformAdapter implementations."""
 
+import ctypes
+import subprocess
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,12 +13,73 @@ from app.platforms import (
     create_platform_adapter,
 )
 from app.platforms.capture import FallbackCaptureBackend, MSSCapture
-from app.platforms.linux import LinuxPlatform
-from app.platforms.macos import MacOSPlatform
-from app.platforms.windows import WindowsPlatform, enable_dpi_awareness
+from app.platforms.linux import LinuxPlatform, LinuxWindowProvider
+from app.platforms.macos import MacOSPlatform, MacOSWindowProvider
+from app.platforms.windows import (
+    WindowsPlatform,
+    WindowsWindowProvider,
+    enable_dpi_awareness,
+)
 from app.platforms.website.windows_uia import WindowsUIAWebsiteReader
 from app.platforms.website.macos_ax import MacOSAXWebsiteReader
 from app.platforms.website.linux_atspi import LinuxAtspiWebsiteReader
+
+
+class FakeUser32:
+    title = "Blocked Site - Browser"
+
+    def GetForegroundWindow(self) -> int:
+        return 123
+
+    def GetWindowTextLengthW(self, _window_handle: int) -> int:
+        return len(self.title)
+
+    def GetWindowTextW(
+        self,
+        _window_handle: int,
+        buffer: ctypes.Array[ctypes.c_wchar],
+        _length: int,
+    ) -> int:
+        buffer.value = self.title
+        return len(self.title)
+
+    def GetWindowRect(self, _window_handle: int, rectangle_pointer: object) -> int:
+        rectangle = rectangle_pointer._obj
+        rectangle.left = 100
+        rectangle.top = 200
+        rectangle.right = 900
+        rectangle.bottom = 800
+        return 1
+
+    def GetWindowThreadProcessId(
+        self,
+        _window_handle: int,
+        process_id_pointer: object,
+    ) -> int:
+        process_id_pointer._obj.value = 42
+        return 1
+
+
+class FakeKernel32:
+    def __init__(self) -> None:
+        self.closed_handles: list[int] = []
+
+    def OpenProcess(self, _access: int, _inherit: bool, _process_id: int) -> int:
+        return 456
+
+    def QueryFullProcessImageNameW(
+        self,
+        _process_handle: int,
+        _flags: int,
+        path_buffer: ctypes.Array[ctypes.c_wchar],
+        _path_length_pointer: object,
+    ) -> int:
+        path_buffer.value = r"C:\Program Files\Browser\browser.exe"
+        return 1
+
+    def CloseHandle(self, process_handle: int) -> int:
+        self.closed_handles.append(process_handle)
+        return 1
 
 
 class SuccessfulUser32:
@@ -344,6 +407,67 @@ class PlatformModuleTests(unittest.TestCase):
             ],
         )
         self.assertEqual(root.bindings[0][0], "<Map>")
+
+    def test_windows_provider_reads_title_and_bounds(self) -> None:
+        kernel32 = FakeKernel32()
+        window = WindowsWindowProvider(FakeUser32(), kernel32).active_window()
+
+        self.assertIsNotNone(window)
+        self.assertEqual(window.title, "Blocked Site - Browser")
+        self.assertEqual(window.app_name, "browser")
+        self.assertEqual(window.center, (500, 500))
+        self.assertEqual(kernel32.closed_handles, [456])
+
+    def test_macos_provider_parses_app_title_and_bounds(self) -> None:
+        def runner(*_args: object, **_kwargs: object):
+            return subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="Safari\x1fBlocked Site\x1f10\x1f20\x1f800\x1f600\n",
+                stderr="",
+            )
+
+        window = MacOSWindowProvider(runner=runner).active_window()
+
+        self.assertIsNotNone(window)
+        self.assertEqual(window.app_name, "Safari")
+        self.assertEqual(window.title, "Blocked Site")
+        self.assertEqual(window.center, (410, 320))
+
+    def test_linux_provider_reads_x11_title_class_and_bounds(self) -> None:
+        def runner(command: list[str], **_kwargs: object):
+            if "-root" in command:
+                stdout = "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x4200012\n"
+            elif command[0] == "xwininfo":
+                stdout = (
+                    "  Absolute upper-left X:  100\n"
+                    "  Absolute upper-left Y:  50\n"
+                    "  Width: 1200\n"
+                    "  Height: 800\n"
+                )
+            else:
+                stdout = (
+                    '_NET_WM_NAME(UTF8_STRING) = "Blocked Site"\n'
+                    'WM_CLASS(STRING) = "browser", "Browser"\n'
+                )
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout=stdout,
+                stderr="",
+            )
+
+        provider = LinuxWindowProvider(
+            runner=runner,
+            executable_finder=lambda _name: "/usr/bin/tool",
+        )
+
+        window = provider.active_window()
+
+        self.assertIsNotNone(window)
+        self.assertEqual(window.title, "Blocked Site")
+        self.assertEqual(window.app_name, "Browser")
+        self.assertEqual(window.center, (700, 450))
 
 
 if __name__ == "__main__":

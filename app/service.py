@@ -11,7 +11,6 @@ from enum import Enum
 from threading import Event
 
 from app import config
-from app.blocklist.watcher import BlocklistResult, WindowWatcher
 from app.context.foreground_service import ForegroundContextService
 from app.context.models import (
     ContextPolicyAction,
@@ -41,6 +40,7 @@ from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import (
     ThresholdPolicy,
     VisualViolationClassification,
+    VisualViolationDecision,
     activate_threshold_policy,
 )
 from app.vision.yolo_adapter import load_yolo_adapter, yolo_is_requested
@@ -68,7 +68,6 @@ class LavocadoService:
         overlay: Overlay | None = None,
         recorder: EventRecorder | None = None,
         intervention: InterventionGenerator | None = None,
-        watcher: WindowWatcher | None = None,
         decision_engine: DecisionEngine | None = None,
         diagnostics: DiagnosticsStore | None = None,
         change_scheduler: ChangeScheduler | None = None,
@@ -191,11 +190,6 @@ class LavocadoService:
         self.intervention = (
             intervention if intervention is not None else InterventionGenerator()
         )
-        self.watcher = (
-            watcher
-            if watcher is not None
-            else WindowWatcher(platform_adapter)
-        )
         self._verifier_factory = (
             verifier_factory
             if verifier_factory is not None
@@ -293,7 +287,7 @@ class LavocadoService:
         finally:
             self._transition(State.BYPASSED if self._bypass_active else State.MONITORING)
 
-    def check_once(self) -> list[dict[str, object]] | None:
+    def check_once(self) -> list[VisualViolationDecision] | None:
         """Advance the state machine by one monitoring step."""
 
         now = self._clock()
@@ -307,22 +301,7 @@ class LavocadoService:
                 return None
             self._transition(State.MONITORING)
 
-        blocklist_result = self.watcher.check()
-        blocked_result = self._blocklist_detection(blocklist_result)
         context = self.context_store.latest()
-        if blocked_result is not None:
-            self.diagnostics.record_foreground_context(
-                context, None, effective_override=ContextPolicyAction.FORCE_BLOCK
-            )
-            self._leave_bypass()
-            monitor_index = int(blocked_result["monitor_index"])
-            self._show_intervention(
-                blocked_result,
-                monitor_index,
-                trigger_type="blocklist",
-            )
-            return [blocked_result]
-
         policy_result = (
             self.context_policy.evaluate(context) if context is not None else None
         )
@@ -331,17 +310,20 @@ class LavocadoService:
             if not allows_vision(policy_result.action):
                 if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
                     self._leave_bypass()
-                    result, monitor_index, trigger_type = self._context_rule_detection(
+                    monitor_index, trigger_type = self._context_rule_detection(
                         context, policy_result
                     )
-                    self._show_intervention(result, monitor_index, trigger_type)
-                    return [result]
+                    self._show_intervention(
+                        monitor_index=monitor_index,
+                        trigger_type=trigger_type,
+                    )
+                    return None
                 self._enter_bypass()
                 return []
 
         self._leave_bypass()
 
-        results: list[dict[str, object]] = []
+        results: list[VisualViolationDecision] = []
         has_candidate = False
         has_fresh_frame = False
 
@@ -363,72 +345,63 @@ class LavocadoService:
             is_active_monitor = (
                 active_index is None or int(active_index) == int(monitor_index)
             )
-            prepare = getattr(self.decision_engine, "prepare_scan", None)
-            scan_plan = (
-                prepare(
-                    captured_frame,
-                    monitor_index,
-                    is_active_monitor=is_active_monitor,
-                )
-                if callable(prepare)
-                else None
+            scan_plan = self.decision_engine.prepare_scan(
+                captured_frame,
+                monitor_index,
+                is_active_monitor=is_active_monitor,
             )
-            result = self.vision_session.evaluate(
+            decision = self.vision_session.evaluate(
                 captured_frame,
                 monitor_index=monitor_index,
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
             )
-            result["monitor_index"] = monitor_index
-            results.append(result)
+            results.append(decision)
 
-            classification = str(result.get("classification") or "")
             is_violation = (
-                classification == VisualViolationClassification.VIOLATION.value
-                or (not classification and bool(result.get("blocked")))
+                decision.classification is VisualViolationClassification.VIOLATION
             )
             is_uncertain = (
-                classification == VisualViolationClassification.UNCERTAIN.value
+                decision.classification is VisualViolationClassification.UNCERTAIN
             )
             self.change_scheduler.record_candidate(monitor_index, is_violation)
             if is_uncertain:
-                request_focus = getattr(
-                    self.change_scheduler,
-                    "request_focused_verification",
-                    None,
-                )
-                if callable(request_focus):
-                    request_focus(monitor_index)
+                self.change_scheduler.request_focused_verification(monitor_index)
             has_candidate = has_candidate or is_violation
             verifier = self._verifiers.get(monitor_index)
             if verifier is None:
                 verifier = self._verifier_factory()
                 self._verifiers[monitor_index] = verifier
 
-            track_evidence = result.get("track_evidence")
+            evidence_type = (
+                decision.evidence[0].evidence_type.value
+                if decision.evidence
+                else None
+            )
             confirmed = verifier.update(
                 is_violation,
                 frame_sequence=getattr(captured_frame, "sequence", None),
-                region=result.get("region"),
-                evidence_type=_visual_evidence_type(result),
-                track_id=result.get("track_id") if isinstance(result.get("track_id"), int) else None,
-                evidence_score=(
-                    float(track_evidence)
-                    if isinstance(track_evidence, (int, float))
-                    else None
-                ),
+                region=decision.primary_region,
+                evidence_type=evidence_type,
+                track_id=decision.track_id,
+                evidence_score=decision.track_evidence,
             )
             rescue_status = self._decision_rescue_status(monitor_index)
             self.diagnostics.record_scan(
                 monitor_index=monitor_index,
                 elapsed_ms=(self._scan_clock() - scan_started) * 1000,
-                decision=result,
+                decision=decision,
                 temporal=verifier.history,
                 rescue_status=rescue_status,
             )
 
             if confirmed:
-                self._show_intervention(result, monitor_index, trigger_type="vision")
+                self._show_intervention(
+                    monitor_index=monitor_index,
+                    trigger_type="vision",
+                    label=decision.label,
+                    confidence=decision.confidence,
+                )
                 return results
 
         if has_fresh_frame:
@@ -440,7 +413,7 @@ class LavocadoService:
         self.diagnostics.set_protection_state(state.name)
 
     def _record_capture_diagnostics(self) -> None:
-        status = getattr(self.capturer, "status", None)
+        status = self.capturer.status
         if isinstance(status, CaptureBackendStatus):
             self.diagnostics.record_capture(status)
 
@@ -458,19 +431,13 @@ class LavocadoService:
         center = getattr(context.application, "window_center", None)
         if center is None:
             return None
-        locator = getattr(self.capturer, "monitor_index_at", None)
-        if not callable(locator):
-            return None
-        return locator(*center)
+        return self.capturer.monitor_index_at(*center)
 
     def _decision_rescue_status(
         self,
         monitor_index: int,
     ) -> dict[str, int | None]:
-        status_reader = getattr(self.decision_engine, "rescue_status", None)
-        if not callable(status_reader):
-            return {}
-        status = status_reader(monitor_index)
+        status = self.decision_engine.rescue_status(monitor_index)
         return status if isinstance(status, dict) else {}
 
     def _is_fresh_frame(self, monitor_index: int, captured_frame: object) -> bool:
@@ -486,12 +453,8 @@ class LavocadoService:
     def _reset_verifiers(self) -> None:
         for verifier in self._verifiers.values():
             verifier.reset()
-        reset_decisions = getattr(self.decision_engine, "reset", None)
-        if callable(reset_decisions):
-            reset_decisions()
-        reset_pipeline = getattr(self.vision_pipeline, "reset", None)
-        if callable(reset_pipeline):
-            reset_pipeline()
+        self.decision_engine.reset()
+        self.vision_pipeline.reset()
         self.change_scheduler.reset()
 
     def _enter_bypass(self) -> None:
@@ -517,7 +480,7 @@ class LavocadoService:
         self,
         context: ForegroundContext,
         policy: ContextPolicyResult,
-    ) -> tuple[dict[str, object], int, str]:
+    ) -> tuple[int, str]:
         center = context.application.window_center
         monitor_index = (
             self.capturer.monitor_index_at(*center) if center is not None else None
@@ -535,15 +498,7 @@ class LavocadoService:
             trigger_type = "website_rule"
         else:
             trigger_type = "application_rule"
-        result: dict[str, object] = {
-            "blocked": True,
-            "reason": f"Blocked by {trigger_type}",
-            "label": None,
-            "confidence": None,
-            "check_points": [],
-            "monitor_index": monitor_index,
-        }
-        return result, monitor_index, trigger_type
+        return monitor_index, trigger_type
 
     def _create_context_worker(
         self,
@@ -562,12 +517,12 @@ class LavocadoService:
 
     def _record_trigger(
         self,
-        result: dict[str, object],
         monitor_index: int,
         trigger_type: str,
+        *,
+        label: str | None = None,
+        confidence: float | None = None,
     ) -> Future[int] | None:
-        label = result.get("label")
-        confidence = result.get("confidence")
         event = ProtectionEvent(
             occurred_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             trigger_type=trigger_type,
@@ -584,12 +539,19 @@ class LavocadoService:
 
     def _show_intervention(
         self,
-        result: dict[str, object],
+        *,
         monitor_index: int,
         trigger_type: str,
+        label: str | None = None,
+        confidence: float | None = None,
     ) -> None:
         self._transition(State.BLOCKED)
-        record_future = self._record_trigger(result, monitor_index, trigger_type)
+        record_future = self._record_trigger(
+            monitor_index,
+            trigger_type,
+            label=label,
+            confidence=confidence,
+        )
         support_message = self._generate_intervention()
         self.overlay.show(
             monitor_index=monitor_index,
@@ -599,27 +561,6 @@ class LavocadoService:
         self._reset_verifiers()
         self._cooldown_until = self._clock() + self.cooldown_seconds
         self._transition(State.COOLDOWN)
-
-    def _blocklist_detection(
-        self,
-        result: BlocklistResult,
-    ) -> dict[str, object] | None:
-        if not result.blocked or result.window is None:
-            return None
-        center = result.window.center
-        if center is None:
-            return None
-        monitor_index = self.capturer.monitor_index_at(*center)
-        if monitor_index is None:
-            return None
-        return {
-            "blocked": True,
-            "reason": "Blocked by legacy window rule",
-            "label": None,
-            "confidence": None,
-            "check_points": [],
-            "monitor_index": monitor_index,
-        }
 
     def _generate_intervention(self) -> Future[str] | None:
         try:
@@ -645,12 +586,8 @@ class LavocadoService:
             return
 
         try:
-            marker = getattr(self.recorder, "mark_intervention_shown_async", None)
-            if callable(marker):
-                marker_future = marker(event_id)
-                marker_future.add_done_callback(self._log_recording_failure)
-            else:
-                self.recorder.mark_intervention_shown(event_id)
+            marker_future = self.recorder.mark_intervention_shown_async(event_id)
+            marker_future.add_done_callback(self._log_recording_failure)
         except Exception:
             LOGGER.exception("Could not queue intervention-shown marker")
 
@@ -660,19 +597,3 @@ class LavocadoService:
             future.result()
         except Exception:
             LOGGER.exception("Could not finish recording protection event")
-
-
-def _visual_evidence_type(result: dict[str, object]) -> str | None:
-    """Return a visual-violation type only; never a viewing-purpose label."""
-
-    payload = result.get("evidence")
-    if isinstance(payload, list):
-        for item in payload:
-            if isinstance(item, dict) and item.get("evidence_type"):
-                return str(item["evidence_type"])
-    source = result.get("source")
-    if source in {"yolo_sexual_act", "yolo_sexual_act_roi", "sexual_act_candidate"}:
-        return "sexual_act"
-    if source in {"anatomy_roi", "anatomy_candidate", "nudenet_roi", "nudenet_full"}:
-        return "explicit_anatomy"
-    return None

@@ -17,7 +17,6 @@ from developer.benchmark.session import BenchmarkSession
 class RecordingDetector:
     def __init__(self) -> None:
         self.detect_calls = 0
-        self.check_calls = 0
 
     def detect(self, frame, *, input_size: int):
         self.detect_calls += 1
@@ -30,19 +29,6 @@ class RecordingDetector:
                 model="nudenet_640m",
             )
         ]
-
-    def check(self, image):
-        self.check_calls += 1
-        return {
-            "blocked": True,
-            "reason": "strong",
-            "label": "FEMALE_BREAST_EXPOSED",
-            "confidence": 0.91,
-            "box": [1, 2, 3, 4],
-            "check_points": [
-                {"class": "FEMALE_BREAST_EXPOSED", "score": 0.91, "box": [1, 2, 3, 4]}
-            ],
-        }
 
 
 class SessionTests(unittest.TestCase):
@@ -118,8 +104,6 @@ class SessionTests(unittest.TestCase):
         image = np.zeros((20, 20, 3), dtype=np.uint8)
         raw = session.run_detector_only(sample, image, sample_hash="hash")
         detect_after_inference = detector.detect_calls
-        check_after_inference = detector.check_calls
         session.evaluate_policy(sample, image, raw)
         session.evaluate_policy(sample, image, raw)
         self.assertEqual(detector.detect_calls, detect_after_inference)
-        self.assertEqual(detector.check_calls, check_after_inference)

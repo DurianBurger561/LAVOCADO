@@ -35,11 +35,12 @@ class FakeDetector:
     def __init__(self) -> None:
         self.calls = 0
 
-    def check(self, image: np.ndarray) -> dict[str, bool]:
+    def detect(self, image: np.ndarray, *, input_size: int = 640) -> list[object]:
+        del input_size
         self.calls += 1
         if image.shape != (2, 4, 3):
             raise AssertionError("benchmark did not preserve the bounded BGR frame")
-        return {"blocked": self.calls % 2 == 0}
+        return [object()] if self.calls % 2 == 0 else []
 
 
 class FakeBackend:

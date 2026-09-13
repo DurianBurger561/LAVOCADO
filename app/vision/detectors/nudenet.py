@@ -73,10 +73,5 @@ class NudeNetPrimaryDetector:
         self._last_raw = detections
         return to_detection_evidence(detections, model=self.name)
 
-    def check(self, image: np.ndarray) -> dict[str, Any]:
-        """Compatibility wrapper used by DecisionEngine local recheck."""
-
-        return self._detector.check(image)
-
     def last_raw_detections(self) -> list[dict[str, Any]]:
         return list(self._last_raw)

@@ -177,7 +177,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
         self.assertEqual(overlay.shown_on, [2])
         self.assertEqual(recorder.events[0].trigger_type, "website_rule")
         self.assertIsNone(recorder.events[0].label)
-        self.assertEqual(results[0]["monitor_index"], 2)
+        self.assertIsNone(results)
         self.assertEqual(service.diagnostics.snapshot()["foreground_context"], {
             "application_available": True,
             "is_browser": True,
@@ -393,7 +393,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
                 self.assertEqual(overlay.shown_on, [1])
                 self.assertEqual(service.state, State.COOLDOWN)
                 self.assertEqual(recorder.events[0].trigger_type, "vision")
-                self.assertEqual(recorder.events[0].label, "TEST")
+                self.assertEqual(recorder.events[0].label, "FEMALE_BREAST_EXPOSED")
                 self.assertEqual(recorder.events[0].monitor_index, 1)
                 self.assertEqual(recorder.shown_event_ids, [1])
                 self.assertEqual(intervention.generate_count, 1)

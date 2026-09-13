@@ -5,13 +5,18 @@ from concurrent.futures import Future
 from dataclasses import dataclass
 from threading import Event
 
-from app.blocklist.watcher import BlocklistResult, WindowInfo
 from app.intervention.recorder import ProtectionEvent
 from app.platforms.capture import CaptureBackendStatus
 from app.service import LavocadoService, State
 from app.vision.change_scheduler import ChangeDecision
 from app.vision.diagnostics import DiagnosticsStore
+from app.vision.detectors.base import DetectionEvidence
+from app.vision.scheduler import ScanPlan
 from app.vision.temporal import TemporalVerifier
+from app.vision.violation_policy import (
+    VisualViolationClassification,
+    VisualViolationDecision,
+)
 
 
 @dataclass(frozen=True)
@@ -85,16 +90,21 @@ class FakeDetector:
             for monitor_index, results in results_by_monitor.items()
         }
 
-    def check(self, monitor_index: int) -> dict[str, object]:
+    def detect(self, image: object, *, input_size: int = 640) -> list[DetectionEvidence]:
+        del input_size
+        monitor_index = int(image)
         self.checked_indexes.append(monitor_index)
         blocked = next(self._results_by_monitor[monitor_index])
-        return {
-            "blocked": blocked,
-            "reason": "test" if blocked else "",
-            "label": "TEST" if blocked else None,
-            "confidence": 1.0 if blocked else 0.0,
-            "check_points": [],
-        }
+        if not blocked:
+            return []
+        return [
+            DetectionEvidence(
+                label="FEMALE_BREAST_EXPOSED",
+                confidence=1.0,
+                box=(0.0, 0.0, 1.0, 1.0),
+                model="nudenet_640m",
+            )
+        ]
 
 
 class FakeChangeScheduler:
@@ -153,6 +163,12 @@ class FakeRecorder:
     def mark_intervention_shown(self, event_id: int) -> None:
         self.shown_event_ids.append(event_id)
 
+    def mark_intervention_shown_async(self, event_id: int) -> Future[None]:
+        self.mark_intervention_shown(event_id)
+        future: Future[None] = Future()
+        future.set_result(None)
+        return future
+
     def close(self) -> None:
         self.closed = True
 
@@ -182,12 +198,41 @@ class FakeIntervention:
         self.closed = True
 
 
-class FakeWatcher:
-    def __init__(self, result: BlocklistResult) -> None:
-        self.result = result
+def _scan_plan() -> ScanPlan:
+    return ScanPlan(
+        mode="monitoring",
+        run_full=True,
+        tile_indexes=(),
+        roi=None,
+        subdivide=False,
+        input_size=640,
+        interval_ms=0,
+    )
 
-    def check(self) -> BlocklistResult:
-        return self.result
+
+def _decision_from_detector_result(
+    result: dict[str, object],
+    *,
+    monitor_index: int = 1,
+    frame_sequence: int = 1,
+) -> VisualViolationDecision:
+    classification = (
+        VisualViolationClassification.VIOLATION
+        if bool(result.get("blocked"))
+        else VisualViolationClassification.CLEAR
+    )
+    label = result.get("label")
+    confidence = result.get("confidence")
+    return VisualViolationDecision(
+        classification=classification,
+        evidence=(),
+        reason_codes=(),
+        primary_region=None,
+        frame_sequence=frame_sequence,
+        label=None if label is None else str(label),
+        confidence=0.0 if not isinstance(confidence, (int, float)) else float(confidence),
+        monitor_index=monitor_index,
+    )
 
 
 class FakeDecisionEngine:
@@ -201,10 +246,32 @@ class FakeDecisionEngine:
         *,
         monitor_index: int,
         extra_evidence: object | None = None,
-    ) -> dict[str, object]:
-        del monitor_index, extra_evidence
+        scan_plan: object | None = None,
+        is_active_monitor: bool = True,
+    ) -> VisualViolationDecision:
+        del extra_evidence, scan_plan, is_active_monitor
         self.original_frames.append(captured.original_frame)
-        return result
+        return _decision_from_detector_result(
+            result,
+            monitor_index=monitor_index,
+            frame_sequence=captured.sequence,
+        )
+
+    def prepare_scan(
+        self,
+        _captured: FakeCapturedFrame,
+        _monitor_index: int,
+        *,
+        is_active_monitor: bool = True,
+    ) -> ScanPlan:
+        del is_active_monitor
+        return _scan_plan()
+
+    def rescue_status(self, _monitor_index: int) -> dict[str, int | None]:
+        return {}
+
+    def reset(self) -> None:
+        return None
 
 
 class SequenceDecisionEngine:
@@ -214,12 +281,14 @@ class SequenceDecisionEngine:
     def evaluate(
         self,
         result: dict[str, object],
-        _captured: FakeCapturedFrame,
+        captured: FakeCapturedFrame,
         *,
         monitor_index: int,
         extra_evidence: object | None = None,
-    ) -> dict[str, object]:
-        del monitor_index, extra_evidence
+        scan_plan: object | None = None,
+        is_active_monitor: bool = True,
+    ) -> VisualViolationDecision:
+        del extra_evidence, scan_plan, is_active_monitor
         candidate = next(self._candidates)
         promoted = dict(result)
         promoted.update(
@@ -229,7 +298,27 @@ class SequenceDecisionEngine:
                 "confidence": 0.60 if candidate else 0.0,
             }
         )
-        return promoted
+        return _decision_from_detector_result(
+            promoted,
+            monitor_index=monitor_index,
+            frame_sequence=captured.sequence,
+        )
+
+    def prepare_scan(
+        self,
+        _captured: FakeCapturedFrame,
+        _monitor_index: int,
+        *,
+        is_active_monitor: bool = True,
+    ) -> ScanPlan:
+        del is_active_monitor
+        return _scan_plan()
+
+    def rescue_status(self, _monitor_index: int) -> dict[str, int | None]:
+        return {}
+
+    def reset(self) -> None:
+        return None
 
 
 class ServiceTests(unittest.TestCase):
@@ -377,7 +466,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(service.state, State.COOLDOWN)
         self.assertEqual(capturer.grabbed_indexes, [1, 1, 1])
         self.assertEqual(len(recorder.events), 1)
-        self.assertEqual(recorder.events[0].label, "TEST")
+        self.assertEqual(recorder.events[0].label, "FEMALE_BREAST_EXPOSED")
         self.assertEqual(recorder.events[0].monitor_index, 1)
         self.assertEqual(recorder.shown_event_ids, [1])
         self.assertEqual(intervention.generate_count, 1)
@@ -508,52 +597,6 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(overlay.shown_on, [1])
         self.assertEqual(recorder.events, [])
         self.assertFalse(test_event.is_set())
-
-    def test_blocklist_match_immediately_blocks_the_window_monitor(self) -> None:
-        capturer = FakeCapturer(
-            monitor_indexes=(1, 2),
-            point_monitor_index=2,
-        )
-        overlay = FakeOverlay()
-        recorder = FakeRecorder()
-        intervention = FakeIntervention()
-        watcher = FakeWatcher(
-            BlocklistResult(
-                blocked=True,
-                matched_term="blocked.example",
-                window=WindowInfo(
-                    title="blocked.example - Browser",
-                    left=2000,
-                    top=100,
-                    width=1000,
-                    height=800,
-                ),
-            )
-        )
-        service = LavocadoService(
-            FakePlatform(),
-            capturer=capturer,
-            detector=FakeDetector({1: [], 2: []}),
-            overlay=overlay,
-            recorder=recorder,
-            intervention=intervention,
-            watcher=watcher,
-        )
-
-        result = service.check_once()
-
-        self.assertEqual(capturer.grabbed_indexes, [])
-        self.assertEqual(overlay.shown_on, [2])
-        self.assertIsNone(result[0]["label"])
-        self.assertIsNone(recorder.events[0].label)
-        self.assertNotIn("blocked.example", repr(result))
-        self.assertEqual(recorder.events[0].trigger_type, "blocklist")
-        self.assertIsNone(recorder.events[0].confidence)
-        self.assertEqual(intervention.generate_count, 1)
-        self.assertEqual(
-            service.diagnostics.snapshot()["foreground_context"]["effective_policy"],
-            "force_block",
-        )
 
 
 if __name__ == "__main__":

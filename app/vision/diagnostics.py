@@ -15,6 +15,7 @@ from app.context.models import (
     WebsiteContextState,
 )
 from app.platforms.capture.models import CaptureBackendStatus
+from app.vision.violation_policy import VisualViolationDecision, evidence_to_dict
 
 
 def _friendly_model_name(variant: str) -> str:
@@ -41,6 +42,31 @@ def _safe_region(value: object) -> list[int] | None:
         return [int(coordinate) for coordinate in value]
     except (TypeError, ValueError):
         return None
+
+
+def _decision_diagnostics_payload(decision: VisualViolationDecision) -> dict[str, Any]:
+    """Serialize a typed decision at the diagnostics boundary only."""
+
+    source = decision.reason_codes[0] if decision.reason_codes else ""
+    return {
+        "source": source,
+        "classification": decision.classification.value,
+        "label": decision.label,
+        "nudenet_label": decision.label,
+        "nudenet_score": decision.confidence,
+        "threshold": decision.threshold,
+        "context_label": decision.context_label,
+        "context_score": decision.context_score,
+        "rescue_tile_index": decision.rescue_tile_index,
+        "rescue_region": decision.primary_region,
+        "track_id": decision.track_id,
+        "track_fresh_hits": decision.track_fresh_hits,
+        "track_evidence": decision.track_evidence,
+        "scan_mode": decision.scan_mode,
+        "scan_interval_ms": decision.scan_interval_ms,
+        "shadow": decision.shadow,
+        "evidence": [evidence_to_dict(item) for item in decision.evidence],
+    }
 
 
 class DiagnosticsStore:
@@ -204,46 +230,47 @@ class DiagnosticsStore:
         *,
         monitor_index: int,
         elapsed_ms: float,
-        decision: dict[str, Any],
+        decision: VisualViolationDecision,
         temporal: tuple[bool, ...],
         rescue_status: dict[str, int | None] | None = None,
         scanned_at: str | None = None,
     ) -> None:
         """Extract a fixed safe schema from one completed monitor scan."""
 
+        payload = _decision_diagnostics_payload(decision)
         scan = {
             "last_scan_ms": round(max(0.0, float(elapsed_ms)), 1),
             "last_scan_at": scanned_at or datetime.now(timezone.utc).isoformat(
                 timespec="milliseconds"
             ),
             "monitor_index": int(monitor_index),
-            "nudenet": self._nudenet_summary(decision),
+            "nudenet": self._nudenet_summary(payload),
             "context": {
-                "label": self._optional_string(decision.get("context_label")),
-                "score": self._optional_float(decision.get("context_score")),
+                "label": self._optional_string(payload.get("context_label")),
+                "score": self._optional_float(payload.get("context_score")),
             },
-            "decision_source": self._optional_string(decision.get("source")),
-            "classification": self._optional_string(decision.get("classification")),
+            "decision_source": self._optional_string(payload.get("source")),
+            "classification": self._optional_string(payload.get("classification")),
             "temporal": [int(value) for value in temporal],
-            "rescue": self._rescue_summary(decision, rescue_status or {}),
+            "rescue": self._rescue_summary(payload, rescue_status or {}),
             "scan": {
-                "mode": self._optional_string(decision.get("scan_mode")) or "monitoring",
+                "mode": self._optional_string(payload.get("scan_mode")) or "monitoring",
                 "total_ms": round(max(0.0, float(elapsed_ms)), 1),
                 "target_interval_ms": self._optional_float(
-                    decision.get("scan_interval_ms")
+                    payload.get("scan_interval_ms")
                 ),
             },
-            "full": self._nudenet_summary(decision),
+            "full": self._nudenet_summary(payload),
             "tiles": {
-                "ranking": self._tile_ranking(decision),
+                "ranking": self._tile_ranking(payload),
             },
             "track": {
-                "active": decision.get("track_id") is not None,
-                "source": self._optional_string(decision.get("source")),
-                "fresh_hits": int(decision.get("track_fresh_hits") or 0),
-                "evidence": self._optional_float(decision.get("track_evidence")) or 0.0,
+                "active": payload.get("track_id") is not None,
+                "source": self._optional_string(payload.get("source")),
+                "fresh_hits": int(payload.get("track_fresh_hits") or 0),
+                "evidence": self._optional_float(payload.get("track_evidence")) or 0.0,
             },
-            "shadow": decision.get("shadow") if isinstance(decision.get("shadow"), dict) else None,
+            "shadow": payload.get("shadow") if isinstance(payload.get("shadow"), dict) else None,
         }
         with self._lock:
             monitors = self._snapshot["monitors"]

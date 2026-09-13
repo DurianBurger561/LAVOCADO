@@ -12,6 +12,7 @@ from app.settings.schema import VisionSettings, default_vision_settings
 from app.vision.capture import CapturedFrame
 from app.vision.change_map import build_change_map, tile_change_scores
 from app.vision.evidence import evidence_from_confidence
+from app.vision.detectors.base import DetectionEvidence
 from app.vision.nudenet_adapter import detections_to_evidence
 from app.vision.regions import (
     Region,
@@ -31,11 +32,13 @@ from app.vision.violation_policy import (
     ViolationEvidence,
     ViolationEvidenceType,
     VisualViolationClassification,
+    VisualViolationDecision,
     evidence_to_dict,
     is_borderline_score,
     strongest_evidence,
     threshold_for_label,
     tier_for_score,
+    visual_decision_from_engine_payload,
 )
 
 
@@ -49,7 +52,12 @@ class ContextSensor(Protocol):
 class LocalNudityDetector(Protocol):
     """Primary detector interface reused for ROI and tile rechecks."""
 
-    def check(self, image: np.ndarray) -> dict[str, Any]:
+    def detect(
+        self,
+        frame: np.ndarray,
+        *,
+        input_size: int,
+    ) -> list[DetectionEvidence]:
         ...
 
 
@@ -116,6 +124,25 @@ class DecisionEngine:
         self._scan_ids: dict[int, int] = {}
         self._last_plan: dict[int, ScanPlan] = {}
 
+    def _strong_local_hit(self, crop: np.ndarray) -> DetectionEvidence | None:
+        if self.local_detector is None or not isinstance(crop, np.ndarray):
+            return None
+        evidence = list(
+            self.local_detector.detect(
+                crop,
+                input_size=self.settings.detector.tile_input_size,
+            )
+        )
+        strong = [
+            item
+            for item in evidence
+            if self.threshold_policy.tier(item.confidence, item.label, item.model)
+            is DetectionTier.STRONG
+        ]
+        if not strong:
+            return None
+        return max(strong, key=lambda item: item.confidence)
+
     def evaluate(
         self,
         nudenet_result: dict[str, Any],
@@ -125,7 +152,7 @@ class DecisionEngine:
         extra_evidence: list[ViolationEvidence] | None = None,
         scan_plan: ScanPlan | None = None,
         is_active_monitor: bool = True,
-    ) -> dict[str, Any]:
+    ) -> VisualViolationDecision:
         """Return a candidate decision without retaining image pixels."""
 
         result = dict(nudenet_result)
@@ -377,14 +404,14 @@ class DecisionEngine:
         crop, region = crop_result
         base["region"] = region
 
-        local_result = dict(self.local_detector.check(crop))
-        base["local_check_points"] = local_result.get("check_points", [])
-        base["local_box"] = local_result.get("box")
-        if not bool(local_result.get("blocked")):
+        hit = self._strong_local_hit(crop)
+        base["local_check_points"] = []
+        base["local_box"] = None if hit is None or hit.box is None else list(hit.box)
+        if hit is None:
             return base
 
-        confirmed_label = local_result.get("label")
-        confidence = float(local_result.get("confidence", 0.0))
+        confirmed_label = hit.label
+        confidence = float(hit.confidence)
         confirmed_threshold = threshold_for_label(str(confirmed_label))
         base.update(
             {
@@ -465,18 +492,17 @@ class DecisionEngine:
             decided["context_score"] = float(context_score)
             decided["context_scores"] = context_scores or None
 
-            local_result = dict(self.local_detector.check(crop))
-            decided["local_check_points"] = local_result.get("check_points", [])
-            decided["local_box"] = local_result.get("box")
-            if bool(local_result.get("blocked")):
+            hit = self._strong_local_hit(crop)
+            decided["local_box"] = None if hit is None or hit.box is None else list(hit.box)
+            if hit is not None:
                 if self.pin_followup_checks:
                     schedule = self._rescue_schedules.setdefault(
                         monitor_index, _RescueSchedule()
                     )
                     schedule.pinned_tile_index = tile_index
                     schedule.pinned_checks_remaining = self.pin_followup_checks
-                label = local_result.get("label")
-                confidence = float(local_result.get("confidence", 0.0))
+                label = hit.label
+                confidence = float(hit.confidence)
                 threshold = threshold_for_label(str(label))
                 decided.update(
                     {
@@ -606,7 +632,8 @@ class DecisionEngine:
         self._scan_ids[monitor_index] = self._scan_ids.get(monitor_index, 0) + 1
         active = self.tracker.active_track(monitor_index)
         predicted = None
-        if active is not None and isinstance(original, np.ndarray):
+        usable_frame = isinstance(original, np.ndarray)
+        if active is not None and usable_frame:
             predicted = self.tracker.predicted_roi(
                 active, original.shape, self.crop_expansion
             )
@@ -616,7 +643,7 @@ class DecisionEngine:
             monitor_index=monitor_index,
             tiles=tiles,
             change_map=change_map,
-            active_track=active,
+            active_track=active if usable_frame else None,
             is_active_monitor=is_active_monitor,
         )
         self._last_plan[monitor_index] = plan
@@ -708,18 +735,17 @@ class DecisionEngine:
         crop = crop_region(original, roi)
         if crop is None:
             return base
-        local_result = dict(self.local_detector.check(crop))
-        base["local_check_points"] = local_result.get("check_points", [])
-        base["local_box"] = local_result.get("box")
+        hit = self._strong_local_hit(crop)
+        base["local_box"] = None if hit is None or hit.box is None else list(hit.box)
         base["region"] = roi
-        if not bool(local_result.get("blocked")):
+        if hit is None:
             track = self.tracker.active_track(monitor_index)
             if track is not None:
                 self.tracker.mark_miss(track, decay=self.settings.temporal.decay)
             base["source"] = "focused_miss"
             return base
-        label = local_result.get("label")
-        confidence = float(local_result.get("confidence", 0.0))
+        label = hit.label
+        confidence = float(hit.confidence)
         threshold = threshold_for_label(str(label))
         base.update(
             {
@@ -772,13 +798,12 @@ class DecisionEngine:
             return base
         scored.sort(key=lambda item: -item[0])
         _risk, region, crop = scored[0]
-        local_result = dict(self.local_detector.check(crop))
-        base["local_check_points"] = local_result.get("check_points", [])
-        base["local_box"] = local_result.get("box")
-        if not bool(local_result.get("blocked")):
+        hit = self._strong_local_hit(crop)
+        base["local_box"] = None if hit is None or hit.box is None else list(hit.box)
+        if hit is None:
             return base
-        label = local_result.get("label")
-        confidence = float(local_result.get("confidence", 0.0))
+        label = hit.label
+        confidence = float(hit.confidence)
         base.update(
             {
                 "blocked": True,
@@ -804,7 +829,7 @@ class DecisionEngine:
         captured_frame: CapturedFrame,
         monitor_index: int,
         frame_sequence: int,
-    ) -> dict[str, Any]:
+    ) -> VisualViolationDecision:
         plan = self._last_plan.get(monitor_index)
         if plan is not None:
             decided["scan_mode"] = plan.mode
@@ -855,7 +880,11 @@ class DecisionEngine:
             frame_sequence=frame_sequence,
         )
         del captured_frame
-        return decided
+        return visual_decision_from_engine_payload(
+            decided,
+            frame_sequence=frame_sequence,
+            monitor_index=monitor_index,
+        )
 
     def rescue_status(self, monitor_index: int) -> dict[str, int | None]:
         """Return scalar scheduling state without exposing any image data."""

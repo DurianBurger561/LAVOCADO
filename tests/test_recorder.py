@@ -55,7 +55,7 @@ class EventRecorderTests(unittest.TestCase):
         self.assertTrue(self.recorder.recent()[0].intervention_shown)
 
     def test_identity_rule_labels_are_never_persisted(self) -> None:
-        for trigger_type in ("application_rule", "website_rule", "blocklist"):
+        for trigger_type in ("application_rule", "website_rule"):
             self.recorder.record(ProtectionEvent(
                 occurred_at="2026-09-12T00:00:00+00:00",
                 trigger_type=trigger_type,
@@ -65,7 +65,7 @@ class EventRecorderTests(unittest.TestCase):
             ))
 
         self.assertEqual([event.label for event in self.recorder.recent()], [
-            None, None, None,
+            None, None,
         ])
         database_bytes = self.database_path.read_bytes()
         self.assertNotIn(b"private.example", database_bytes)
@@ -81,6 +81,17 @@ class EventRecorderTests(unittest.TestCase):
 
         self.assertIsNone(self.recorder.recent()[0].label)
         self.assertIn(b"private.example", self.database_path.read_bytes())
+
+    def test_historical_blocklist_labels_are_hidden_without_modifying_history(self) -> None:
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
+            connection.execute(
+                "INSERT INTO protection_events (occurred_at, trigger_type, label, "
+                "monitor_index) VALUES (?, ?, ?, ?)",
+                ("2026-09-12T00:00:00+00:00", "blocklist", "Steam", 1),
+            )
+
+        self.assertIsNone(self.recorder.recent()[0].label)
+        self.assertIn(b"Steam", self.database_path.read_bytes())
 
     def test_database_schema_has_no_captured_content_fields(self) -> None:
         with closing(sqlite3.connect(self.database_path)) as connection:

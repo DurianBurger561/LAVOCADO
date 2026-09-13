@@ -18,7 +18,7 @@ KNOWN_PRIMARIES = frozenset({PRIMARY_NUDENET, PRIMARY_YOLO})
 
 
 class PrimaryBundle:
-    """Runtime primary detector plus compatibility ``check()`` object."""
+    """Runtime primary detector plus the object used for ROI rechecks."""
 
     def __init__(
         self,

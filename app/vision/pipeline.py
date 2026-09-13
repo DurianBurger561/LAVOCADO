@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -10,6 +11,7 @@ from app.vision.capture import CapturedFrame
 from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
 from app.vision.scheduler import ScanPlan
+from app.vision.violation_policy import VisualViolationDecision
 from app.vision.yolo_adapter import Yolo11Adapter
 
 
@@ -44,14 +46,13 @@ class VisionPipeline:
         monitor_index: int = 1,
         scan_plan: ScanPlan | None = None,
         is_active_monitor: bool = True,
-    ) -> dict[str, Any]:
+    ) -> VisualViolationDecision:
         """Return a visual-violation decision without retaining pixels."""
 
         self.evaluate_calls += 1
         focused = scan_plan is not None and scan_plan.mode == "focused"
         if focused:
             empty = {
-                "blocked": False,
                 "reason": "",
                 "label": None,
                 "confidence": 0.0,
@@ -59,7 +60,7 @@ class VisionPipeline:
                 "check_points": [],
                 "evidence": [],
             }
-            decided = self._call_decision_engine(
+            decided = self.decision_engine.evaluate(
                 empty,
                 captured_frame,
                 monitor_index=monitor_index,
@@ -71,14 +72,10 @@ class VisionPipeline:
             image = captured_frame.model_frame
             if not isinstance(image, np.ndarray):
                 image = captured_frame.original_frame
-            detect = getattr(self.detector, "detect", None)
-            if callable(detect):
-                from app.vision.detectors.base import check_result_from_evidence
+            from app.vision.detectors.base import check_result_from_evidence
 
-                evidence = detect(image, input_size=self.full_input_size)
-                nudenet_result = check_result_from_evidence(evidence)
-            else:
-                nudenet_result = dict(self.detector.check(image))
+            evidence = self.detector.detect(image, input_size=self.full_input_size)
+            nudenet_result = check_result_from_evidence(evidence)
             extra_evidence = []
             if self.yolo_adapter is not None:
                 extra_image = image if isinstance(image, np.ndarray) else captured_frame.original_frame
@@ -86,7 +83,7 @@ class VisionPipeline:
                     extra_image,
                     frame_sequence=int(getattr(captured_frame, "sequence", 0) or 0),
                 )
-            decided = self._call_decision_engine(
+            decided = self.decision_engine.evaluate(
                 nudenet_result,
                 captured_frame,
                 monitor_index=monitor_index,
@@ -94,17 +91,17 @@ class VisionPipeline:
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
             )
-            self._record_shadow(captured_frame, decided)
+            decided = self._with_shadow(captured_frame, decided)
         return decided
 
-    def _record_shadow(
+    def _with_shadow(
         self,
         captured_frame: CapturedFrame,
-        decided: dict[str, Any],
-    ) -> None:
+        decided: VisualViolationDecision,
+    ) -> VisualViolationDecision:
         if self.shadow_adapter is None:
             self.last_shadow = None
-            return
+            return decided
         image = captured_frame.model_frame
         if not isinstance(image, np.ndarray):
             image = captured_frame.original_frame
@@ -117,7 +114,9 @@ class VisionPipeline:
         )
         elapsed_ms = (_time.perf_counter() - started) * 1000
         strongest = max(evidence, key=lambda item: item.confidence, default=None)
-        primary_hit = bool(decided.get("blocked"))
+        from app.vision.violation_policy import VisualViolationClassification
+
+        primary_hit = decided.classification is VisualViolationClassification.VIOLATION
         shadow_hit = strongest is not None and strongest.confidence >= 0.45
         self.last_shadow = {
             "hit": shadow_hit,
@@ -133,38 +132,9 @@ class VisionPipeline:
             if primary_hit
             else "shadow_only",
         }
-        decided["shadow"] = dict(self.last_shadow)
-
-    def _call_decision_engine(
-        self,
-        result: dict[str, Any],
-        captured_frame: CapturedFrame,
-        *,
-        monitor_index: int,
-        extra_evidence: list[Any],
-        scan_plan: ScanPlan | None,
-        is_active_monitor: bool,
-    ) -> dict[str, Any]:
-        try:
-            return self.decision_engine.evaluate(
-                result,
-                captured_frame,
-                monitor_index=monitor_index,
-                extra_evidence=extra_evidence,
-                scan_plan=scan_plan,
-                is_active_monitor=is_active_monitor,
-            )
-        except TypeError:
-            return self.decision_engine.evaluate(
-                result,
-                captured_frame,
-                monitor_index=monitor_index,
-                extra_evidence=extra_evidence,
-            )
+        return replace(decided, shadow=dict(self.last_shadow))
 
     def reset(self) -> None:
         """Clear tile ranking and ROI follow-up state."""
 
-        reset = getattr(self.decision_engine, "reset", None)
-        if callable(reset):
-            reset()
+        self.decision_engine.reset()

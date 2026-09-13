@@ -6,7 +6,10 @@ from typing import Any
 
 from app.context.models import ContextPolicyAction
 from app.vision.pipeline import VisionPipeline
-from app.vision.violation_policy import VisualViolationClassification
+from app.vision.violation_policy import (
+    VisualViolationClassification,
+    VisualViolationDecision,
+)
 
 
 def allows_vision(action: ContextPolicyAction | None) -> bool:
@@ -43,16 +46,16 @@ class VisionSession:
         *,
         monitor_index: int = 1,
         **kwargs: Any,
-    ) -> dict[str, Any]:
+    ) -> VisualViolationDecision:
         if self._bypass:
-            return {
-                "blocked": False,
-                "classification": VisualViolationClassification.CLEAR.value,
-                "source": "full_bypass",
-                "label": None,
-                "confidence": 0.0,
-                "monitor_index": monitor_index,
-            }
+            return VisualViolationDecision(
+                classification=VisualViolationClassification.CLEAR,
+                evidence=(),
+                reason_codes=("full_bypass",),
+                primary_region=None,
+                frame_sequence=int(getattr(captured_frame, "sequence", 0) or 0),
+                monitor_index=monitor_index,
+            )
         return self.pipeline.evaluate(
             captured_frame,
             monitor_index=monitor_index,
