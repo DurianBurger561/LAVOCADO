@@ -1,4 +1,8 @@
-"""Benchmark the optional local Viddexa classifier without saving images."""
+"""Benchmark optional Viddexa tile-ranking latency without saving images.
+
+Viddexa scores are ranking signals only. They are not viewing-purpose labels
+and cannot be used as a final Block decision.
+"""
 
 from __future__ import annotations
 

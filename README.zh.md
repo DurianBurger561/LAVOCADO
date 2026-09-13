@@ -169,10 +169,23 @@ python scripts/validate_linux_capture.py
 
 固定版本的 640m 模型约 99 MiB,从 NudeNet 官方 GitHub release 下载,并做字节大小和 SHA-256 校验。该模型不纳入 Git。源码运行时若缺少它,LAVOCADO 会记录一条警告并降级到 NudeNet 320n;而打包构建版本则要求必须有经校验的 640m 文件。设置 `LAVOCADO_NUDENET_MODEL` 可指定使用位于其他路径的本地 640m 文件。
 
-若想在本地对比 320n 和 640m,且不保存任何分析结果:
+若想在本地对比 320n 和 640m 的延迟,且不保存任何分析结果:
 
 ```bash
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+```
+
+开发者 Benchmark Lab 把两套计分板分开。Vision Benchmark 只问像素是否违反
+LAVOCADO 的视觉内容规则(Violation / Clear,标注为 Visual Policy Ground Truth)。
+medical、education、art、news 只是场景元数据,不会把 Vision 结果改成 Allow。
+Full Pipeline Benchmark 再加上应用/网站规则夹具,输出 FORCE_BLOCK、FULL_BYPASS
+或 NORMAL,以及 Failure Explorer(上下文策略、规则、是否调用 Vision、检测证据、
+时序状态、最终动作):
+
+```bash
+python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
+python scripts/benchmark_pipeline.py --website-action full_bypass --tag medical
+python scripts/benchmark_pipeline.py --website-unknown --vision-classification violation --temporal-confirmed
 ```
 
 若要在隔离的开发进程中对比原生捕获路径和 MSS:
@@ -192,18 +205,18 @@ python scripts/soak_capture.py --backend auto --duration-seconds 3600
 
 它会检测停滞序号、不健康后端、内存/资源增长、降级切换和未完成清理,且不保留帧。八小时命令、失败阈值和平台矩阵见 [捕获浸泡测试指南](docs/capture-soak-testing.md)。
 
-### 可选的上下文模型基准测试
+### 可选的区域排序基准测试
 
-Viddexa 五分类上下文模型目前是一个可选的开发依赖,尚未包含在发布包中。安装后,它仅用于在放大的本地裁剪图上,对 NudeNet 的边界检测结果做二次确认。Viddexa 的结果本身绝不会单独触发保护,且 `sexy` 或 `hentai` 分类不会提升一个边界结果的判定。安装并测试它:
+Viddexa 五分类模型目前是一个可选的开发依赖,尚未包含在发布包中。安装后,它只给 tile 排序,让主检测器优先复检 porn/hentai 风险最高的区域。Viddexa 不判断观看目的,不能单独触发保护,也不会把 NudeNet 的边界结果提升为违规。安装并测试排序延迟:
 
 ```bash
 python -m pip install -r requirements-context.txt
 python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 ```
 
-固定版本的模型文件从 Hugging Face 下载,推理则在本地运行。基准测试用的图片不会被上传或保存,该命令只打印编号结果,而非输入路径。若依赖或模型不可用,LAVOCADO 仍能以纯 NudeNet 模式运行。在融合候选决策之后,原有的"三帧中两帧"时序确认依然生效。
+固定版本的模型文件从 Hugging Face 下载,推理则在本地运行。基准测试用的图片不会被上传或保存,该命令只打印编号结果,而非输入路径。若依赖或模型不可用,LAVOCADO 仍能以纯 NudeNet 模式运行。确认后的视觉违规仍需在 3 个新帧中命中 2 次才会保护。
 
-对于小面积内容的救援机制,每块显示器被分为四块区域,每次扫描只对其中一块做上下文分类。当某块区域的本地 `porn` 分数非常高时,只是让同一个 NudeNet 640m 实例重新检查该区域;Viddexa 绝不会单独生成候选。被救援的区域会在接下来的两次检查中被锁定,以便原有的"三帧中两帧"时序验证器对同一区域做确认或排除。当只有 NudeNet 320n 降级方案可用时,救援机制会自动禁用。
+对于小面积内容的救援机制,每块显示器被分为四块区域。Viddexa 按 porn/hentai 风险排序这些区域;高分只是让同一个 NudeNet 640m 实例复检该区域。被救援的区域会在接下来的两次检查中被锁定,以便时序验证器对同一区域做确认或排除。当只有 NudeNet 320n 降级方案可用时,救援机制会自动禁用。
 
 保护诊断信息保存在一个线程安全的内存快照中。它包含模型可用性、最近一次扫描延迟、显示器编号、置信度最高的检测器元数据、上下文结果、决策来源、时序历史、救援计划,以及粗粒度的前台策略状态。捕获健康信息报告首选与当前后端、是否降级及原因、帧龄和检测到的显示器数量。该快照采用明确的安全数据结构,绝不包含图像像素、截图、裁剪图、URL、窗口标题、应用标识、域名或图片路径。它不会被写入 SQLite,也不会发送给 OpenAI。
 

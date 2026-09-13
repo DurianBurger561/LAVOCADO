@@ -252,10 +252,25 @@ If it is absent during a source run, LAVOCADO logs a warning and falls back to
 NudeNet 320n; packaged builds require the verified 640m file.
 Set `LAVOCADO_NUDENET_MODEL` to use a local 640m file at another path.
 
-To compare 320n and 640m locally without saving any analysis output:
+To compare 320n and 640m latency locally without saving any analysis output:
 
 ```bash
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+```
+
+Developer Benchmark Lab keeps two scoreboards separate. Vision Benchmark
+asks only whether the pixels violate LAVOCADO's visual content rules
+(Violation / Clear — Visual Policy Ground Truth). Scenario tags such as
+medical, education, art, or news are metadata; they never force Allow.
+Full Pipeline Benchmark adds application/website fixtures and reports
+FORCE_BLOCK, FULL_BYPASS, or NORMAL plus the Failure Explorer
+(context policy, rules, whether Vision ran, detector evidence, temporal
+state, final action):
+
+```bash
+python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
+python scripts/benchmark_pipeline.py --website-action full_bypass --tag medical
+python scripts/benchmark_pipeline.py --website-unknown --vision-classification violation --temporal-confirmed
 ```
 
 To compare the native capture path with MSS in isolated developer processes:
@@ -283,13 +298,14 @@ fallback transitions, and incomplete cleanup without retaining frames. See the
 [capture soak-testing guide](docs/capture-soak-testing.md) for the eight-hour
 command, failure thresholds, and platform matrix.
 
-### Optional context-model benchmark
+### Optional tile-ranking benchmark
 
-The Viddexa five-class context model is currently an optional development
-dependency and is not yet included in release packages. When installed, it is
-used only to confirm a borderline NudeNet detection on an expanded local crop.
-A Viddexa result by itself can never trigger protection, and `sexy` or `hentai`
-does not promote a borderline result. Install and benchmark it with:
+The Viddexa five-class model is currently an optional development dependency
+and is not yet included in release packages. When installed, it only ranks
+tiles so the primary detector can recheck the highest porn/hentai-risk region
+first. Viddexa never confirms viewing purpose, never blocks on its own, and
+never promotes a borderline NudeNet result to a violation. Install and
+benchmark ranking latency with:
 
 ```bash
 python -m pip install -r requirements-context.txt
@@ -299,14 +315,13 @@ python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-imag
 The pinned model files are downloaded from Hugging Face, then inference runs
 locally. Benchmark images are not uploaded or saved, and the command prints
 only numbered results rather than input paths. If the dependencies or model are
-unavailable, LAVOCADO remains able to run in NudeNet-only mode. The existing
-2-of-3 temporal confirmation still applies after the fused candidate decision.
+unavailable, LAVOCADO remains able to run in NudeNet-only mode. Confirmed
+visual violations still require 2-of-3 fresh frames before protection.
 
-For small-content rescue, each monitor is divided into four tiles and only one
-tile is context-classified per scan. A very high local `porn` score merely asks
-the same NudeNet 640m instance to recheck that tile; Viddexa never creates a
-candidate by itself. A rescued tile is pinned for the next two checks so the
-existing 2-of-3 temporal verifier can confirm or reject the same region. Rescue
+For small-content rescue, each monitor is divided into four tiles. Viddexa
+ranks those tiles by porn/hentai risk; a high rank only asks the same NudeNet
+640m instance to recheck that tile. A rescued tile is pinned for the next two
+checks so the temporal verifier can confirm or reject the same region. Rescue
 is disabled automatically when only the NudeNet 320n fallback is available.
 
 Protection diagnostics are kept in a thread-safe in-memory snapshot. They
