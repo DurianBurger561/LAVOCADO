@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -104,7 +105,7 @@ class MainTests(unittest.TestCase):
     def test_broken_rule_schema_falls_back_to_existing_protection(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir)
-            with sqlite3.connect(data_dir / "events.db") as connection:
+            with closing(sqlite3.connect(data_dir / "events.db")) as connection, connection:
                 connection.execute("CREATE TABLE application_rules (broken TEXT)")
             platform = Mock(default_data_dir=Mock(return_value=data_dir))
             with (

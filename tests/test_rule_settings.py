@@ -3,6 +3,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from app.context.models import (
@@ -55,7 +56,7 @@ class RuleSettingsTests(unittest.TestCase):
         self.assertEqual(RuleSettingsStore(self.database).load(), saved)
         self.assertNotIn(b"private", self.database.read_bytes())
         self.assertNotIn(b"secret", self.database.read_bytes())
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             self.assertEqual(connection.execute(
                 "SELECT COUNT(*) FROM protection_events"
             ).fetchone()[0], 1)
@@ -105,7 +106,7 @@ class RuleSettingsTests(unittest.TestCase):
 
     def test_corrupt_conflicting_rows_still_resolve_force_block(self) -> None:
         store = RuleSettingsStore(self.database)
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.executemany(
                 "INSERT INTO website_rules (domain, action, match_mode, enabled) "
                 "VALUES (?, ?, ?, 1)",
