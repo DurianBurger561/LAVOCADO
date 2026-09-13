@@ -12,6 +12,7 @@ from app.service import LavocadoService, State
 from app.vision.change_scheduler import ChangeDecision
 from app.vision.detectors.base import DetectionEvidence
 from app.vision.diagnostics import DiagnosticsStore
+from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.scheduler import ScanPlan
 from app.vision.temporal import TemporalVerifier
 from app.vision.viddexa_ranker import ViddexaRanker
@@ -208,27 +209,39 @@ def _scan_plan() -> ScanPlan:
     )
 
 
-def _decision_from_detector_result(
-    result: dict[str, object],
+def _decision_from_detection(
+    result: PrimaryDetection,
     *,
     monitor_index: int = 1,
     frame_sequence: int = 1,
+    candidate: bool | None = None,
 ) -> VisualViolationDecision:
-    classification = (
-        VisualViolationClassification.VIOLATION
-        if bool(result.get("blocked"))
-        else VisualViolationClassification.CLEAR
-    )
-    label = result.get("label")
-    confidence = result.get("confidence")
+    selected = result.primary[0] if result.primary else None
+    is_candidate = selected is not None if candidate is None else candidate
     return VisualViolationDecision(
-        classification=classification,
+        classification=(
+            VisualViolationClassification.VIOLATION
+            if is_candidate
+            else VisualViolationClassification.CLEAR
+        ),
         evidence=(),
         reason_codes=(),
         primary_region=None,
         frame_sequence=frame_sequence,
-        label=None if label is None else str(label),
-        confidence=0.0 if not isinstance(confidence, (int, float)) else float(confidence),
+        label=(
+            "FUSED"
+            if candidate is True
+            else selected.label
+            if selected is not None and is_candidate
+            else None
+        ),
+        confidence=(
+            0.60
+            if candidate is True
+            else selected.confidence
+            if selected is not None and is_candidate
+            else 0.0
+        ),
         monitor_index=monitor_index,
     )
 
@@ -242,19 +255,18 @@ class FakeDecisionEngine:
 
     def evaluate(
         self,
-        result: dict[str, object],
+        result: PrimaryDetection,
         captured: CaptureFrame,
         *,
         monitor_index: int,
-        extra_evidence: object | None = None,
         scan_plan: object | None = None,
         is_active_monitor: bool = True,
         prepared_frame: object | None = None,
     ) -> VisualViolationDecision:
-        del extra_evidence, scan_plan, is_active_monitor
+        del scan_plan, is_active_monitor
         self.prepared_for_evaluation = prepared_frame
         self.original_frames.append(int(captured.image[0, 0, 0]))
-        return _decision_from_detector_result(
+        return _decision_from_detection(
             result,
             monitor_index=monitor_index,
             frame_sequence=captured.sequence,
@@ -286,29 +298,21 @@ class SequenceDecisionEngine:
 
     def evaluate(
         self,
-        result: dict[str, object],
+        result: PrimaryDetection,
         captured: CaptureFrame,
         *,
         monitor_index: int,
-        extra_evidence: object | None = None,
         scan_plan: object | None = None,
         is_active_monitor: bool = True,
         prepared_frame: object | None = None,
     ) -> VisualViolationDecision:
-        del extra_evidence, scan_plan, is_active_monitor, prepared_frame
+        del scan_plan, is_active_monitor, prepared_frame
         candidate = next(self._candidates)
-        promoted = dict(result)
-        promoted.update(
-            {
-                "blocked": candidate,
-                "label": "FUSED" if candidate else None,
-                "confidence": 0.60 if candidate else 0.0,
-            }
-        )
-        return _decision_from_detector_result(
-            promoted,
+        return _decision_from_detection(
+            result,
             monitor_index=monitor_index,
             frame_sequence=captured.sequence,
+            candidate=candidate,
         )
 
     def prepare_scan(

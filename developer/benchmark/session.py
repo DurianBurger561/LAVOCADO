@@ -18,7 +18,6 @@ from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import (
     DetectionEvidence,
     box_from_raw,
-    check_result_from_evidence,
 )
 from app.vision.detectors.factory import load_primary_bundle
 from app.vision.model_assets import (
@@ -26,6 +25,7 @@ from app.vision.model_assets import (
     YOLO11_NSFW_SMALL_REVISION,
 )
 from app.vision.pipeline import VisionPipeline
+from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.violation_policy import (
     ThresholdPolicy,
     activate_threshold_policy,
@@ -268,9 +268,8 @@ class BenchmarkSession:
         started = time.perf_counter()
         try:
             with isolated_threshold_policy(self._threshold_policy):
-                nudenet_result = check_result_from_evidence(
-                    cached.detect(image, input_size=self.config.full_input_size),
-                    raw_detections=raw.detections,
+                primary_evidence = tuple(
+                    cached.detect(image, input_size=self.config.full_input_size)
                 )
                 for index in range(repeats):
                     frame = captured_frame_from_bgr(
@@ -279,7 +278,9 @@ class BenchmarkSession:
                         sequence=index + 1,
                     )
                     decided = self.decision_engine.evaluate(
-                        nudenet_result,
+                        PrimaryDetection.from_primary(
+                            primary_evidence, frame_sequence=frame.sequence
+                        ),
                         frame,
                         monitor_index=1,
                     )

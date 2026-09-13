@@ -27,6 +27,24 @@ class PrimaryDetection:
     supplementary: tuple[ViolationEvidence, ...]
     evidence: tuple[ViolationEvidence, ...]
 
+    @classmethod
+    def from_primary(
+        cls,
+        primary: tuple[DetectionEvidence, ...],
+        *,
+        frame_sequence: int,
+        supplementary: tuple[ViolationEvidence, ...] = (),
+    ) -> PrimaryDetection:
+        mapped = tuple(
+            result
+            for item in primary
+            if (
+                result := detection_to_violation(item, frame_sequence=frame_sequence)
+            )
+            is not None
+        )
+        return cls(primary, supplementary, mapped + supplementary)
+
 
 class PrimaryDetectorSet:
     """Own model invocation, leaving thresholds to VisualDecisionEngine."""
@@ -58,14 +76,6 @@ class PrimaryDetectorSet:
             if self.supplementary is not None
             else ()
         )
-        mapped = tuple(
-            result
-            for item in primary
-            if (result := detection_to_violation(item, frame_sequence=sequence))
-            is not None
-        )
-        return PrimaryDetection(
-            primary=primary,
-            supplementary=supplemental,
-            evidence=mapped + supplemental,
+        return PrimaryDetection.from_primary(
+            primary, frame_sequence=sequence, supplementary=supplemental
         )

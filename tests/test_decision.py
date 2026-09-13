@@ -1,5 +1,6 @@
 """Tests for visual-violation decisions. Viddexa ranks tiles and cannot block."""
 
+import inspect
 import unittest
 
 import numpy as np
@@ -8,6 +9,7 @@ from app.platforms.capture.models import CaptureFrame
 from app.vision.context.base import ContextResult
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import DetectionEvidence
+from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.violation_policy import (
     ViolationEvidence,
     ViolationEvidenceType,
@@ -71,21 +73,18 @@ def captured_frame() -> CaptureFrame:
     )
 
 
-def result_with_detection(score: float) -> dict[str, object]:
-    return {
-        "blocked": score >= 0.65,
-        "reason": "strong" if score >= 0.65 else "",
-        "label": "FEMALE_BREAST_EXPOSED" if score >= 0.65 else None,
-        "confidence": score if score >= 0.65 else 0.0,
-        "box": [100, 50, 200, 100] if score >= 0.65 else None,
-        "check_points": [
-            {
-                "class": "FEMALE_BREAST_EXPOSED",
-                "score": score,
-                "box": [100, 50, 200, 100],
-            }
-        ],
-    }
+def result_with_detection(score: float) -> PrimaryDetection:
+    return PrimaryDetection.from_primary(
+        (
+            DetectionEvidence(
+                "FEMALE_BREAST_EXPOSED",
+                score,
+                (100, 50, 200, 100),
+                "nudenet_640m",
+            ),
+        ),
+        frame_sequence=4,
+    )
 
 
 def rescue_frame() -> CaptureFrame:
@@ -100,15 +99,8 @@ def rescue_frame() -> CaptureFrame:
     )
 
 
-def empty_result() -> dict[str, object]:
-    return {
-        "blocked": False,
-        "reason": "",
-        "label": None,
-        "confidence": 0.0,
-        "box": None,
-        "check_points": [],
-    }
+def empty_result() -> PrimaryDetection:
+    return PrimaryDetection.from_primary((), frame_sequence=1)
 
 
 class DecisionEngineTests(unittest.TestCase):
@@ -227,13 +219,15 @@ class DecisionEngineTests(unittest.TestCase):
             },
         )
 
-    def test_decision_engine_ignores_context_identity_fields(self) -> None:
-        payload = result_with_detection(0.80)
-        payload["hostname"] = "medical.example"
-        payload["application_name"] = "chrome.exe"
-        payload["medical"] = True
+    def test_decision_engine_accepts_only_visual_evidence(self) -> None:
+        parameters = inspect.signature(DecisionEngine.evaluate).parameters
+        self.assertNotIn("hostname", parameters)
+        self.assertNotIn("application_name", parameters)
+        self.assertNotIn("medical", parameters)
 
-        result = DecisionEngine().evaluate(payload, captured_frame())
+        result = DecisionEngine().evaluate(
+            result_with_detection(0.80), captured_frame()
+        )
 
         self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
         self.assertNotEqual(result.label, "medical.example")
@@ -389,9 +383,10 @@ class DecisionEngineTests(unittest.TestCase):
         ]
 
         result = DecisionEngine().evaluate(
-            empty_result(),
+            PrimaryDetection.from_primary(
+                (), frame_sequence=4, supplementary=tuple(evidence)
+            ),
             captured_frame(),
-            extra_evidence=evidence,
         )
 
         self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
@@ -413,9 +408,10 @@ class DecisionEngineTests(unittest.TestCase):
         local_detector = FakeLocalDetector([True])
 
         result = DecisionEngine(None, local_detector).evaluate(
-            empty_result(),
+            PrimaryDetection.from_primary(
+                (), frame_sequence=4, supplementary=tuple(evidence)
+            ),
             captured_frame(),
-            extra_evidence=evidence,
         )
 
         self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
@@ -437,9 +433,10 @@ class DecisionEngineTests(unittest.TestCase):
         local_detector = FakeLocalDetector([False])
 
         result = DecisionEngine(None, local_detector).evaluate(
-            empty_result(),
+            PrimaryDetection.from_primary(
+                (), frame_sequence=4, supplementary=tuple(evidence)
+            ),
             captured_frame(),
-            extra_evidence=evidence,
         )
 
         self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)

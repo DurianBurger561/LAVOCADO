@@ -10,9 +10,11 @@ from app import config
 from app.platforms.capture.models import CaptureFrame
 from app.settings.schema import VisionSettings, default_vision_settings
 from app.vision.candidate_verifier import CandidateVerifier, LocalNudityDetector
+from app.vision.detectors.base import check_result_from_evidence
 from app.vision.evidence import evidence_from_confidence
 from app.vision.nudenet_adapter import detections_to_evidence
 from app.vision.preprocessor import FramePreprocessor
+from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.regions import Region, map_box_to_original
 from app.vision.scheduler import ScanPlan, TileScheduler
 from app.vision.tiles import TileState
@@ -92,11 +94,10 @@ class DecisionEngine:
 
     def evaluate(
         self,
-        nudenet_result: dict[str, Any],
+        detection: PrimaryDetection,
         captured_frame: CaptureFrame,
         *,
         monitor_index: int = 1,
-        extra_evidence: list[ViolationEvidence] | None = None,
         scan_plan: ScanPlan | None = None,
         is_active_monitor: bool = True,
         prepared_frame: FramePreprocessor | None = None,
@@ -105,16 +106,14 @@ class DecisionEngine:
 
         prepared = prepared_frame or FramePreprocessor(captured_frame)
         prepared.require_frame(captured_frame)
-        result = dict(nudenet_result)
-        for key in ("hostname", "application_name", "url", "medical", "art", "education"):
-            result.pop(key, None)
-        frame_sequence = int(getattr(captured_frame, "sequence", 0) or 0)
-        extra = list(extra_evidence or [])
-        if extra:
-            existing = result.get("evidence")
-            payload = list(existing) if isinstance(existing, list) else []
-            payload.extend(evidence_to_dict(item) for item in extra)
-            result["evidence"] = payload
+        frame_sequence = captured_frame.sequence
+        result = check_result_from_evidence(
+            list(detection.primary), frame_sequence=frame_sequence
+        )
+        if detection.supplementary:
+            result["evidence"].extend(
+                evidence_to_dict(item) for item in detection.supplementary
+            )
 
         plan = scan_plan
         if plan is None:
@@ -166,8 +165,7 @@ class DecisionEngine:
                 decided, captured_frame, monitor_index, frame_sequence
             )
 
-        evidence = self._collect_evidence(result, extra_evidence, frame_sequence)
-        assessment = self.visual_decision_engine.assess(evidence)
+        assessment = self.visual_decision_engine.assess(detection.evidence)
         if assessment.strong is not None:
             chosen = assessment.strong
             sexual_act = (
@@ -240,23 +238,6 @@ class DecisionEngine:
         return self._finalize_decision(
             decided, captured_frame, monitor_index, frame_sequence
         )
-
-    def _collect_evidence(
-        self,
-        result: dict[str, Any],
-        extra_evidence: list[ViolationEvidence] | None,
-        frame_sequence: int,
-    ) -> list[ViolationEvidence]:
-        checkpoints = result.get("check_points", [])
-        nudenet_evidence = (
-            detections_to_evidence(
-                checkpoints, model="nudenet", frame_sequence=frame_sequence
-            )
-            if isinstance(checkpoints, list)
-            else []
-        )
-        extra = list(extra_evidence or [])
-        return nudenet_evidence + extra
 
     def _confirm_primary_candidate(
         self,

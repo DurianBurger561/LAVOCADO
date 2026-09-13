@@ -9,7 +9,7 @@ from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
 from app.vision.preprocessor import FramePreprocessor
-from app.vision.primary_detector_set import PrimaryDetectorSet
+from app.vision.primary_detector_set import PrimaryDetection, PrimaryDetectorSet
 from app.vision.scheduler import ScanPlan
 from app.vision.violation_policy import VisualViolationDecision
 from app.vision.yolo_adapter import Yolo11Adapter
@@ -57,33 +57,22 @@ class VisionPipeline:
         prepared.require_frame(captured_frame)
         focused = scan_plan is not None and scan_plan.mode == "focused"
         if focused:
-            empty = {
-                "reason": "",
-                "label": None,
-                "confidence": 0.0,
-                "box": None,
-                "check_points": [],
-                "evidence": [],
-            }
             decided = self.decision_engine.evaluate(
-                empty,
+                PrimaryDetection.from_primary(
+                    (), frame_sequence=captured_frame.sequence
+                ),
                 captured_frame,
                 monitor_index=monitor_index,
-                extra_evidence=[],
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
                 prepared_frame=prepared,
             )
         else:
-            from app.vision.detectors.base import check_result_from_evidence
-
             detected = self.primary_detectors.detect(prepared)
-            nudenet_result = check_result_from_evidence(list(detected.primary))
             decided = self.decision_engine.evaluate(
-                nudenet_result,
+                detected,
                 captured_frame,
                 monitor_index=monitor_index,
-                extra_evidence=list(detected.supplementary),
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
                 prepared_frame=prepared,
