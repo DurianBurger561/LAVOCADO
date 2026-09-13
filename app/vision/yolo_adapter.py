@@ -12,6 +12,7 @@ import numpy as np
 
 from app import config
 from app.vision.model_assets import resolve_yolo_model_path
+from app.vision.preprocessor import FramePreprocessor
 from app.vision.violation_policy import (
     ViolationEvidence,
     evidence_type_for_label,
@@ -114,7 +115,7 @@ class UltralyticsYoloModel:
         self.imgsz = imgsz
 
     def detect(self, image: np.ndarray) -> list[dict[str, Any]]:
-        rgb = np.ascontiguousarray(image[:, :, ::-1])
+        rgb = FramePreprocessor.to_rgb(image)
         kwargs: dict[str, Any] = {"verbose": False}
         if self.imgsz is not None:
             kwargs["imgsz"] = int(self.imgsz)

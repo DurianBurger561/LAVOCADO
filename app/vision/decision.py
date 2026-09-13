@@ -8,21 +8,14 @@ from typing import Any, Protocol
 import numpy as np
 
 from app import config
-from app.settings.schema import VisionSettings, default_vision_settings
 from app.platforms.capture.models import CaptureFrame
+from app.settings.schema import VisionSettings, default_vision_settings
 from app.vision.change_map import build_change_map, tile_change_scores
-from app.vision.evidence import evidence_from_confidence
 from app.vision.detectors.base import DetectionEvidence
+from app.vision.evidence import evidence_from_confidence
 from app.vision.nudenet_adapter import detections_to_evidence
-from app.vision.regions import (
-    Region,
-    crop_region,
-    make_context_crop,
-    map_box_to_original,
-    overlapping_tile_regions,
-    subdivide_region,
-    tile_regions,
-)
+from app.vision.preprocessor import FramePreprocessor, TileSpec
+from app.vision.regions import Region, map_box_to_original
 from app.vision.scheduler import ScanPlan, VisionScheduler
 from app.vision.tiles import TileState, mark_checked, rank_tiles
 from app.vision.tracking import CandidateTracker, box_to_region
@@ -152,9 +145,12 @@ class DecisionEngine:
         extra_evidence: list[ViolationEvidence] | None = None,
         scan_plan: ScanPlan | None = None,
         is_active_monitor: bool = True,
+        prepared_frame: FramePreprocessor | None = None,
     ) -> VisualViolationDecision:
         """Return a candidate decision without retaining image pixels."""
 
+        prepared = prepared_frame or FramePreprocessor(captured_frame)
+        prepared.require_frame(captured_frame)
         result = dict(nudenet_result)
         for key in ("hostname", "application_name", "url", "medical", "art", "education"):
             result.pop(key, None)
@@ -196,6 +192,7 @@ class DecisionEngine:
                 monitor_index,
                 plan.roi,
                 frame_sequence,
+                prepared,
             )
             return self._finalize_decision(
                 focused, captured_frame, monitor_index, frame_sequence
@@ -209,6 +206,7 @@ class DecisionEngine:
                 confirmed_source="nudenet_roi",
                 candidate_source="anatomy_candidate",
                 fallback=self._strong_primary_result(result, captured_frame),
+                prepared=prepared,
             )
             return self._finalize_decision(
                 decided, captured_frame, monitor_index, frame_sequence
@@ -242,6 +240,7 @@ class DecisionEngine:
                 fallback=self._violation_from_evidence(
                     result, captured_frame, chosen
                 ),
+                prepared=prepared,
             )
             return self._finalize_decision(
                 decided, captured_frame, monitor_index, frame_sequence
@@ -260,7 +259,7 @@ class DecisionEngine:
                 )
             else:
                 base = self._evaluate_borderline(
-                    result, captured_frame, borderline_detection
+                    result, captured_frame, borderline_detection, prepared
                 )
                 if bool(base.get("blocked")):
                     return self._finalize_decision(
@@ -275,7 +274,7 @@ class DecisionEngine:
                     borderline.label, borderline.model
                 ),
             }
-            base = self._evaluate_borderline(result, captured_frame, detection)
+            base = self._evaluate_borderline(result, captured_frame, detection, prepared)
             if bool(base.get("blocked")):
                 return self._finalize_decision(
                     base, captured_frame, monitor_index, frame_sequence
@@ -286,9 +285,10 @@ class DecisionEngine:
                 captured_frame,
                 monitor_index,
                 is_active_monitor=is_active_monitor,
+                prepared_frame=prepared,
             )
         decided = self._evaluate_rescue(
-            base, captured_frame, monitor_index, plan=plan
+            base, captured_frame, monitor_index, plan=plan, prepared=prepared
         )
         return self._finalize_decision(
             decided, captured_frame, monitor_index, frame_sequence
@@ -320,6 +320,7 @@ class DecisionEngine:
         confirmed_source: str,
         candidate_source: str,
         fallback: dict[str, Any],
+        prepared: FramePreprocessor,
     ) -> dict[str, Any]:
         """Confirm primary visual evidence on an original-resolution ROI.
 
@@ -347,7 +348,7 @@ class DecisionEngine:
             "box": list(box),
             "threshold": threshold_for_label(str(label)),
         }
-        roi = self._evaluate_borderline(result, captured_frame, detection)
+        roi = self._evaluate_borderline(result, captured_frame, detection, prepared)
         if bool(roi.get("blocked")):
             roi["source"] = confirmed_source
             roi["reason"] = (
@@ -367,6 +368,7 @@ class DecisionEngine:
         result: dict[str, Any],
         captured_frame: CaptureFrame,
         borderline: dict[str, Any],
+        prepared: FramePreprocessor,
     ) -> dict[str, Any]:
         """Recheck a borderline box on the original-resolution crop."""
 
@@ -393,12 +395,7 @@ class DecisionEngine:
         ):
             return base
 
-        crop_result = make_context_crop(
-            original,
-            box,
-            model.shape,
-            self.crop_expansion,
-        )
+        crop_result = prepared.context_crop(box, model.shape, self.crop_expansion)
         if crop_result is None:
             return base
         crop, region = crop_result
@@ -437,10 +434,12 @@ class DecisionEngine:
         captured_frame: CaptureFrame,
         monitor_index: int,
         plan: ScanPlan | None = None,
+        prepared: FramePreprocessor | None = None,
     ) -> dict[str, Any]:
         """Check priority tiles. Viddexa only orders them; it never vetoes."""
 
-        original = captured_frame.image
+        prepared = prepared or FramePreprocessor(captured_frame)
+        original = prepared.original
         if (
             not self.rescue_enabled
             or self.local_detector is None
@@ -448,7 +447,7 @@ class DecisionEngine:
         ):
             return base
 
-        tiles = self._tiles_for(monitor_index, original)
+        tiles = self._tiles_for(monitor_index, prepared)
         if not tiles:
             return base
 
@@ -470,7 +469,7 @@ class DecisionEngine:
             tile_state = next((item for item in tiles if item.index == tile_index), None)
             if tile_state is None:
                 continue
-            crop = crop_region(original, tile_state.region)
+            crop = prepared.crop_xyxy(tile_state.region)
             if crop is None:
                 continue
             checked.add(tile_index)
@@ -532,7 +531,7 @@ class DecisionEngine:
                 and tile_state.change_score >= 0.4
             ):
                 subdivided = self._evaluate_subtiles(
-                    decided, original, tile_state, monitor_index
+                    decided, prepared, tile_state, monitor_index
                 )
                 if bool(subdivided.get("blocked")):
                     checked.add(tile_index)
@@ -541,28 +540,6 @@ class DecisionEngine:
 
         mark_checked(tiles, checked, scan_id)
         return decided
-
-    def _rank_tiles(
-        self,
-        original: np.ndarray,
-        regions: tuple[Region, ...],
-    ) -> list[tuple[float, int, Region, dict[str, float], np.ndarray]]:
-        ranked: list[tuple[float, int, Region, dict[str, float], np.ndarray]] = []
-        assert self.context_classifier is not None
-        for tile_index, region in enumerate(regions):
-            tile = crop_region(original, region)
-            if tile is None:
-                continue
-            context_scores = self.context_classifier.classify(tile)
-            if context_scores is None:
-                continue
-            risk = max(
-                float(context_scores.get("porn", 0.0)),
-                float(context_scores.get("hentai", 0.0)),
-            )
-            ranked.append((risk, tile_index, region, dict(context_scores), tile))
-        ranked.sort(key=lambda item: (-item[0], item[1]))
-        return ranked
 
     def _select_ranked_tile(
         self,
@@ -606,14 +583,17 @@ class DecisionEngine:
         monitor_index: int,
         *,
         is_active_monitor: bool = True,
+        prepared_frame: FramePreprocessor | None = None,
     ) -> ScanPlan:
         """Refresh tile scores and ask the scheduler what to inspect next."""
 
-        original = captured_frame.image
+        prepared = prepared_frame or FramePreprocessor(captured_frame)
+        prepared.require_frame(captured_frame)
+        original = prepared.original
         tiles: list[TileState] = []
         change_map = None
         if isinstance(original, np.ndarray):
-            tiles = self._tiles_for(monitor_index, original)
+            tiles = self._tiles_for(monitor_index, prepared)
             previous = self._previous_gray.get(monitor_index)
             change_map = build_change_map(
                 original,
@@ -628,7 +608,7 @@ class DecisionEngine:
                 )
                 for tile, score in zip(tiles, scores, strict=False):
                     tile.change_score = score
-            self._refresh_context_scores(original, tiles)
+            self._refresh_context_scores(prepared, tiles)
         self._scan_ids[monitor_index] = self._scan_ids.get(monitor_index, 0) + 1
         active = self.tracker.active_track(monitor_index)
         predicted = None
@@ -649,17 +629,15 @@ class DecisionEngine:
         self._last_plan[monitor_index] = plan
         return plan
 
-    def _tiles_for(self, monitor_index: int, original: np.ndarray) -> list[TileState]:
-        regions = overlapping_tile_regions(
-            original.shape,
-            self.rescue_rows,
-            self.rescue_columns,
-            self.tile_overlap,
-        )
-        if not regions:
-            regions = tile_regions(
-                original.shape, self.rescue_rows, self.rescue_columns
+    def _tiles_for(
+        self, monitor_index: int, prepared: FramePreprocessor
+    ) -> list[TileState]:
+        regions = tuple(
+            item.region
+            for item in prepared.tiles(
+                TileSpec(self.rescue_rows, self.rescue_columns, self.tile_overlap)
             )
+        )
         existing = self._tiles.get(monitor_index)
         if existing is not None and len(existing) == len(regions):
             for tile, region in zip(existing, regions, strict=False):
@@ -673,9 +651,9 @@ class DecisionEngine:
         return tiles
 
     def _refresh_context_scores(
-        self, original: np.ndarray, tiles: list[TileState]
+        self, prepared: FramePreprocessor, tiles: list[TileState]
     ) -> None:
-        crops = [crop_region(original, tile.region) for tile in tiles]
+        crops = [prepared.crop_xyxy(tile.region) for tile in tiles]
         classify_batch = getattr(self.context_classifier, "classify_batch", None)
         if callable(classify_batch):
             valid = [crop for crop in crops if crop is not None]
@@ -722,6 +700,7 @@ class DecisionEngine:
         monitor_index: int,
         roi: Region,
         frame_sequence: int,
+        prepared: FramePreprocessor,
     ) -> dict[str, Any]:
         original = captured_frame.image
         base = self._with_metadata(
@@ -732,7 +711,7 @@ class DecisionEngine:
         )
         if self.local_detector is None or not isinstance(original, np.ndarray):
             return base
-        crop = crop_region(original, roi)
+        crop = prepared.crop_xyxy(roi)
         if crop is None:
             return base
         hit = self._strong_local_hit(crop)
@@ -769,21 +748,19 @@ class DecisionEngine:
     def _evaluate_subtiles(
         self,
         base: dict[str, Any],
-        original: np.ndarray,
+        prepared: FramePreprocessor,
         tile_state: TileState,
         monitor_index: int,
     ) -> dict[str, Any]:
         del monitor_index
         if self.local_detector is None:
             return base
-        subtiles = subdivide_region(tile_state.region)
+        subtiles = prepared.subtiles(tile_state.region)
         if not subtiles:
             return base
         scored: list[tuple[float, Region, np.ndarray]] = []
-        for region in subtiles:
-            crop = crop_region(original, region)
-            if crop is None:
-                continue
+        for subtile in subtiles:
+            region, crop = subtile.region, subtile.image
             scores = None
             if self.context_classifier is not None:
                 scores = self.context_classifier.classify(crop)

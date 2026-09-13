@@ -15,6 +15,7 @@ import numpy as np
 from PIL import Image
 
 from app import config
+from app.vision.preprocessor import FramePreprocessor
 
 LOGGER = logging.getLogger(__name__)
 CONTEXT_LABELS = ("normal", "porn", "hentai", "sexy", "drawing")
@@ -75,7 +76,7 @@ class ContextClassifier:
             raise ValueError("context image must have shape (height, width, 3)")
         if bgr_image.size == 0:
             raise ValueError("context image cannot be empty")
-        rgb_image = np.ascontiguousarray(bgr_image[:, :, ::-1], dtype=np.uint8)
+        rgb_image = FramePreprocessor.to_rgb(bgr_image)
         return Image.fromarray(rgb_image, mode="RGB")
 
     @staticmethod

@@ -10,8 +10,8 @@ from app.intervention.recorder import ProtectionEvent
 from app.platforms.capture import CaptureBackendStatus, CaptureFrame, Rect
 from app.service import LavocadoService, State
 from app.vision.change_scheduler import ChangeDecision
-from app.vision.diagnostics import DiagnosticsStore
 from app.vision.detectors.base import DetectionEvidence
+from app.vision.diagnostics import DiagnosticsStore
 from app.vision.scheduler import ScanPlan
 from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import (
@@ -235,6 +235,8 @@ def _decision_from_detector_result(
 class FakeDecisionEngine:
     def __init__(self) -> None:
         self.original_frames: list[int] = []
+        self.prepared_for_scan: object | None = None
+        self.prepared_for_evaluation: object | None = None
 
     def evaluate(
         self,
@@ -245,8 +247,10 @@ class FakeDecisionEngine:
         extra_evidence: object | None = None,
         scan_plan: object | None = None,
         is_active_monitor: bool = True,
+        prepared_frame: object | None = None,
     ) -> VisualViolationDecision:
         del extra_evidence, scan_plan, is_active_monitor
+        self.prepared_for_evaluation = prepared_frame
         self.original_frames.append(int(captured.image[0, 0, 0]))
         return _decision_from_detector_result(
             result,
@@ -260,8 +264,10 @@ class FakeDecisionEngine:
         _monitor_index: int,
         *,
         is_active_monitor: bool = True,
+        prepared_frame: object | None = None,
     ) -> ScanPlan:
         del is_active_monitor
+        self.prepared_for_scan = prepared_frame
         return _scan_plan()
 
     def rescue_status(self, _monitor_index: int) -> dict[str, int | None]:
@@ -284,8 +290,9 @@ class SequenceDecisionEngine:
         extra_evidence: object | None = None,
         scan_plan: object | None = None,
         is_active_monitor: bool = True,
+        prepared_frame: object | None = None,
     ) -> VisualViolationDecision:
-        del extra_evidence, scan_plan, is_active_monitor
+        del extra_evidence, scan_plan, is_active_monitor, prepared_frame
         candidate = next(self._candidates)
         promoted = dict(result)
         promoted.update(
@@ -307,8 +314,9 @@ class SequenceDecisionEngine:
         _monitor_index: int,
         *,
         is_active_monitor: bool = True,
+        prepared_frame: object | None = None,
     ) -> ScanPlan:
-        del is_active_monitor
+        del is_active_monitor, prepared_frame
         return _scan_plan()
 
     def rescue_status(self, _monitor_index: int) -> dict[str, int | None]:
@@ -413,6 +421,10 @@ class ServiceTests(unittest.TestCase):
         service.check_once()
 
         self.assertEqual(decision_engine.original_frames, [1])
+        self.assertIs(
+            decision_engine.prepared_for_scan,
+            decision_engine.prepared_for_evaluation,
+        )
 
     def test_fused_candidates_still_require_two_hits_in_three_frames(self) -> None:
         overlay = FakeOverlay()

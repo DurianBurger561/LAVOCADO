@@ -35,6 +35,7 @@ from app.vision.diagnostics import DiagnosticsStore
 from app.vision.model_lifecycle import compact_model_status, inspect_models
 from app.vision.overlay import Overlay
 from app.vision.pipeline import VisionPipeline
+from app.vision.preprocessor import FramePreprocessor
 from app.vision.runtime import VisionSession, allows_vision
 from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import (
@@ -342,16 +343,19 @@ class LavocadoService:
             is_active_monitor = (
                 active_index is None or int(active_index) == int(monitor_index)
             )
+            prepared_frame = FramePreprocessor(captured_frame)
             scan_plan = self.decision_engine.prepare_scan(
                 captured_frame,
                 monitor_index,
                 is_active_monitor=is_active_monitor,
+                prepared_frame=prepared_frame,
             )
             decision = self.vision_session.evaluate(
                 captured_frame,
                 monitor_index=monitor_index,
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
+                prepared_frame=prepared_frame,
             )
             results.append(decision)
 

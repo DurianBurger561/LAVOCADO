@@ -5,11 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-import numpy as np
-
 from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
+from app.vision.preprocessor import FramePreprocessor
 from app.vision.scheduler import ScanPlan
 from app.vision.violation_policy import VisualViolationDecision
 from app.vision.yolo_adapter import Yolo11Adapter
@@ -46,10 +45,13 @@ class VisionPipeline:
         monitor_index: int = 1,
         scan_plan: ScanPlan | None = None,
         is_active_monitor: bool = True,
+        prepared_frame: FramePreprocessor | None = None,
     ) -> VisualViolationDecision:
         """Return a visual-violation decision without retaining pixels."""
 
         self.evaluate_calls += 1
+        prepared = prepared_frame or FramePreprocessor(captured_frame)
+        prepared.require_frame(captured_frame)
         focused = scan_plan is not None and scan_plan.mode == "focused"
         if focused:
             empty = {
@@ -67,9 +69,10 @@ class VisionPipeline:
                 extra_evidence=[],
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
+                prepared_frame=prepared,
             )
         else:
-            image = captured_frame.image
+            image = prepared.original
             from app.vision.detectors.base import check_result_from_evidence
 
             evidence = self.detector.detect(image, input_size=self.full_input_size)
@@ -87,6 +90,7 @@ class VisionPipeline:
                 extra_evidence=extra_evidence,
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
+                prepared_frame=prepared,
             )
             decided = self._with_shadow(captured_frame, decided)
         return decided
