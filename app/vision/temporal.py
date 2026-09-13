@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import deque
 
+from app.vision.evidence import decay_evidence, is_confirmed
+
 
 def _regions_overlap(left: object, right: object) -> bool:
     if not isinstance(left, (list, tuple)) or not isinstance(right, (list, tuple)):
@@ -40,7 +42,14 @@ class EvidenceAccumulator:
 class TemporalVerifier:
     """Require confirmed visual violations on distinct fresh frames."""
 
-    def __init__(self, window_size: int, required_hits: int) -> None:
+    def __init__(
+        self,
+        window_size: int,
+        required_hits: int,
+        *,
+        evidence_threshold: float = 0.0,
+        decay: float = 0.5,
+    ) -> None:
         if window_size < 1:
             raise ValueError("window_size must be at least 1")
         if not 1 <= required_hits <= window_size:
@@ -48,8 +57,11 @@ class TemporalVerifier:
 
         self._window_size = window_size
         self._required_hits = required_hits
+        self._evidence_threshold = max(0.0, float(evidence_threshold))
+        self._decay = min(0.9, max(0.1, float(decay)))
         self._history: deque[bool] = deque(maxlen=window_size)
         self._evidence = EvidenceAccumulator(window_size)
+        self._evidence_score = 0.0
         self._last_frame_sequence: int | None = None
         self._active_region: object | None = None
         self._active_track_id: int | None = None
@@ -72,6 +84,12 @@ class TemporalVerifier:
 
         return self._evidence.history()
 
+    @property
+    def evidence_score(self) -> float:
+        """Return accumulated detector evidence for the active track."""
+
+        return self._evidence_score
+
     def update(
         self,
         is_candidate: bool,
@@ -80,6 +98,8 @@ class TemporalVerifier:
         region: object | None = None,
         evidence_type: str | None = None,
         track_id: int | None = None,
+        evidence_score: float | None = None,
+        evidence_delta: float = 0.0,
     ) -> bool:
         """Record one fresh-frame decision and report whether it is confirmed.
 
@@ -97,15 +117,24 @@ class TemporalVerifier:
         if frame_sequence is not None:
             self._last_frame_sequence = frame_sequence
 
-        if is_candidate and track_id is not None and self._active_track_id is not None:
-            if track_id != self._active_track_id:
-                self._history.clear()
-                self._evidence.reset()
-                self._active_region = None
-        if is_candidate and region is not None and self._active_region is not None:
-            if track_id is None and not _regions_overlap(region, self._active_region):
-                self._history.clear()
-                self._evidence.reset()
+        switched_track = (
+            is_candidate
+            and track_id is not None
+            and self._active_track_id is not None
+            and track_id != self._active_track_id
+        )
+        switched_region = (
+            is_candidate
+            and region is not None
+            and self._active_region is not None
+            and track_id is None
+            and not _regions_overlap(region, self._active_region)
+        )
+        if switched_track or switched_region:
+            self._history.clear()
+            self._evidence.reset()
+            self._evidence_score = 0.0
+            self._active_region = None
         if is_candidate and region is not None:
             self._active_region = region
         elif not is_candidate:
@@ -118,8 +147,16 @@ class TemporalVerifier:
         self._history.append(bool(is_candidate))
         if is_candidate:
             self._evidence.add(evidence_type)
+            if evidence_score is not None:
+                self._evidence_score = max(0.0, float(evidence_score))
+            else:
+                self._evidence_score += max(0.0, float(evidence_delta))
         else:
             self._evidence.decay()
+            if evidence_score is not None:
+                self._evidence_score = max(0.0, float(evidence_score))
+            else:
+                self._evidence_score = decay_evidence(self._evidence_score, self._decay)
         return self._is_confirmed()
 
     def reset(self) -> None:
@@ -127,14 +164,20 @@ class TemporalVerifier:
 
         self._history.clear()
         self._evidence.reset()
+        self._evidence_score = 0.0
         self._last_frame_sequence = None
         self._active_region = None
         self._active_track_id = None
 
     def _is_confirmed(self) -> bool:
-        return (
-            len(self._history) == self._window_size
-            and self.hits >= self._required_hits
+        return is_confirmed(
+            fresh_hits=self.hits,
+            evidence_score=self._evidence_score,
+            min_fresh_hits=self._required_hits,
+            evidence_threshold=self._evidence_threshold,
+            window_hits=self.hits,
+            required_window_hits=self._required_hits,
+            window_full=len(self._history) == self._window_size,
         )
 
 

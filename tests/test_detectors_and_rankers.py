@@ -8,7 +8,7 @@ import numpy as np
 from app.settings.presets import apply_preset
 from app.settings.schema import sanitize_vision_settings
 from app.settings.storage import load_vision_settings, save_vision_settings
-from app.vision.change_map import build_change_map, tile_change_scores
+from app.vision.change_map import ChangeMap, build_change_map, tile_change_scores
 from app.vision.context.factory import load_context_ranker, normalize_context_name
 from app.vision.context.off import OffContextRanker
 from app.vision.detectors.base import check_result_from_evidence, to_detection_evidence
@@ -22,7 +22,8 @@ from app.vision.detectors.yolo11_nsfw import Yolo11NsfwDetector
 from app.vision.evidence import decay_evidence, evidence_from_confidence, is_confirmed
 from app.vision.scheduler import VisionScheduler
 from app.vision.tiles import TileState, mark_checked, rank_tiles
-from app.vision.tracking import CandidateTracker
+from app.vision.tracking import CandidateTrack, CandidateTracker
+from app.vision.violation_policy import DetectionTier, tier_for_score
 from app.vision.yolo_adapter import Yolo11Adapter
 
 
@@ -262,6 +263,32 @@ class TrackingAndEvidenceTests(unittest.TestCase):
                 evidence_threshold=2.5,
             )
         )
+        self.assertFalse(
+            is_confirmed(
+                fresh_hits=2,
+                evidence_score=1.0,
+                min_fresh_hits=2,
+                evidence_threshold=2.5,
+                window_hits=2,
+                required_window_hits=2,
+            )
+        )
+
+
+class ProposalTierTests(unittest.TestCase):
+    def test_ignore_proposal_and_strong_bands(self) -> None:
+        self.assertEqual(
+            tier_for_score(0.20, "FEMALE_BREAST_EXPOSED", margin=0.10),
+            DetectionTier.IGNORE,
+        )
+        self.assertEqual(
+            tier_for_score(0.60, "FEMALE_BREAST_EXPOSED", margin=0.10),
+            DetectionTier.PROPOSAL,
+        )
+        self.assertEqual(
+            tier_for_score(0.80, "FEMALE_BREAST_EXPOSED", margin=0.10),
+            DetectionTier.STRONG,
+        )
 
 
 class ChangeMapAndSchedulerTests(unittest.TestCase):
@@ -291,6 +318,64 @@ class ChangeMapAndSchedulerTests(unittest.TestCase):
         )
         self.assertIn(1, plan.tile_indexes)
         self.assertTrue(plan.run_full)
+
+    def test_scheduler_focused_skips_full_scan(self) -> None:
+        settings = sanitize_vision_settings(None)
+        scheduler = VisionScheduler(settings)
+        track = CandidateTrack(
+            id=1,
+            monitor_index=1,
+            label="FEMALE_BREAST_EXPOSED",
+            box=(4, 4, 12, 12),
+        )
+        plan = scheduler.plan(
+            monitor_index=1,
+            tiles=[],
+            change_map=None,
+            active_track=track,
+            is_active_monitor=True,
+        )
+        self.assertEqual(plan.mode, "focused")
+        self.assertFalse(plan.run_full)
+        self.assertEqual(plan.roi, track.box)
+
+    def test_high_change_uses_aggressive_budget(self) -> None:
+        settings = sanitize_vision_settings(None)
+        scheduler = VisionScheduler(settings)
+        tiles = [
+            TileState(0, (0, 0, 10, 10), context_score=0.1, skipped_scans=0),
+            TileState(1, (10, 0, 20, 10), context_score=0.2, skipped_scans=0),
+        ]
+        change = ChangeMap(
+            gray=np.zeros((4, 4), dtype=np.uint8),
+            previous=None,
+            difference=np.ones((4, 4), dtype=np.float32),
+        )
+        plan = scheduler.plan(
+            monitor_index=1,
+            tiles=tiles,
+            change_map=change,
+            active_track=None,
+            is_active_monitor=True,
+        )
+        self.assertEqual(plan.mode, "aggressive")
+        self.assertGreaterEqual(len(plan.tile_indexes), 1)
+
+    def test_exhausted_budget_skips_extra_tiles(self) -> None:
+        settings = sanitize_vision_settings(
+            {"scan": {"vision_budget_ms": 50}}
+        )
+        scheduler = VisionScheduler(settings)
+        tiles = [TileState(0, (0, 0, 10, 10), skipped_scans=0)]
+        plan = scheduler.plan(
+            monitor_index=1,
+            tiles=tiles,
+            change_map=None,
+            active_track=None,
+            is_active_monitor=True,
+            elapsed_ms=80.0,
+        )
+        self.assertEqual(plan.tile_indexes, ())
 
 
 if __name__ == "__main__":

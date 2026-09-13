@@ -41,14 +41,20 @@ def is_confirmed(
     evidence_threshold: float,
     window_hits: int | None = None,
     required_window_hits: int | None = None,
+    window_full: bool = True,
 ) -> bool:
-    """Stage 1: 2 fresh hits. Stage 2 also requires accumulated evidence."""
+    """Keep 2/3 boolean confirmation and require evidence when a threshold is set."""
 
-    if window_hits is not None and required_window_hits is not None:
-        boolean_ok = window_hits >= required_window_hits
-    else:
-        boolean_ok = fresh_hits >= min_fresh_hits
-    evidence_ok = evidence_score >= evidence_threshold
     if fresh_hits < min_fresh_hits:
         return False
-    return boolean_ok and (evidence_ok or fresh_hits >= max(min_fresh_hits, 2))
+    if (
+        window_hits is not None
+        and required_window_hits is not None
+        and window_hits < required_window_hits
+    ):
+        return False
+    if not window_full:
+        return False
+    if evidence_threshold <= 0:
+        return True
+    return float(evidence_score) >= float(evidence_threshold)

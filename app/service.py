@@ -197,6 +197,8 @@ class LavocadoService:
             else lambda: TemporalVerifier(
                 self.vision_settings.temporal.window_size,
                 self.vision_settings.temporal.min_fresh_hits,
+                evidence_threshold=self.vision_settings.temporal.evidence_threshold,
+                decay=self.vision_settings.temporal.decay,
             )
         )
         self.change_scheduler = change_scheduler or ChangeScheduler(
@@ -397,12 +399,18 @@ class LavocadoService:
                 verifier = self._verifier_factory()
                 self._verifiers[monitor_index] = verifier
 
+            track_evidence = result.get("track_evidence")
             confirmed = verifier.update(
                 is_violation,
                 frame_sequence=getattr(captured_frame, "sequence", None),
                 region=result.get("region"),
                 evidence_type=_visual_evidence_type(result),
                 track_id=result.get("track_id") if isinstance(result.get("track_id"), int) else None,
+                evidence_score=(
+                    float(track_evidence)
+                    if isinstance(track_evidence, (int, float))
+                    else None
+                ),
             )
             rescue_status = self._decision_rescue_status(monitor_index)
             self.diagnostics.record_scan(
