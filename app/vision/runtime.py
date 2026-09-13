@@ -42,6 +42,7 @@ class VisionSession:
         captured_frame: object,
         *,
         monitor_index: int = 1,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         if self._bypass:
             return {
@@ -55,4 +56,5 @@ class VisionSession:
         return self.pipeline.evaluate(
             captured_frame,
             monitor_index=monitor_index,
+            **kwargs,
         )

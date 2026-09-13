@@ -9,6 +9,9 @@ from app.vision.regions import (
     expand_region,
     make_context_crop,
     map_box_to_original,
+    overlapping_tile_regions,
+    region_iou,
+    subdivide_region,
     tile_regions,
 )
 
@@ -27,6 +30,23 @@ class RegionTests(unittest.TestCase):
             ),
         )
         self.assertEqual(sum((r - l) * (b - t) for l, t, r, b in regions), 35)
+
+    def test_overlapping_tiles_share_interior_pixels(self) -> None:
+        regions = overlapping_tile_regions((100, 100, 3), rows=2, columns=2, overlap=0.15)
+
+        self.assertEqual(len(regions), 4)
+        left, top, right, bottom = regions[0]
+        self.assertGreater(right - left, 50)
+        self.assertGreater(bottom - top, 50)
+        overlap_width = regions[0][2] - regions[1][0]
+        self.assertGreater(overlap_width, 0)
+
+    def test_subdivide_splits_one_tile_into_four(self) -> None:
+        self.assertEqual(
+            subdivide_region((0, 0, 8, 8)),
+            ((0, 0, 4, 4), (4, 0, 8, 4), (0, 4, 4, 8), (4, 4, 8, 8)),
+        )
+        self.assertGreater(region_iou((0, 0, 10, 10), (2, 2, 12, 12)), 0.3)
 
     def test_crop_region_returns_requested_pixels(self) -> None:
         image = np.arange(4 * 4 * 3, dtype=np.uint8).reshape((4, 4, 3))

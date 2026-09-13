@@ -308,6 +308,60 @@ main {
   font-size: 12px;
 }
 
+.vision-form {
+  margin-bottom: 18px;
+}
+
+.vision-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+.vision-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.vision-form select {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--panel-raised);
+  font: inherit;
+  font-size: 12px;
+}
+
+.vision-advanced {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(11, 16, 32, 0.42);
+}
+
+.vision-advanced summary {
+  cursor: pointer;
+  color: var(--lavender);
+  font-size: 12px;
+}
+
+.vision-advanced .vision-form-grid {
+  margin-top: 12px;
+}
+
+.vision-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .rules-message {
   min-height: 18px;
   margin-bottom: 10px;

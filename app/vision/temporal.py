@@ -52,6 +52,7 @@ class TemporalVerifier:
         self._evidence = EvidenceAccumulator(window_size)
         self._last_frame_sequence: int | None = None
         self._active_region: object | None = None
+        self._active_track_id: int | None = None
 
     @property
     def hits(self) -> int:
@@ -78,12 +79,13 @@ class TemporalVerifier:
         frame_sequence: int | None = None,
         region: object | None = None,
         evidence_type: str | None = None,
+        track_id: int | None = None,
     ) -> bool:
         """Record one fresh-frame decision and report whether it is confirmed.
 
         Full-scan, ROI, and tile rechecks that share ``frame_sequence`` count
-        as a single temporal observation. Hits on non-overlapping regions do
-        not confirm each other.
+        as a single temporal observation. Hits on different tracks or
+        non-overlapping regions do not confirm each other.
         """
 
         if (
@@ -95,14 +97,23 @@ class TemporalVerifier:
         if frame_sequence is not None:
             self._last_frame_sequence = frame_sequence
 
+        if is_candidate and track_id is not None and self._active_track_id is not None:
+            if track_id != self._active_track_id:
+                self._history.clear()
+                self._evidence.reset()
+                self._active_region = None
         if is_candidate and region is not None and self._active_region is not None:
-            if not _regions_overlap(region, self._active_region):
+            if track_id is None and not _regions_overlap(region, self._active_region):
                 self._history.clear()
                 self._evidence.reset()
         if is_candidate and region is not None:
             self._active_region = region
         elif not is_candidate:
             self._active_region = None
+        if is_candidate and track_id is not None:
+            self._active_track_id = track_id
+        elif not is_candidate:
+            self._active_track_id = None
 
         self._history.append(bool(is_candidate))
         if is_candidate:
@@ -118,6 +129,7 @@ class TemporalVerifier:
         self._evidence.reset()
         self._last_frame_sequence = None
         self._active_region = None
+        self._active_track_id = None
 
     def _is_confirmed(self) -> bool:
         return (

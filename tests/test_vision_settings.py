@@ -10,8 +10,8 @@ class VisionSettingsTests(unittest.TestCase):
     def test_snapshot_covers_the_vision_settings_group(self) -> None:
         snapshot = vision_settings_snapshot()
 
-        self.assertEqual(snapshot["primary_detector"], "nudenet")
-        self.assertEqual(snapshot["primary_detectors"], ["nudenet"])
+        self.assertEqual(snapshot["primary_detector"], "nudenet_640m")
+        self.assertEqual(snapshot["primary_detectors"], ["nudenet_640m"])
         self.assertFalse(snapshot["yolo"]["requested"])
         self.assertTrue(snapshot["yolo"]["maps_sexual_act"])
         self.assertEqual(snapshot["context_model"]["role"], "tile_ranking")

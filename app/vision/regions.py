@@ -35,6 +35,108 @@ def tile_regions(
     return tuple(regions)
 
 
+def overlapping_tile_regions(
+    image_shape: Sequence[int],
+    rows: int,
+    columns: int,
+    overlap: float = 0.15,
+) -> tuple[Region, ...]:
+    """Build a 2x2 or 3x3 grid whose neighbouring tiles share overlap."""
+
+    if len(image_shape) < 2 or rows <= 0 or columns <= 0:
+        return ()
+    if not math.isfinite(overlap) or overlap < 0:
+        overlap = 0.0
+    image_height, image_width = int(image_shape[0]), int(image_shape[1])
+    if image_height <= 0 or image_width <= 0:
+        return ()
+    if overlap <= 0:
+        return tile_regions(image_shape, rows, columns)
+
+    tile_width = min(image_width, max(1, int(round((image_width / columns) * (1 + overlap)))))
+    tile_height = min(image_height, max(1, int(round((image_height / rows) * (1 + overlap)))))
+    stride_x = 0 if columns == 1 else (image_width - tile_width) / (columns - 1)
+    stride_y = 0 if rows == 1 else (image_height - tile_height) / (rows - 1)
+
+    regions: list[Region] = []
+    for row in range(rows):
+        top = int(round(row * stride_y))
+        bottom = image_height if row == rows - 1 else min(image_height, top + tile_height)
+        if row == rows - 1:
+            top = max(0, bottom - tile_height)
+        for column in range(columns):
+            left = int(round(column * stride_x))
+            right = image_width if column == columns - 1 else min(image_width, left + tile_width)
+            if column == columns - 1:
+                left = max(0, right - tile_width)
+            if right > left and bottom > top:
+                regions.append((left, top, right, bottom))
+    return tuple(regions)
+
+
+def subdivide_region(region: Region, rows: int = 2, columns: int = 2) -> tuple[Region, ...]:
+    """Split one tile into a smaller grid. Used for coarse-to-fine search."""
+
+    left, top, right, bottom = region
+    width = right - left
+    height = bottom - top
+    if width <= 0 or height <= 0 or rows <= 0 or columns <= 0:
+        return ()
+    regions: list[Region] = []
+    for row in range(rows):
+        sub_top = top + row * height // rows
+        sub_bottom = top + (row + 1) * height // rows
+        for column in range(columns):
+            sub_left = left + column * width // columns
+            sub_right = left + (column + 1) * width // columns
+            if sub_right > sub_left and sub_bottom > sub_top:
+                regions.append((sub_left, sub_top, sub_right, sub_bottom))
+    return tuple(regions)
+
+
+def region_center(region: Region) -> tuple[float, float]:
+    left, top, right, bottom = region
+    return ((left + right) / 2.0, (top + bottom) / 2.0)
+
+
+def region_iou(left: Region, right: Region) -> float:
+    ax1, ay1, ax2, ay2 = left
+    bx1, by1, bx2, by2 = right
+    inter_left = max(ax1, bx1)
+    inter_top = max(ay1, by1)
+    inter_right = min(ax2, bx2)
+    inter_bottom = min(ay2, by2)
+    inter_width = max(0, inter_right - inter_left)
+    inter_height = max(0, inter_bottom - inter_top)
+    intersection = inter_width * inter_height
+    if intersection <= 0:
+        return 0.0
+    area_a = max(0, ax2 - ax1) * max(0, ay2 - ay1)
+    area_b = max(0, bx2 - bx1) * max(0, by2 - by1)
+    union = area_a + area_b - intersection
+    return 0.0 if union <= 0 else intersection / union
+
+
+def center_distance(left: Region, right: Region) -> float:
+    ax, ay = region_center(left)
+    bx, by = region_center(right)
+    return math.hypot(ax - bx, ay - by)
+
+
+def xywh_to_xyxy(box: Sequence[int | float]) -> Region | None:
+    if len(box) != 4:
+        return None
+    x, y, width, height = (float(value) for value in box)
+    if width <= 0 or height <= 0:
+        return None
+    return (
+        int(math.floor(x)),
+        int(math.floor(y)),
+        int(math.ceil(x + width)),
+        int(math.ceil(y + height)),
+    )
+
+
 def crop_region(image: np.ndarray, region: Region) -> np.ndarray | None:
     """Copy a clamped XYXY region from an in-memory image."""
 

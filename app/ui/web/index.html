@@ -325,11 +325,130 @@
               <p class="section-label">VISUAL DETECTION</p>
               <h2 id="vision-settings-heading">Vision settings</h2>
             </div>
+            <span id="vision-experimental-badge" class="signal-tag capture-fallback">Experimental Defaults</span>
           </div>
           <p class="muted">
             Vision only judges whether the current frame violates LAVOCADO's visual content rules.
-            There is no medical, art, education, or news mode.
+            There is no medical, art, education, or news mode. Changing models restarts protection.
           </p>
+          <p id="vision-settings-message" class="rules-message" role="status" aria-live="polite"></p>
+          <form id="vision-settings-form" class="vision-form">
+            <div class="vision-form-grid">
+              <label>
+                Primary detector
+                <select id="vision-primary-select" name="primary">
+                  <option value="nudenet_640m">NudeNet 640m</option>
+                  <option value="yolo11_nsfw_small">YOLO11 NSFW Small</option>
+                </select>
+              </label>
+              <label>
+                Context model
+                <select id="vision-context-select" name="context">
+                  <option value="off">Off</option>
+                  <option value="viddexa_nano">Viddexa Nano</option>
+                  <option value="viddexa_mini">Viddexa Mini</option>
+                </select>
+              </label>
+              <label>
+                Detection mode
+                <select id="vision-preset-select" name="preset">
+                  <option value="low_cpu">Low CPU</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="high_recall">High Recall</option>
+                </select>
+              </label>
+              <label>
+                Tile detection
+                <select id="vision-tile-enabled-select" name="tiles_enabled">
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>
+                Scan speed
+                <select id="vision-scan-speed-select" name="scan_speed">
+                  <option value="slow">Slow</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="fast">Fast</option>
+                </select>
+              </label>
+              <label>
+                Tile grid
+                <select id="vision-grid-select" name="grid">
+                  <option value="2x2">2 × 2</option>
+                  <option value="3x3">3 × 3</option>
+                </select>
+              </label>
+            </div>
+            <details class="vision-advanced">
+              <summary>Advanced detection settings</summary>
+              <div class="vision-form-grid">
+                <label>
+                  Full-screen input size
+                  <select id="vision-full-input-select" name="full_input_size">
+                    <option value="640">640</option>
+                    <option value="960">960</option>
+                    <option value="1280">1280</option>
+                  </select>
+                </label>
+                <label>
+                  Tile input size
+                  <select id="vision-tile-input-select" name="tile_input_size">
+                    <option value="640">640</option>
+                    <option value="960">960</option>
+                  </select>
+                </label>
+                <label>
+                  Tile overlap
+                  <select id="vision-overlap-select" name="overlap">
+                    <option value="0">0%</option>
+                    <option value="10">10%</option>
+                    <option value="15">15%</option>
+                    <option value="20">20%</option>
+                    <option value="25">25%</option>
+                  </select>
+                </label>
+                <label>
+                  Tiles per scan
+                  <select id="vision-checks-select" name="checks_per_scan">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                  </select>
+                </label>
+                <label>
+                  Max skipped scans
+                  <select id="vision-max-skip-select" name="max_skip">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="6">6</option>
+                    <option value="8">8</option>
+                  </select>
+                </label>
+                <label>
+                  Crop expansion
+                  <select id="vision-crop-select" name="crop_expansion">
+                    <option value="1.25">1.25×</option>
+                    <option value="1.5">1.5×</option>
+                    <option value="1.75">1.75×</option>
+                    <option value="2.0">2.0×</option>
+                    <option value="2.5">2.5×</option>
+                  </select>
+                </label>
+                <label>
+                  Shadow compare
+                  <select id="vision-shadow-select" name="shadow">
+                    <option value="false">Off</option>
+                    <option value="true">YOLO11 shadow</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+            <div class="vision-form-actions">
+              <button id="vision-save-button" class="button primary" type="submit">Save detection settings</button>
+              <button id="vision-reset-button" class="button ghost" type="button">Reset to experimental defaults</button>
+            </div>
+          </form>
           <dl class="capture-list vision-settings-list">
             <div>
               <dt>Primary detector</dt>

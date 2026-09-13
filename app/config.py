@@ -18,6 +18,17 @@ NUDENET_FALLBACK_INFERENCE_RESOLUTION = 320
 CONTEXT_MODEL_ENABLED = True
 CONTEXT_MODEL_NAME = "viddexa/nsfw-detection-2-mini"
 CONTEXT_MODEL_REVISION = "15f61cddc0a1a2a9176f018fb6838ef92c8163cc"
+CONTEXT_MINI_MODEL_NAME = CONTEXT_MODEL_NAME
+CONTEXT_MINI_MODEL_REVISION = CONTEXT_MODEL_REVISION
+CONTEXT_NANO_MODEL_NAME = "viddexa/nsfw-detection-2-nano"
+CONTEXT_NANO_MODEL_REVISION = "12e57200346246b37382f746e4d94d10b014f6a1"
+
+# Selectable primary detector and context ranker. Env overrides are for
+# development; persisted vision_settings.json wins when present.
+PRIMARY_DETECTOR = os.environ.get("LAVOCADO_PRIMARY_DETECTOR", "nudenet_640m")
+CONTEXT_RANKER = os.environ.get("LAVOCADO_CONTEXT_MODEL", "viddexa_mini")
+YOLO_FULL_INPUT_SIZE = 640
+YOLO_TILE_INPUT_SIZE = 640
 
 # Conservative starting values for benchmark calibration, not scientifically
 # validated optimal thresholds.
@@ -34,6 +45,9 @@ YOLO_ENABLED = False
 RESCUE_ENABLED = True
 RESCUE_TILE_ROWS = 2
 RESCUE_TILE_COLUMNS = 2
+RESCUE_TILE_OVERLAP = 0.15
+RESCUE_CHECKS_PER_SCAN = 1
+RESCUE_MAX_TILE_SKIP = 3
 
 # Conservative screen-change scheduling. Native dirty-region metadata is used
 # when available; otherwise a small grayscale map avoids retaining full frames.

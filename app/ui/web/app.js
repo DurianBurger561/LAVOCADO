@@ -150,7 +150,7 @@ function renderTemporal(values) {
 }
 
 function renderDiagnostics(data) {
-  text("diag-model", data.model || "NudeNet");
+  text("diag-model", data.model || humanize(data.primary_detector, "NudeNet"));
   const contextStatus = humanize(data.context_status, "Unknown");
   text("diag-context-model", `${data.context_model || "Context model"} · ${contextStatus}`);
   text("diag-yolo", humanize(data.yolo_status, "Disabled"));
@@ -511,6 +511,12 @@ async function beginAppPick(form) {
   }
 }
 
+function setSelectValue(id, value) {
+  const target = element(id);
+  if (!target || value === undefined || value === null) return;
+  target.value = String(value);
+}
+
 function renderVisionSettings(settings) {
   const detectors = Array.isArray(settings.primary_detectors)
     ? settings.primary_detectors.join(" + ")
@@ -519,14 +525,15 @@ function renderVisionSettings(settings) {
   const yolo = settings.yolo || {};
   text(
     "vision-yolo",
-    yolo.requested
-      ? "Optional primary detector · sexual-act + anatomy"
-      : "Off unless an existing local YOLO11 model is configured",
+    settings.primary_detector === "yolo11_nsfw_small" || yolo.requested
+      ? "Primary detector when selected · independent thresholds"
+      : "Optional. Falls back to NudeNet if weights are missing",
   );
   const contextModel = settings.context_model || {};
+  const contextName = contextModel.name || (settings.context && settings.context.model) || "Viddexa";
   text(
     "vision-context-model",
-    `${contextModel.name || "Viddexa"} · ranks tiles, cannot block`,
+    `${humanize(contextName, "Viddexa")} · ranks tiles, cannot block`,
   );
   const mode = settings.detection_mode || {};
   text("vision-detection-mode", mode.label || "Visual violation only");
@@ -536,23 +543,130 @@ function renderVisionSettings(settings) {
       .join(" · ")
     : "";
   text("vision-thresholds", thresholds || "—");
-  const tile = settings.tile || {};
+  const tile = settings.tile || settings.tiles || {};
   text(
     "vision-tile",
     tile.enabled === false
       ? "Off"
-      : `${tile.rows || 2} × ${tile.columns || 2} ranking`,
+      : `${tile.rows || 2} × ${tile.columns || 2} overlap ${Math.round((tile.overlap || 0.15) * 100)}%`,
   );
   const roi = settings.roi || {};
+  const expansion = roi.expansion || (settings.recheck && settings.recheck.crop_expansion);
   text(
     "vision-roi",
-    `Expand ${formatNumber(roi.expansion, 2)} · margin ${formatNumber(roi.borderline_margin, 2)}`,
+    `Expand ${formatNumber(expansion, 2)} · margin ${formatNumber(roi.borderline_margin, 2)}`,
   );
   const temporal = settings.temporal || {};
   text(
     "vision-temporal",
-    `${temporal.required_hits || 2} / ${temporal.window_size || 3} fresh frames`,
+    `${temporal.required_hits || temporal.min_fresh_hits || 2} / ${temporal.window_size || 3} fresh frames`,
   );
+
+  const schema = settings.schema || settings;
+  const detector = schema.detector || {};
+  const context = schema.context || {};
+  const tiles = schema.tiles || tile;
+  const scan = schema.scan || settings.scan || {};
+  const recheck = schema.recheck || {};
+  const shadow = schema.shadow || {};
+  setSelectValue("vision-primary-select", detector.primary || settings.primary_detector);
+  setSelectValue("vision-context-select", context.model || contextName);
+  setSelectValue("vision-preset-select", settings.preset || schema.preset || "balanced");
+  setSelectValue("vision-tile-enabled-select", tiles.enabled === false ? "false" : "true");
+  const interval = Number(scan.normal_interval_ms || 750);
+  const speed = interval <= 550 ? "fast" : interval >= 900 ? "slow" : "balanced";
+  setSelectValue("vision-scan-speed-select", speed);
+  setSelectValue("vision-grid-select", `${tiles.rows || 2}x${tiles.columns || 2}`);
+  setSelectValue("vision-full-input-select", detector.full_input_size || 640);
+  setSelectValue("vision-tile-input-select", detector.tile_input_size || 640);
+  setSelectValue("vision-overlap-select", Math.round((tiles.overlap || 0.15) * 100));
+  setSelectValue("vision-checks-select", tiles.checks_per_scan || 1);
+  setSelectValue("vision-max-skip-select", tiles.max_skip || 3);
+  setSelectValue("vision-crop-select", recheck.crop_expansion || 1.75);
+  setSelectValue("vision-shadow-select", shadow.enabled ? "true" : "false");
+}
+
+function visionFormPayload() {
+  const grid = element("vision-grid-select").value.split("x");
+  const speed = element("vision-scan-speed-select").value;
+  const intervals = { slow: [1000, 250], balanced: [750, 150], fast: [500, 100] };
+  const [normalMs, candidateMs] = intervals[speed] || intervals.balanced;
+  return {
+    preset: element("vision-preset-select").value,
+    detector: {
+      primary: element("vision-primary-select").value,
+      full_input_size: Number(element("vision-full-input-select").value),
+      tile_input_size: Number(element("vision-tile-input-select").value),
+    },
+    context: { model: element("vision-context-select").value },
+    tiles: {
+      enabled: element("vision-tile-enabled-select").value === "true",
+      rows: Number(grid[0] || 2),
+      columns: Number(grid[1] || 2),
+      overlap: Number(element("vision-overlap-select").value) / 100,
+      checks_per_scan: Number(element("vision-checks-select").value),
+      max_skip: Number(element("vision-max-skip-select").value),
+    },
+    recheck: { crop_expansion: Number(element("vision-crop-select").value) },
+    scan: {
+      normal_interval_ms: normalMs,
+      candidate_interval_ms: candidateMs,
+    },
+    shadow: { enabled: element("vision-shadow-select").value === "true" },
+  };
+}
+
+function showVisionMessage(message, isError = false) {
+  const target = element("vision-settings-message");
+  if (!target) return;
+  target.textContent = message || "";
+  target.classList.toggle("error", isError);
+}
+
+async function saveVisionSettings(event) {
+  event.preventDefault();
+  if (ui.inFlight.has("vision-save")) return;
+  ui.inFlight.add("vision-save");
+  try {
+    const result = assertResponse(await invoke("save_vision_settings", visionFormPayload()));
+    renderVisionSettings(result.settings || {});
+    showVisionMessage(result.message || "Settings saved.");
+    refreshStatus();
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Could not save settings.", true);
+  } finally {
+    ui.inFlight.delete("vision-save");
+  }
+}
+
+async function resetVisionSettings() {
+  if (ui.inFlight.has("vision-reset")) return;
+  ui.inFlight.add("vision-reset");
+  try {
+    const result = assertResponse(await invoke("reset_vision_settings"));
+    renderVisionSettings(result.settings || {});
+    showVisionMessage(result.message || "Experimental defaults restored.");
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Could not reset settings.", true);
+  } finally {
+    ui.inFlight.delete("vision-reset");
+  }
+}
+
+async function applyVisionPreset() {
+  if (ui.inFlight.has("vision-preset")) return;
+  ui.inFlight.add("vision-preset");
+  try {
+    const result = assertResponse(
+      await invoke("apply_vision_preset", element("vision-preset-select").value),
+    );
+    renderVisionSettings(result.settings || {});
+    showVisionMessage(result.message || "Preset applied.");
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Could not apply preset.", true);
+  } finally {
+    ui.inFlight.delete("vision-preset");
+  }
 }
 
 async function refreshVisionSettings() {
@@ -572,6 +686,12 @@ async function initializeDashboard() {
   element("stop-button").addEventListener("click", () => runAction("stop_protection"));
   element("test-button").addEventListener("click", () => runAction("test_intervention"));
   element("refresh-history").addEventListener("click", refreshEvents);
+  const visionForm = element("vision-settings-form");
+  if (visionForm) visionForm.addEventListener("submit", saveVisionSettings);
+  const resetButton = element("vision-reset-button");
+  if (resetButton) resetButton.addEventListener("click", resetVisionSettings);
+  const presetSelect = element("vision-preset-select");
+  if (presetSelect) presetSelect.addEventListener("change", applyVisionPreset);
   document.querySelectorAll(".rule-form").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();

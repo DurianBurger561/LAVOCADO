@@ -21,6 +21,12 @@ class VisualViolationClassification(str, Enum):
     CLEAR = "clear"
 
 
+class DetectionTier(str, Enum):
+    IGNORE = "ignore"
+    PROPOSAL = "proposal"
+    STRONG = "strong"
+
+
 # Higher values are stronger product evidence. Sexual-act detections outrank
 # isolated anatomy of similar confidence.
 EVIDENCE_SEVERITY: dict[ViolationEvidenceType, int] = {
@@ -137,6 +143,29 @@ def severity_for(evidence_type: ViolationEvidenceType) -> int:
 
 def is_borderline_score(score: float, threshold: float, margin: float) -> bool:
     return threshold - margin <= score < threshold
+
+
+def proposal_threshold_for_label(label: str, margin: float) -> float | None:
+    strong = threshold_for_label(label)
+    if strong is None:
+        return None
+    return max(0.0, float(strong) - float(margin))
+
+
+def tier_for_score(
+    score: float,
+    label: str,
+    *,
+    margin: float,
+) -> DetectionTier:
+    strong = threshold_for_label(label)
+    if strong is None:
+        return DetectionTier.IGNORE
+    if score >= strong:
+        return DetectionTier.STRONG
+    if score >= max(0.0, strong - margin):
+        return DetectionTier.PROPOSAL
+    return DetectionTier.IGNORE
 
 
 def strongest_evidence(

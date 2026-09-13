@@ -25,11 +25,13 @@ from app.intervention.intervene import InterventionGenerator
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platforms import PlatformAdapter
 from app.platforms.capture.models import CaptureBackendStatus
+from app.settings.storage import load_vision_settings
 from app.vision.capture import Capturer
 from app.vision.change_scheduler import ChangeScheduler
-from app.vision.context_classifier import load_context_classifier
+from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
+from app.vision.detectors.factory import PRIMARY_YOLO, load_primary_bundle
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.overlay import Overlay
 from app.vision.pipeline import VisionPipeline
@@ -77,48 +79,81 @@ class LavocadoService:
         sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         self.platform_adapter = platform_adapter
-        self.capturer = (
-            capturer if capturer is not None else Capturer(platform_adapter)
-        )
+        data_dir_getter = getattr(platform_adapter, "default_data_dir", None)
+        data_dir = data_dir_getter() if callable(data_dir_getter) else None
+        self.vision_settings = load_vision_settings(data_dir)
         uses_default_detector = detector is None
-        self.detector = detector if detector is not None else Detector()
+        yolo_adapter = None
+        shadow_adapter = None
+        yolo_status = "disabled"
+        if uses_default_detector:
+            requested_primary = self.vision_settings.detector.primary
+            if yolo_is_requested():
+                requested_primary = PRIMARY_YOLO
+            bundle = load_primary_bundle(
+                requested_primary,
+                full_input_size=self.vision_settings.detector.full_input_size,
+            )
+            self.detector = bundle.checker
+            yolo_status = bundle.yolo_status
+            if self.vision_settings.shadow.enabled:
+                shadow_adapter = load_yolo_adapter(enabled=True)
+        else:
+            self.detector = detector if detector is not None else Detector()
+        self.capturer = (
+            capturer
+            if capturer is not None
+            else Capturer(
+                platform_adapter,
+                model_frame_max_edge=self.vision_settings.detector.full_input_size,
+            )
+        )
         if decision_engine is not None:
             self.decision_engine = decision_engine
         else:
-            context_classifier = (
-                load_context_classifier() if uses_default_detector else None
-            )
-            local_rescue_detector = (
-                self.detector
+            ranker = (
+                load_context_ranker(
+                    self.vision_settings.context.model,
+                    enabled=self.vision_settings.context.model != "off",
+                )
                 if uses_default_detector
-                and self.detector.inference_resolution
-                == config.NUDENET_INFERENCE_RESOLUTION
                 else None
             )
+            context_sensor = None if ranker is None or ranker.name == "off" else ranker
+            local_rescue_detector = self.detector if uses_default_detector else None
             self.decision_engine = DecisionEngine(
-                context_classifier,
+                context_sensor,
                 local_rescue_detector,
+                settings=self.vision_settings,
+                rescue_enabled=self.vision_settings.tiles.enabled,
+                rescue_rows=self.vision_settings.tiles.rows,
+                rescue_columns=self.vision_settings.tiles.columns,
+                crop_expansion=self.vision_settings.recheck.crop_expansion,
+                tile_overlap=self.vision_settings.tiles.overlap,
+                max_tile_skip=self.vision_settings.tiles.max_skip,
+                checks_per_scan=self.vision_settings.tiles.checks_per_scan,
             )
-        yolo_adapter = load_yolo_adapter() if uses_default_detector else None
         self.vision_pipeline = VisionPipeline(
             self.detector,
             self.decision_engine,
             yolo_adapter=yolo_adapter,
+            shadow_adapter=shadow_adapter,
+            full_input_size=self.vision_settings.detector.full_input_size,
         )
         self.vision_session = VisionSession(self.vision_pipeline)
         context_sensor = getattr(self.decision_engine, "context_classifier", None)
-        if not config.CONTEXT_MODEL_ENABLED:
+        if self.vision_settings.context.model == "off":
             context_status = "disabled"
         elif context_sensor is None:
             context_status = "unavailable"
         else:
             context_status = "available"
-        if yolo_adapter is not None:
-            yolo_status = "available"
-        elif uses_default_detector and yolo_is_requested():
-            yolo_status = "unavailable"
-        else:
-            yolo_status = "disabled"
+        context_model_name = self.vision_settings.context.model
+        if context_sensor is not None:
+            context_model_name = str(
+                getattr(context_sensor, "model_name", None)
+                or getattr(context_sensor, "name", context_model_name)
+            )
         self.diagnostics = diagnostics or DiagnosticsStore(
             model_variant=str(getattr(self.detector, "model_variant", "custom")),
             inference_resolution=getattr(
@@ -126,9 +161,13 @@ class LavocadoService:
                 "inference_resolution",
                 None,
             ),
-            context_model=config.CONTEXT_MODEL_NAME,
+            context_model=context_model_name,
             context_status=context_status,
             yolo_status=yolo_status,
+            primary_detector=str(
+                getattr(self.detector, "name", None)
+                or getattr(self.detector, "model_variant", "nudenet_640m")
+            ),
         )
         self.overlay = (
             overlay if overlay is not None else Overlay(platform_adapter)
@@ -200,7 +239,7 @@ class LavocadoService:
                 else:
                     self.check_once()
                 if self._running and not (stop_event and stop_event.is_set()):
-                    self._sleeper(self.check_interval)
+                    self._sleeper(self._next_interval())
         finally:
             try:
                 try:
@@ -303,9 +342,25 @@ class LavocadoService:
             )
             if not schedule.scan:
                 continue
+            active_index = self._active_monitor_index(context)
+            is_active_monitor = (
+                active_index is None or int(active_index) == int(monitor_index)
+            )
+            prepare = getattr(self.decision_engine, "prepare_scan", None)
+            scan_plan = (
+                prepare(
+                    captured_frame,
+                    monitor_index,
+                    is_active_monitor=is_active_monitor,
+                )
+                if callable(prepare)
+                else None
+            )
             result = self.vision_session.evaluate(
                 captured_frame,
                 monitor_index=monitor_index,
+                scan_plan=scan_plan,
+                is_active_monitor=is_active_monitor,
             )
             result["monitor_index"] = monitor_index
             results.append(result)
@@ -338,6 +393,7 @@ class LavocadoService:
                 frame_sequence=getattr(captured_frame, "sequence", None),
                 region=result.get("region"),
                 evidence_type=_visual_evidence_type(result),
+                track_id=result.get("track_id") if isinstance(result.get("track_id"), int) else None,
             )
             rescue_status = self._decision_rescue_status(monitor_index)
             self.diagnostics.record_scan(
@@ -364,6 +420,25 @@ class LavocadoService:
         status = getattr(self.capturer, "status", None)
         if isinstance(status, CaptureBackendStatus):
             self.diagnostics.record_capture(status)
+
+    def _next_interval(self) -> float:
+        if self._state == State.CANDIDATE:
+            return max(
+                0.05,
+                float(self.vision_settings.scan.candidate_interval_ms) / 1000.0,
+            )
+        return self.check_interval
+
+    def _active_monitor_index(self, context: ForegroundContext | None) -> int | None:
+        if context is None:
+            return None
+        center = getattr(context.application, "window_center", None)
+        if center is None:
+            return None
+        locator = getattr(self.capturer, "monitor_index_at", None)
+        if not callable(locator):
+            return None
+        return locator(*center)
 
     def _decision_rescue_status(
         self,

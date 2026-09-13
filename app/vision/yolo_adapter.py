@@ -108,12 +108,19 @@ def detections_to_evidence(
 class UltralyticsYoloModel:
     """Adapt an ultralytics YOLO object to the detect() protocol."""
 
-    def __init__(self, model: Any) -> None:
+    def __init__(self, model: Any, *, imgsz: int | None = None) -> None:
         self._model = model
+        self.imgsz = imgsz
 
     def detect(self, image: np.ndarray) -> list[dict[str, Any]]:
         rgb = np.ascontiguousarray(image[:, :, ::-1])
-        results = self._model.predict(rgb, verbose=False)
+        kwargs: dict[str, Any] = {"verbose": False}
+        if self.imgsz is not None:
+            kwargs["imgsz"] = int(self.imgsz)
+        try:
+            results = self._model.predict(rgb, **kwargs)
+        except TypeError:
+            results = self._model.predict(rgb, verbose=False)
         detections: list[dict[str, Any]] = []
         for result in results:
             names = getattr(result, "names", {}) or {}

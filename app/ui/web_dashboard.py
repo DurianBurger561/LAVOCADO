@@ -56,7 +56,14 @@ def run_web_dashboard(
     app_picker = app_picker or ForegroundAppPicker(
         platform_adapter.get_foreground_application
     )
-    api = DashboardAPI(controller, recorder, controller, rule_store, app_picker)
+    api = DashboardAPI(
+        controller,
+        recorder,
+        controller,
+        rule_store,
+        app_picker,
+        data_dir=platform_adapter.default_data_dir(),
+    )
     closed = False
 
     def close_resources() -> None:

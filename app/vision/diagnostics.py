@@ -18,11 +18,20 @@ from app.platforms.capture.models import CaptureBackendStatus
 
 
 def _friendly_model_name(variant: str) -> str:
-    if variant == "640m":
-        return "NudeNet 640m"
-    if variant == "320n-fallback":
-        return "NudeNet 320n (fallback)"
-    return f"NudeNet {variant}"
+    raw = str(variant or "")
+    mapping = {
+        "640m": "NudeNet 640m",
+        "nudenet_640m": "NudeNet 640m",
+        "320n-fallback": "NudeNet 320n (fallback)",
+        "nudenet_320n": "NudeNet 320n (fallback)",
+        "yolo11-nsfw-small": "YOLO11 NSFW Small",
+        "yolo11_nsfw_small": "YOLO11 NSFW Small",
+    }
+    if raw in mapping:
+        return mapping[raw]
+    if raw.startswith("yolo"):
+        return "YOLO11 NSFW Small"
+    return f"NudeNet {raw}" if raw else "NudeNet 640m"
 
 
 def _safe_region(value: object) -> list[int] | None:
@@ -45,12 +54,15 @@ class DiagnosticsStore:
         context_model: str,
         context_status: str,
         yolo_status: str = "disabled",
+        primary_detector: str | None = None,
     ) -> None:
         self._lock = Lock()
+        primary = primary_detector or model_variant
         self._snapshot: dict[str, Any] = {
             "protection_state": "STOPPED",
             "model": _friendly_model_name(model_variant),
             "model_variant": model_variant,
+            "primary_detector": primary,
             "inference_resolution": inference_resolution,
             "context_model": context_model,
             "context_status": context_status,
@@ -95,6 +107,24 @@ class DiagnosticsStore:
                 "pinned_checks_remaining": 0,
                 "next_tile_index": 0,
             },
+            "scan": {
+                "mode": "monitoring",
+                "total_ms": None,
+                "target_interval_ms": None,
+            },
+            "full": {
+                "status": "none",
+                "label": None,
+                "confidence": 0.0,
+            },
+            "tiles": {"ranking": []},
+            "track": {
+                "active": False,
+                "source": None,
+                "fresh_hits": 0,
+                "evidence": 0.0,
+            },
+            "shadow": None,
             "monitors": {},
         }
 
@@ -194,6 +224,24 @@ class DiagnosticsStore:
             "classification": self._optional_string(decision.get("classification")),
             "temporal": [int(value) for value in temporal],
             "rescue": self._rescue_summary(decision, rescue_status or {}),
+            "scan": {
+                "mode": self._optional_string(decision.get("scan_mode")) or "monitoring",
+                "total_ms": round(max(0.0, float(elapsed_ms)), 1),
+                "target_interval_ms": self._optional_float(
+                    decision.get("scan_interval_ms")
+                ),
+            },
+            "full": self._nudenet_summary(decision),
+            "tiles": {
+                "ranking": self._tile_ranking(decision),
+            },
+            "track": {
+                "active": decision.get("track_id") is not None,
+                "source": self._optional_string(decision.get("source")),
+                "fresh_hits": int(decision.get("track_fresh_hits") or 0),
+                "evidence": self._optional_float(decision.get("track_evidence")) or 0.0,
+            },
+            "shadow": decision.get("shadow") if isinstance(decision.get("shadow"), dict) else None,
         }
         with self._lock:
             monitors = self._snapshot["monitors"]
@@ -297,3 +345,25 @@ class DiagnosticsStore:
             ),
             "next_tile_index": int(rescue_status.get("next_tile_index") or 0),
         }
+
+    @staticmethod
+    def _tile_ranking(decision: dict[str, Any]) -> list[dict[str, Any]]:
+        ranking = decision.get("tile_ranking")
+        if not isinstance(ranking, list):
+            return []
+        safe: list[dict[str, Any]] = []
+        for item in ranking:
+            if not isinstance(item, dict):
+                continue
+            index = item.get("index")
+            priority = item.get("priority")
+            try:
+                safe.append(
+                    {
+                        "index": int(index),
+                        "priority": float(priority),
+                    }
+                )
+            except (TypeError, ValueError):
+                continue
+        return safe[:9]

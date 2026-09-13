@@ -59,6 +59,23 @@ class TemporalVerifierTests(unittest.TestCase):
         )
         self.assertEqual(verifier.hits, 1)
 
+    def test_different_tracks_do_not_confirm_each_other(self) -> None:
+        verifier = TemporalVerifier(window_size=3, required_hits=2)
+
+        self.assertFalse(
+            verifier.update(True, frame_sequence=1, region=(0, 0, 10, 10), track_id=1)
+        )
+        self.assertFalse(
+            verifier.update(True, frame_sequence=2, region=(50, 50, 60, 60), track_id=2)
+        )
+        self.assertEqual(verifier.hits, 1)
+        self.assertFalse(
+            verifier.update(True, frame_sequence=3, region=(48, 48, 62, 62), track_id=2)
+        )
+        self.assertTrue(
+            verifier.update(False, frame_sequence=4, region=(48, 48, 62, 62), track_id=2)
+        )
+
     def test_visual_evidence_decays_when_fresh_frames_do_not_confirm(self) -> None:
         verifier = TemporalVerifier(window_size=3, required_hits=2)
 
