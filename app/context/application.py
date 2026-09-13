@@ -28,4 +28,5 @@ def application_from_window(
         window_id=window.window_id,
         captured_at=clock(),
         process_id=window.process_id,
+        window_center=window.center,
     )

@@ -19,6 +19,10 @@ class ApplicationIdentityTests(unittest.TestCase):
             app_identifier="chrome.exe",
             window_id="123",
             process_id=42,
+            left=2000,
+            top=100,
+            width=1000,
+            height=800,
         )
 
         context = application_from_window(window, clock=lambda: 10.0)
@@ -26,6 +30,7 @@ class ApplicationIdentityTests(unittest.TestCase):
         self.assertEqual(context.identifier, "chrome.exe")
         self.assertEqual(context.window_id, "123")
         self.assertEqual(context.process_id, 42)
+        self.assertEqual(context.window_center, (2500, 500))
         self.assertNotIn("private.example", repr(context))
         self.assertIsNone(application_from_window(None))
 

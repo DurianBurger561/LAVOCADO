@@ -30,6 +30,7 @@ class ApplicationContext:
     window_id: str | None
     captured_at: float
     process_id: int | None = None
+    window_center: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
