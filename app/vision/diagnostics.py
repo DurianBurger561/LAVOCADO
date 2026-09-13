@@ -260,8 +260,10 @@ class DiagnosticsStore:
             status = "context_confirmed"
         elif source == "rescue_tile":
             status = "rescued"
-        elif source == "yolo_sexual_act":
+        elif source in {"yolo_sexual_act", "yolo_sexual_act_roi"}:
             status = "strong"
+        elif source == "sexual_act_candidate":
+            status = "borderline"
         elif threshold is None:
             status = "observed"
         elif score >= threshold:

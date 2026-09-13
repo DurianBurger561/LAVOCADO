@@ -340,6 +340,53 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertEqual(result["source"], "yolo_sexual_act")
         self.assertEqual(result["label"], "blowjob")
 
+    def test_sexual_act_roi_recheck_confirms_violation(self) -> None:
+        evidence = [
+            ViolationEvidence(
+                ViolationEvidenceType.SEXUAL_ACT,
+                "blowjob",
+                0.88,
+                (10, 10, 40, 40),
+                "yolo11",
+                4,
+            )
+        ]
+        local_detector = FakeLocalDetector([True])
+
+        result = DecisionEngine(None, local_detector).evaluate(
+            empty_result(),
+            captured_frame(),
+            extra_evidence=evidence,
+        )
+
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["classification"], "violation")
+        self.assertEqual(result["source"], "yolo_sexual_act_roi")
+        self.assertEqual(local_detector.received_means, [0])
+
+    def test_sexual_act_without_roi_confirmation_stays_uncertain(self) -> None:
+        evidence = [
+            ViolationEvidence(
+                ViolationEvidenceType.SEXUAL_ACT,
+                "blowjob",
+                0.88,
+                (10, 10, 40, 40),
+                "yolo11",
+                4,
+            )
+        ]
+        local_detector = FakeLocalDetector([False])
+
+        result = DecisionEngine(None, local_detector).evaluate(
+            empty_result(),
+            captured_frame(),
+            extra_evidence=evidence,
+        )
+
+        self.assertFalse(result["blocked"])
+        self.assertEqual(result["classification"], "uncertain")
+        self.assertEqual(result["source"], "sexual_act_candidate")
+
 
 if __name__ == "__main__":
     unittest.main()

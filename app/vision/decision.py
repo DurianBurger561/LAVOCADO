@@ -19,6 +19,7 @@ from app.vision.regions import (
 )
 from app.vision.violation_policy import (
     ViolationEvidence,
+    ViolationEvidenceType,
     VisualViolationClassification,
     evidence_to_dict,
     is_borderline_score,
@@ -110,8 +111,16 @@ class DecisionEngine:
             and item.confidence >= threshold
         ]
         if strong:
+            chosen = strongest_evidence(strong)
+            if (
+                chosen is not None
+                and chosen.evidence_type is ViolationEvidenceType.SEXUAL_ACT
+            ):
+                return self._evaluate_sexual_act(
+                    result, captured_frame, chosen
+                )
             return self._violation_from_evidence(
-                result, captured_frame, strongest_evidence(strong)
+                result, captured_frame, chosen
             )
 
         borderline = self._strongest_borderline_evidence(evidence)
@@ -160,6 +169,42 @@ class DecisionEngine:
         )
         extra = list(extra_evidence or [])
         return nudenet_evidence + extra
+
+    def _evaluate_sexual_act(
+        self,
+        result: dict[str, Any],
+        captured_frame: CapturedFrame,
+        evidence: ViolationEvidence,
+    ) -> dict[str, Any]:
+        """Confirm a sexual-act candidate on an original-resolution ROI.
+
+        Temporal confirmation still happens on a later fresh frame. Viddexa is
+        not consulted: this is visual evidence, not viewing purpose.
+        """
+
+        decided = self._violation_from_evidence(result, captured_frame, evidence)
+        if self.local_detector is None or evidence.bbox is None:
+            return decided
+        detection = {
+            "class": evidence.label,
+            "score": evidence.confidence,
+            "box": list(evidence.bbox),
+            "threshold": threshold_for_label(evidence.label),
+        }
+        roi = self._evaluate_borderline(result, captured_frame, detection)
+        if bool(roi.get("blocked")):
+            roi["source"] = "yolo_sexual_act_roi"
+            roi["reason"] = (
+                f"{evidence.label} original-resolution ROI recheck "
+                f"after sexual-act score {evidence.confidence:.2f}"
+            )
+            return roi
+        if roi.get("local_check_points") is None:
+            return decided
+        roi["source"] = "sexual_act_candidate"
+        roi["label"] = evidence.label
+        roi["confidence"] = evidence.confidence
+        return roi
 
     def _evaluate_borderline(
         self,

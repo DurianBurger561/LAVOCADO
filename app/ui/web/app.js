@@ -232,6 +232,30 @@ function renderDiagnostics(data) {
   const tile = rescue.tile_index === null || rescue.tile_index === undefined ? "—" : Number(rescue.tile_index) + 1;
   text("rescue-tile", tile);
   text("rescue-pin", String(rescue.pinned_checks_remaining || 0));
+  renderFailureExplorer(data);
+}
+
+function renderFailureExplorer(data) {
+  const foreground = data.foreground_context || {};
+  const effectivePolicy = foreground.effective_policy || "normal";
+  const protectionState = String(data.protection_state || "").toUpperCase();
+  const protect = effectivePolicy === "force_block"
+    || protectionState === "BLOCKED"
+    || protectionState === "COOLDOWN";
+  const nude = data.nudenet || {};
+  const evidence = nude.label
+    ? `${humanize(nude.label)} ${formatNumber(nude.score)}`
+    : humanize(data.classification, "None");
+  const temporal = Array.isArray(data.temporal) ? data.temporal : [];
+  text("explorer-policy", humanize(effectivePolicy, "Normal"));
+  text("explorer-app-rule", ruleLabel(foreground.application_rule));
+  text("explorer-website-rule", ruleLabel(foreground.website_rule));
+  text("explorer-vision-called", foreground.vision_called === false ? "No" : "Yes");
+  text("explorer-evidence", evidence);
+  text("explorer-temporal", temporal.length ? temporal.join(" ") : "—");
+  text("explorer-final", protect ? "Protect" : "Allow");
+  text("explorer-action", protect ? "Protect" : "Allow");
+  element("explorer-action").className = `signal-tag context-policy ${protect ? "force_block" : "normal"}`;
 }
 
 async function refreshDiagnostics() {

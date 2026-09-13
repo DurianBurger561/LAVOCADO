@@ -186,6 +186,26 @@ class WebDashboardTests(unittest.TestCase):
                 self.assertIn(f'"{field}"', script)
         self.assertIn("data.foreground_context", script)
 
+    def test_dashboard_renders_failure_explorer(self) -> None:
+        html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="explorer-heading"', html)
+        for field in (
+            "explorer-action",
+            "explorer-policy",
+            "explorer-app-rule",
+            "explorer-website-rule",
+            "explorer-vision-called",
+            "explorer-evidence",
+            "explorer-temporal",
+            "explorer-final",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(f'id="{field}"', html)
+                self.assertIn(f'"{field}"', script)
+        self.assertIn("renderFailureExplorer", script)
+
     def test_dashboard_renders_vision_settings_group(self) -> None:
         html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
