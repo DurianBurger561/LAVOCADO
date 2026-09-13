@@ -217,6 +217,19 @@ class DecisionEngineTests(unittest.TestCase):
             },
         )
 
+    def test_decision_engine_ignores_context_identity_fields(self) -> None:
+        payload = result_with_detection(0.80)
+        payload["hostname"] = "medical.example"
+        payload["application_name"] = "chrome.exe"
+        payload["medical"] = True
+
+        result = DecisionEngine().evaluate(payload, captured_frame())
+
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["classification"], "violation")
+        self.assertNotIn("hostname", result)
+        self.assertNotIn("medical", result)
+
     def test_strong_nudenet_candidate_does_not_need_context(self) -> None:
         context = FakeContextClassifier({"porn": 1.0})
 

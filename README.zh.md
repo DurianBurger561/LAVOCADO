@@ -52,6 +52,11 @@ FORCE_BLOCK > FULL_BYPASS > NORMAL
 
 黑名单始终优先于白名单。没有任何匹配规则时,保护行为与现有视觉检测路径完全一致。
 
+分层固定: ForegroundContextService 负责发现上下文, ContextPolicyService 负责规则,
+VisionPipeline / VisualDecisionEngine 只判断视觉证据, TemporalEngine 确认新帧,
+保护运行时负责遮挡与干预。检测器不能直接触发保护;决策引擎不会收到主机名、
+应用名,或医学/艺术/教育标记。
+
 - `FORCE_BLOCK` 立即遮挡前台窗口所在的显示器,跳过 NudeNet、YOLO、区域排序和时序确认。
 - `FULL_BYPASS` 在该上下文活动期间跳过整个视觉流水线,离开后再从干净状态恢复。
 - `NORMAL` 运行截图和视觉违规检测。Vision 只判断画面是否违反 LAVOCADO 的视觉内容规则,不负责医学、艺术、教育或新闻等观看目的。确认后的违规仍需在 3 个新帧中命中 2 次才会保护。

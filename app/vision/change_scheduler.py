@@ -60,8 +60,13 @@ class ChangeScheduler:
         self,
         captured: CapturedFrame,
         monitor_index: int,
+        *,
+        vision_allowed: bool = True,
     ) -> ChangeDecision:
         """Return whether this fresh frame should enter the detection pipeline."""
+
+        if not vision_allowed:
+            return ChangeDecision(False, "policy_skip", 0.0)
 
         current_gray = self._grayscale_map(captured.original_frame)
         if current_gray is None:

@@ -33,6 +33,7 @@ from app.vision.detector import Detector
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.overlay import Overlay
 from app.vision.pipeline import VisionPipeline
+from app.vision.runtime import VisionSession, allows_vision
 from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import VisualViolationClassification
 from app.vision.yolo_adapter import load_yolo_adapter, yolo_is_requested
@@ -104,6 +105,7 @@ class LavocadoService:
             self.decision_engine,
             yolo_adapter=yolo_adapter,
         )
+        self.vision_session = VisionSession(self.vision_pipeline)
         context_sensor = getattr(self.decision_engine, "context_classifier", None)
         if not config.CONTEXT_MODEL_ENABLED:
             context_status = "disabled"
@@ -270,14 +272,14 @@ class LavocadoService:
         )
         self.diagnostics.record_foreground_context(context, policy_result)
         if policy_result is not None:
-            if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
-                self._leave_bypass()
-                result, monitor_index, trigger_type = self._context_rule_detection(
-                    context, policy_result
-                )
-                self._show_intervention(result, monitor_index, trigger_type)
-                return [result]
-            if policy_result.action is ContextPolicyAction.FULL_BYPASS:
+            if not allows_vision(policy_result.action):
+                if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
+                    self._leave_bypass()
+                    result, monitor_index, trigger_type = self._context_rule_detection(
+                        context, policy_result
+                    )
+                    self._show_intervention(result, monitor_index, trigger_type)
+                    return [result]
                 self._enter_bypass()
                 return []
 
@@ -297,10 +299,11 @@ class LavocadoService:
             schedule = self.change_scheduler.should_scan(
                 captured_frame,
                 monitor_index,
+                vision_allowed=True,
             )
             if not schedule.scan:
                 continue
-            result = self.vision_pipeline.evaluate(
+            result = self.vision_session.evaluate(
                 captured_frame,
                 monitor_index=monitor_index,
             )
@@ -394,6 +397,7 @@ class LavocadoService:
         self.change_scheduler.reset()
 
     def _enter_bypass(self) -> None:
+        self.vision_session.enter_bypass()
         if self._bypass_active:
             self._transition(State.BYPASSED)
             return
@@ -403,6 +407,7 @@ class LavocadoService:
         self._transition(State.BYPASSED)
 
     def _leave_bypass(self) -> None:
+        self.vision_session.exit_bypass_if_needed()
         if not self._bypass_active:
             return
         self._reset_verifiers()

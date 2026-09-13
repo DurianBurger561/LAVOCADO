@@ -107,7 +107,11 @@ class FakeChangeScheduler:
         self,
         _captured: FakeCapturedFrame,
         _monitor_index: int,
+        *,
+        vision_allowed: bool = True,
     ) -> ChangeDecision:
+        if not vision_allowed:
+            return ChangeDecision(False, "policy_skip", 0.0)
         return ChangeDecision(next(self._scan_results), "fake", 0.0)
 
     def record_candidate(self, monitor_index: int, is_candidate: bool) -> None:

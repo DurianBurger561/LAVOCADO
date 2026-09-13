@@ -93,6 +93,8 @@ class DecisionEngine:
         """Return a candidate decision without retaining image pixels."""
 
         result = dict(nudenet_result)
+        for key in ("hostname", "application_name", "url", "medical", "art", "education"):
+            result.pop(key, None)
         frame_sequence = int(getattr(captured_frame, "sequence", 0) or 0)
         extra = list(extra_evidence or [])
         if extra:
@@ -593,3 +595,6 @@ class DecisionEngine:
             }
         )
         return result
+
+
+VisualDecisionEngine = DecisionEngine

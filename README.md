@@ -84,6 +84,13 @@ FORCE_BLOCK > FULL_BYPASS > NORMAL
 A blacklist always wins over a whitelist. With no matching rules, protection
 runs the existing vision pipeline unchanged.
 
+Layer ownership is fixed: ForegroundContextService discovers context,
+ContextPolicyService evaluates rules, VisionPipeline/VisualDecisionEngine
+judge visual evidence only, TemporalEngine confirms fresh frames, and the
+protection runtime owns overlay/intervention. Detectors never trigger
+protection directly, and the decision engine never receives a hostname,
+application name, or medical/art/education flag.
+
 - `FORCE_BLOCK` immediately covers the display that contains the foreground
   window. NudeNet, YOLO, tile ranking, and temporal confirmation are skipped.
 - `FULL_BYPASS` skips the entire vision pipeline while that context is active,

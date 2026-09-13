@@ -52,3 +52,19 @@ def detections_to_evidence(
             )
         )
     return evidence
+
+
+class NudeNetAdapter:
+    """Map NudeNet rows onto shared ViolationEvidence. No product Block rule."""
+
+    def detect_evidence(
+        self,
+        detections: list[dict[str, Any]],
+        *,
+        frame_sequence: int = 0,
+    ) -> list[ViolationEvidence]:
+        return detections_to_evidence(
+            detections,
+            model="nudenet",
+            frame_sequence=frame_sequence,
+        )

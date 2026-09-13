@@ -18,6 +18,25 @@ def _regions_overlap(left: object, right: object) -> bool:
     return ax1 < bx2 and bx1 < ax2 and ay1 < by2 and by1 < ay2
 
 
+class EvidenceAccumulator:
+    """Accumulate visual-violation types. Never stores porn-purpose probability."""
+
+    def __init__(self, window_size: int) -> None:
+        self._items: deque[str | None] = deque(maxlen=window_size)
+
+    def add(self, evidence_type: str | None) -> None:
+        self._items.append(evidence_type)
+
+    def decay(self) -> None:
+        self._items.append(None)
+
+    def reset(self) -> None:
+        self._items.clear()
+
+    def history(self) -> tuple[str | None, ...]:
+        return tuple(self._items)
+
+
 class TemporalVerifier:
     """Require confirmed visual violations on distinct fresh frames."""
 
@@ -30,7 +49,7 @@ class TemporalVerifier:
         self._window_size = window_size
         self._required_hits = required_hits
         self._history: deque[bool] = deque(maxlen=window_size)
-        self._evidence: deque[str | None] = deque(maxlen=window_size)
+        self._evidence = EvidenceAccumulator(window_size)
         self._last_frame_sequence: int | None = None
         self._active_region: object | None = None
 
@@ -50,7 +69,7 @@ class TemporalVerifier:
     def evidence_history(self) -> tuple[str | None, ...]:
         """Return visual-violation evidence types, never pixels or purpose."""
 
-        return tuple(self._evidence)
+        return self._evidence.history()
 
     def update(
         self,
@@ -79,21 +98,24 @@ class TemporalVerifier:
         if is_candidate and region is not None and self._active_region is not None:
             if not _regions_overlap(region, self._active_region):
                 self._history.clear()
-                self._evidence.clear()
+                self._evidence.reset()
         if is_candidate and region is not None:
             self._active_region = region
         elif not is_candidate:
             self._active_region = None
 
         self._history.append(bool(is_candidate))
-        self._evidence.append(evidence_type if is_candidate else None)
+        if is_candidate:
+            self._evidence.add(evidence_type)
+        else:
+            self._evidence.decay()
         return self._is_confirmed()
 
     def reset(self) -> None:
         """Forget all previous frame decisions."""
 
         self._history.clear()
-        self._evidence.clear()
+        self._evidence.reset()
         self._last_frame_sequence = None
         self._active_region = None
 
@@ -102,3 +124,6 @@ class TemporalVerifier:
             len(self._history) == self._window_size
             and self.hits >= self._required_hits
         )
+
+
+TemporalEngine = TemporalVerifier
