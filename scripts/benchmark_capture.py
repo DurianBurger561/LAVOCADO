@@ -15,13 +15,11 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
-from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app import config
 from app.platforms import create_platform_adapter
 from app.platforms.capture import (
     CAPTURE_BACKEND_ENV,
@@ -90,17 +88,10 @@ def summarize(values: list[float]) -> dict[str, float | int]:
     }
 
 
-def _model_frame(image: np.ndarray) -> np.ndarray:
+def _canonical_frame(image: np.ndarray) -> np.ndarray:
     if image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
         raise RuntimeError("Capture returned an invalid BGR frame")
-    rgb = np.ascontiguousarray(image[:, :, ::-1])
-    model_image = Image.fromarray(rgb, mode="RGB")
-    model_image.thumbnail(
-        (config.MODEL_FRAME_MAX_EDGE, config.MODEL_FRAME_MAX_EDGE),
-        Image.Resampling.LANCZOS,
-    )
-    model_rgb = np.asarray(model_image, dtype=np.uint8)
-    return np.ascontiguousarray(model_rgb[:, :, ::-1])
+    return np.ascontiguousarray(image)
 
 
 def _next_fresh_frame(
@@ -166,7 +157,7 @@ def benchmark_backend(
                     sleeper=sleeper,
                 )
                 last_sequences[monitor.id] = frame.sequence
-                detector.detect(_model_frame(frame.image), input_size=640)
+                detector.detect(_canonical_frame(frame.image), input_size=640)
                 peak_rss = max(peak_rss, memory.rss_bytes())
 
         samples = {
@@ -198,7 +189,7 @@ def benchmark_backend(
                 captured_ns = clock_ns()
                 last_sequences[monitor.id] = frame.sequence
                 detection_started_ns = clock_ns()
-                evidence = detector.detect(_model_frame(frame.image), input_size=640)
+                evidence = detector.detect(_canonical_frame(frame.image), input_size=640)
                 decision_finished_ns = clock_ns()
 
                 sample = samples[monitor.id]

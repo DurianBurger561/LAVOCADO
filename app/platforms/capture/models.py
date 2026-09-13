@@ -41,11 +41,11 @@ class CaptureFrame:
     """One fresh full-resolution BGR frame produced by a capture backend."""
 
     image: np.ndarray
-    monitor_id: str
-    timestamp_ns: int
-    sequence: int
-    changed_regions: tuple[Rect, ...] | None
-    backend: str
+    monitor_id: str = ""
+    timestamp_ns: int = 0
+    sequence: int = 0
+    changed_regions: tuple[Rect, ...] | None = None
+    backend: str = "unknown"
 
 
 @dataclass(frozen=True, slots=True)

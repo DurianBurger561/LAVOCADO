@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import DetectionEvidence
 from app.vision.violation_policy import (
@@ -57,10 +57,9 @@ class FakeLocalDetector:
         ]
 
 
-def captured_frame() -> CapturedFrame:
-    return CapturedFrame(
-        original_frame=np.zeros((1080, 1920, 3), dtype=np.uint8),
-        model_frame=np.zeros((360, 640, 3), dtype=np.uint8),
+def captured_frame() -> CaptureFrame:
+    return CaptureFrame(
+        image=np.zeros((1080, 1920, 3), dtype=np.uint8),
         sequence=4,
     )
 
@@ -82,15 +81,14 @@ def result_with_detection(score: float) -> dict[str, object]:
     }
 
 
-def rescue_frame() -> CapturedFrame:
+def rescue_frame() -> CaptureFrame:
     original = np.zeros((4, 4, 3), dtype=np.uint8)
     original[0:2, 0:2] = 10
     original[0:2, 2:4] = 20
     original[2:4, 0:2] = 30
     original[2:4, 2:4] = 40
-    return CapturedFrame(
-        original_frame=original,
-        model_frame=np.zeros((4, 4, 3), dtype=np.uint8),
+    return CaptureFrame(
+        image=original,
         sequence=1,
     )
 
@@ -246,7 +244,7 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
         self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
         self.assertEqual(result.reason_codes, ("nudenet_full",))
-        self.assertEqual(result.primary_region, (300, 150, 900, 450))
+        self.assertEqual(result.primary_region, (100, 50, 300, 150))
         self.assertEqual(context.received_shapes, [])
 
     def test_strong_anatomy_roi_recheck_confirms_violation(self) -> None:
@@ -286,7 +284,7 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
         self.assertEqual(result.label, "FEMALE_BREAST_EXPOSED")
         self.assertEqual(result.reason_codes, ("nudenet_roi",))
-        self.assertEqual(result.primary_region, (75, 37, 1125, 563))
+        self.assertEqual(result.primary_region, (25, 12, 375, 188))
         self.assertEqual(local_detector.received_means, [0])
 
     def test_viddexa_cannot_confirm_borderline_as_violation(self) -> None:

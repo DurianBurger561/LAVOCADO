@@ -1,7 +1,6 @@
 """Tests for adapting normalized capture frames to vision inputs."""
 
 import unittest
-from unittest.mock import patch
 
 import numpy as np
 
@@ -64,35 +63,19 @@ class FakePlatform:
 
 
 class CaptureTests(unittest.TestCase):
-    def test_retains_original_and_bounds_model_frame(self) -> None:
+    def test_returns_full_resolution_canonical_frame(self) -> None:
         backend = FakeBackend()
-        with patch(
-            "app.vision.capture.config.MODEL_FRAME_MAX_EDGE",
-            4,
-        ):
-            capturer = Capturer(FakePlatform(backend))
-            captured = capturer.grab(1)
+        capturer = Capturer(FakePlatform(backend))
+        captured = capturer.grab(1)
 
-        self.assertEqual(captured.original_frame.shape, (4, 8, 3))
-        self.assertEqual(captured.model_frame.shape, (2, 4, 3))
-        self.assertEqual(captured.original_frame.dtype, np.uint8)
-        self.assertEqual(captured.model_frame.dtype, np.uint8)
-        self.assertTrue(captured.original_frame.flags.c_contiguous)
-        self.assertTrue(captured.model_frame.flags.c_contiguous)
+        self.assertEqual(captured.image.shape, (4, 8, 3))
+        self.assertEqual(captured.image.dtype, np.uint8)
+        self.assertTrue(captured.image.flags.c_contiguous)
         self.assertEqual(captured.monitor_id, "display-a")
         self.assertEqual(captured.sequence, 1)
         self.assertEqual(captured.backend, "fake-native")
-
-    def test_does_not_upscale_small_screen(self) -> None:
-        backend = FakeBackend()
-        with patch(
-            "app.vision.capture.config.MODEL_FRAME_MAX_EDGE",
-            16,
-        ):
-            captured = Capturer(FakePlatform(backend)).grab(1)
-
-        self.assertEqual(captured.original_frame.shape, (4, 8, 3))
-        self.assertEqual(captured.model_frame.shape, (4, 8, 3))
+        self.assertFalse(hasattr(captured, "model_frame"))
+        self.assertFalse(hasattr(captured, "original_frame"))
 
     def test_maps_points_using_backend_monitor_metadata(self) -> None:
         capturer = Capturer(FakePlatform(FakeBackend()))

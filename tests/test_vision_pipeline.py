@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import DetectionEvidence
 from app.vision.pipeline import VisionPipeline
@@ -33,9 +33,9 @@ class FakeYolo:
         return [{"class": "blowjob", "score": 0.91, "box": [1, 1, 4, 4]}]
 
 
-def frame() -> CapturedFrame:
+def frame() -> CaptureFrame:
     image = np.zeros((8, 8, 3), dtype=np.uint8)
-    return CapturedFrame(original_frame=image, model_frame=image, sequence=3)
+    return CaptureFrame(image=image, sequence=3)
 
 
 class VisionPipelineTests(unittest.TestCase):

@@ -20,9 +20,8 @@ from app.vision.violation_policy import (
 
 
 @dataclass(frozen=True)
-class FakeCapturedFrame:
-    original_frame: int
-    model_frame: int
+class FakeCaptureFrame:
+    image: int
     sequence: int = 0
     backend: str = "fake"
 
@@ -49,7 +48,7 @@ class FakeCapturer:
         }
         self._sequence_counts: dict[int, int] = {}
 
-    def grab(self, monitor_index: int) -> FakeCapturedFrame:
+    def grab(self, monitor_index: int) -> FakeCaptureFrame:
         self.grabbed_indexes.append(monitor_index)
         sequence_source = self._sequences.get(monitor_index)
         if sequence_source is None:
@@ -57,9 +56,8 @@ class FakeCapturer:
             self._sequence_counts[monitor_index] = sequence
         else:
             sequence = next(sequence_source)
-        return FakeCapturedFrame(
-            original_frame=monitor_index,
-            model_frame=monitor_index,
+        return FakeCaptureFrame(
+            image=monitor_index,
             sequence=sequence,
         )
 
@@ -115,7 +113,7 @@ class FakeChangeScheduler:
 
     def should_scan(
         self,
-        _captured: FakeCapturedFrame,
+        _captured: FakeCaptureFrame,
         _monitor_index: int,
         *,
         vision_allowed: bool = True,
@@ -242,7 +240,7 @@ class FakeDecisionEngine:
     def evaluate(
         self,
         result: dict[str, object],
-        captured: FakeCapturedFrame,
+        captured: FakeCaptureFrame,
         *,
         monitor_index: int,
         extra_evidence: object | None = None,
@@ -250,7 +248,7 @@ class FakeDecisionEngine:
         is_active_monitor: bool = True,
     ) -> VisualViolationDecision:
         del extra_evidence, scan_plan, is_active_monitor
-        self.original_frames.append(captured.original_frame)
+        self.original_frames.append(captured.image)
         return _decision_from_detector_result(
             result,
             monitor_index=monitor_index,
@@ -259,7 +257,7 @@ class FakeDecisionEngine:
 
     def prepare_scan(
         self,
-        _captured: FakeCapturedFrame,
+        _captured: FakeCaptureFrame,
         _monitor_index: int,
         *,
         is_active_monitor: bool = True,
@@ -281,7 +279,7 @@ class SequenceDecisionEngine:
     def evaluate(
         self,
         result: dict[str, object],
-        captured: FakeCapturedFrame,
+        captured: FakeCaptureFrame,
         *,
         monitor_index: int,
         extra_evidence: object | None = None,
@@ -306,7 +304,7 @@ class SequenceDecisionEngine:
 
     def prepare_scan(
         self,
-        _captured: FakeCapturedFrame,
+        _captured: FakeCaptureFrame,
         _monitor_index: int,
         *,
         is_active_monitor: bool = True,

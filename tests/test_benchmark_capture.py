@@ -39,7 +39,7 @@ class FakeDetector:
         del input_size
         self.calls += 1
         if image.shape != (2, 4, 3):
-            raise AssertionError("benchmark did not preserve the bounded BGR frame")
+            raise AssertionError("benchmark did not preserve the full-resolution BGR frame")
         return [object()] if self.calls % 2 == 0 else []
 
 

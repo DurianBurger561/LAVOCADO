@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 
 from app.settings.schema import VisionSettings
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
 from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import (
@@ -63,15 +63,10 @@ def load_bgr_image(path) -> np.ndarray:
     return np.ascontiguousarray(rgb[:, :, ::-1])
 
 
-def captured_frame_from_bgr(bgr: np.ndarray, *, max_edge: int, sequence: int = 1) -> CapturedFrame:
-    rgb = np.ascontiguousarray(bgr[:, :, ::-1])
-    model_image = Image.fromarray(rgb, mode="RGB")
-    model_image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
-    model_rgb = np.asarray(model_image, dtype=np.uint8)
-    model_frame = np.ascontiguousarray(model_rgb[:, :, ::-1])
-    return CapturedFrame(
-        original_frame=np.ascontiguousarray(bgr),
-        model_frame=model_frame,
+def captured_frame_from_bgr(bgr: np.ndarray, *, max_edge: int, sequence: int = 1) -> CaptureFrame:
+    del max_edge
+    return CaptureFrame(
+        image=np.ascontiguousarray(bgr),
         monitor_id="benchmark",
         sequence=sequence,
         backend="local_image",

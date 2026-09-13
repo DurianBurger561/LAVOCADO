@@ -8,7 +8,8 @@ import numpy as np
 
 from app import config
 from app.platforms.capture import Rect
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
+from app.vision.capture import frame_image
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +61,7 @@ class ChangeScheduler:
 
     def should_scan(
         self,
-        captured: CapturedFrame,
+        captured: CaptureFrame,
         monitor_index: int,
         *,
         vision_allowed: bool = True,
@@ -72,7 +73,7 @@ class ChangeScheduler:
         if not self.adaptive:
             return ChangeDecision(True, "always", 1.0)
 
-        current_gray = self._grayscale_map(captured.original_frame)
+        current_gray = self._grayscale_map(frame_image(captured))
         if current_gray is None:
             return ChangeDecision(True, "invalid_frame_failsafe", 1.0)
 
@@ -97,7 +98,7 @@ class ChangeScheduler:
         if native_regions is not None:
             change_ratio = self._native_change_ratio(
                 native_regions,
-                captured.original_frame.shape,
+                captured.image.shape,
             )
             changed = bool(native_regions)
             source = "native"

@@ -7,7 +7,8 @@ from typing import Any
 
 import numpy as np
 
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
+from app.vision.capture import frame_image
 from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
 from app.vision.scheduler import ScanPlan
@@ -41,7 +42,7 @@ class VisionPipeline:
 
     def evaluate(
         self,
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         *,
         monitor_index: int = 1,
         scan_plan: ScanPlan | None = None,
@@ -69,18 +70,15 @@ class VisionPipeline:
                 is_active_monitor=is_active_monitor,
             )
         else:
-            image = captured_frame.model_frame
-            if not isinstance(image, np.ndarray):
-                image = captured_frame.original_frame
+            image = getattr(captured_frame, "image", None)
             from app.vision.detectors.base import check_result_from_evidence
 
             evidence = self.detector.detect(image, input_size=self.full_input_size)
             nudenet_result = check_result_from_evidence(evidence)
             extra_evidence = []
             if self.yolo_adapter is not None:
-                extra_image = image if isinstance(image, np.ndarray) else captured_frame.original_frame
                 extra_evidence = self.yolo_adapter.detect_evidence(
-                    extra_image,
+                    image,
                     frame_sequence=int(getattr(captured_frame, "sequence", 0) or 0),
                 )
             decided = self.decision_engine.evaluate(
@@ -96,15 +94,13 @@ class VisionPipeline:
 
     def _with_shadow(
         self,
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         decided: VisualViolationDecision,
     ) -> VisualViolationDecision:
         if self.shadow_adapter is None:
             self.last_shadow = None
             return decided
-        image = captured_frame.model_frame
-        if not isinstance(image, np.ndarray):
-            image = captured_frame.original_frame
+        image = frame_image(captured_frame)
         import time as _time
 
         started = _time.perf_counter()

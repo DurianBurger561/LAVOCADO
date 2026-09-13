@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 
 from app.platforms.capture import Rect
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
 from app.vision.change_scheduler import ChangeScheduler
 
 
@@ -13,11 +13,10 @@ def frame(
     value: int,
     *,
     changed_regions: tuple[Rect, ...] | None = None,
-) -> CapturedFrame:
+) -> CaptureFrame:
     image = np.full((8, 12, 3), value, dtype=np.uint8)
-    return CapturedFrame(
-        original_frame=image,
-        model_frame=image,
+    return CaptureFrame(
+        image=image,
         changed_regions=changed_regions,
     )
 

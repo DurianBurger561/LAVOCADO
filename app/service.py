@@ -109,10 +109,7 @@ class LavocadoService:
         self.capturer = (
             capturer
             if capturer is not None
-            else Capturer(
-                platform_adapter,
-                model_frame_max_edge=self.vision_settings.detector.full_input_size,
-            )
+            else Capturer(platform_adapter)
         )
         if decision_engine is not None:
             self.decision_engine = decision_engine

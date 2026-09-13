@@ -9,7 +9,8 @@ import numpy as np
 
 from app import config
 from app.settings.schema import VisionSettings, default_vision_settings
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
+from app.vision.capture import frame_image
 from app.vision.change_map import build_change_map, tile_change_scores
 from app.vision.evidence import evidence_from_confidence
 from app.vision.detectors.base import DetectionEvidence
@@ -146,7 +147,7 @@ class DecisionEngine:
     def evaluate(
         self,
         nudenet_result: dict[str, Any],
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         *,
         monitor_index: int = 1,
         extra_evidence: list[ViolationEvidence] | None = None,
@@ -170,7 +171,7 @@ class DecisionEngine:
         if plan is None:
             active = self.tracker.active_track(monitor_index)
             if active is not None:
-                original = getattr(captured_frame, "original_frame", None)
+                original = frame_image(captured_frame)
                 roi = active.box
                 if isinstance(original, np.ndarray):
                     predicted = self.tracker.predicted_roi(
@@ -314,7 +315,7 @@ class DecisionEngine:
     def _confirm_primary_candidate(
         self,
         result: dict[str, Any],
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         evidence: ViolationEvidence | None,
         *,
         confirmed_source: str,
@@ -365,7 +366,7 @@ class DecisionEngine:
     def _evaluate_borderline(
         self,
         result: dict[str, Any],
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         borderline: dict[str, Any],
     ) -> dict[str, Any]:
         """Recheck a borderline box on the original-resolution crop."""
@@ -382,8 +383,8 @@ class DecisionEngine:
             threshold=threshold,
             classification=VisualViolationClassification.UNCERTAIN,
         )
-        original = getattr(captured_frame, "original_frame", None)
-        model = getattr(captured_frame, "model_frame", None)
+        original = frame_image(captured_frame)
+        model = original
         if (
             not self.settings.recheck.enabled
             or self.local_detector is None
@@ -434,13 +435,13 @@ class DecisionEngine:
     def _evaluate_rescue(
         self,
         base: dict[str, Any],
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         monitor_index: int,
         plan: ScanPlan | None = None,
     ) -> dict[str, Any]:
         """Check priority tiles. Viddexa only orders them; it never vetoes."""
 
-        original = getattr(captured_frame, "original_frame", None)
+        original = frame_image(captured_frame)
         if (
             not self.rescue_enabled
             or self.local_detector is None
@@ -602,14 +603,14 @@ class DecisionEngine:
 
     def prepare_scan(
         self,
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         monitor_index: int,
         *,
         is_active_monitor: bool = True,
     ) -> ScanPlan:
         """Refresh tile scores and ask the scheduler what to inspect next."""
 
-        original = getattr(captured_frame, "original_frame", None)
+        original = frame_image(captured_frame)
         tiles: list[TileState] = []
         change_map = None
         if isinstance(original, np.ndarray):
@@ -718,12 +719,12 @@ class DecisionEngine:
     def _evaluate_focused(
         self,
         result: dict[str, Any],
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         monitor_index: int,
         roi: Region,
         frame_sequence: int,
     ) -> dict[str, Any]:
-        original = getattr(captured_frame, "original_frame", None)
+        original = frame_image(captured_frame)
         base = self._with_metadata(
             result,
             source="focused_roi",
@@ -826,7 +827,7 @@ class DecisionEngine:
     def _finalize_decision(
         self,
         decided: dict[str, Any],
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         monitor_index: int,
         frame_sequence: int,
     ) -> VisualViolationDecision:
@@ -899,20 +900,15 @@ class DecisionEngine:
     def _strong_primary_result(
         self,
         result: dict[str, Any],
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
     ) -> dict[str, Any]:
         box = result.get("box")
         region: Region | None = None
-        model = getattr(captured_frame, "model_frame", None)
-        original = getattr(captured_frame, "original_frame", None)
-        if (
-            isinstance(box, (list, tuple))
-            and hasattr(model, "shape")
-            and hasattr(original, "shape")
-        ):
+        original = frame_image(captured_frame)
+        if isinstance(box, (list, tuple)) and original is not None:
             region = map_box_to_original(
                 box,
-                model.shape,
+                original.shape,
                 original.shape,
             )
         label = result.get("label")
@@ -930,7 +926,7 @@ class DecisionEngine:
     def _violation_from_evidence(
         self,
         result: dict[str, Any],
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         evidence: ViolationEvidence | None,
     ) -> dict[str, Any]:
         if evidence is None:
