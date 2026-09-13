@@ -84,6 +84,11 @@ function checkedValues(name) {
   return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((node) => node.value);
 }
 
+function selectValue(id, fallback) {
+  const node = labEl(id);
+  return node && node.value !== "" ? node.value : fallback;
+}
+
 function configPayload() {
   const target = document.querySelector('input[name="lab-target"]:checked');
   return {
@@ -94,6 +99,19 @@ function configPayload() {
     tile_modes: checkedValues("lab-tile-mode"),
     overlaps: checkedValues("lab-overlap").map(Number),
     tile_input_sizes: checkedValues("lab-tile-size").map(Number),
+    threshold_profile: selectValue("lab-threshold-profile", "current"),
+    proposal_margin: Number(selectValue("lab-proposal-margin", "0.10")),
+    crop_expansion: Number(selectValue("lab-crop-expansion", "1.75")),
+    checks_per_scan: Number(selectValue("lab-checks-per-scan", "1")),
+    max_skip: Number(selectValue("lab-max-skip", "3")),
+    tile_ranking: selectValue("lab-tile-ranking", "true") === "true",
+    confirmation: selectValue("lab-confirmation", "boolean"),
+    window_size: Number(selectValue("lab-window-size", "3")),
+    min_fresh_hits: Number(selectValue("lab-fresh-hits", "2")),
+    evidence_threshold: Number(selectValue("lab-evidence-threshold", "2.5")),
+    decay: Number(selectValue("lab-decay", "0.5")),
+    strong_values: checkedValues("lab-sweep-strong").map(Number),
+    proposal_values: checkedValues("lab-sweep-proposal").map(Number),
   };
 }
 
@@ -480,8 +498,8 @@ function initializeLab() {
     labAssert(await labInvoke("lab_annotate_selected", Array.from(lab.selected), null, true));
     await refreshSamples();
   });
-  document.querySelectorAll("#benchmark-lab input[type=checkbox], #benchmark-lab input[type=radio]").forEach((input) => {
-    if (input.name && input.name.startsWith("lab-")) {
+  document.querySelectorAll("#benchmark-lab input[type=checkbox], #benchmark-lab input[type=radio], #benchmark-lab select").forEach((input) => {
+    if ((input.name && input.name.startsWith("lab-")) || (input.id && input.id.startsWith("lab-"))) {
       input.addEventListener("change", () => refreshConfigs().catch(() => {}));
     }
   });
@@ -517,9 +535,25 @@ function initializeLab() {
   labEl("lab-run-sweep").addEventListener("click", async () => {
     try {
       const response = labAssert(await labInvoke("lab_sweep", configPayload()));
-      labEl("lab-sweep").innerHTML = (response.rows || []).map((row) => (
-        `<p>strong ${row.strong} · proposal ${row.proposal ?? "default"} · recall ${percent(row.recall)} · FNR ${percent(row.fnr)} · FPR ${percent(row.fpr)}</p>`
+      const body = (response.rows || []).map((row) => (
+        `<tr>
+          <td>${row.proposal == null ? "—" : row.proposal}</td>
+          <td>${row.strong}</td>
+          <td>${percent(row.recall)}</td>
+          <td>${percent(row.fnr)}</td>
+          <td>${percent(row.fpr)}</td>
+          <td>${percent(row.precision)}</td>
+          <td>${percent(row.accuracy)}</td>
+        </tr>`
       )).join("");
+      labEl("lab-sweep").innerHTML = `
+        <table>
+          <thead>
+            <tr><th>Proposal</th><th>Strong</th><th>Recall</th><th>FNR</th><th>FPR</th><th>Precision</th><th>Accuracy</th></tr>
+          </thead>
+          <tbody>${body || "<tr><td colspan=7>No valid proposal/strong pairs</td></tr>"}</tbody>
+        </table>
+      `;
     } catch (error) {
       labMessage(error.message, true);
     }

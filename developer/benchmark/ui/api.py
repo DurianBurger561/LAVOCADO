@@ -12,9 +12,11 @@ from developer.benchmark.annotations import filter_samples, mark_selected
 from developer.benchmark.comparison import compare_summaries, sort_rows
 from developer.benchmark.configs import (
     expand_configs,
+    schema_options,
     selection_from_payload,
     settings_to_protection_payload,
 )
+from developer.benchmark.sweep import DEFAULT_PROPOSAL, DEFAULT_STRONG, sweep_thresholds
 from developer.benchmark.dataset import (
     DatasetError,
     create_dataset,
@@ -28,7 +30,7 @@ from developer.benchmark.inference_cache import InferenceCache
 from developer.benchmark.preview import annotated_data_url, image_data_url
 from developer.benchmark.results import load_run
 from developer.benchmark.runner import BenchmarkRunner
-from developer.benchmark.sweep import sweep_thresholds
+
 from developer.benchmark.tags import catalog_payload
 
 
@@ -180,6 +182,9 @@ class DeveloperDashboardAPI(DashboardAPI):
         except Exception as error:  # noqa: BLE001
             return self._error_result("Could not annotate selection", error)
 
+    def lab_schema_options(self) -> dict[str, Any]:
+        return {"ok": True, "options": schema_options()}
+
     def lab_expand_configs(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
             configs = expand_configs(selection_from_payload(payload))
@@ -187,6 +192,7 @@ class DeveloperDashboardAPI(DashboardAPI):
                 "ok": True,
                 "count": len(configs),
                 "configs": [config.to_dict() for config in configs],
+                "options": schema_options(),
             }
         except Exception as error:  # noqa: BLE001
             return self._error_result("Could not build configurations", error)
@@ -291,10 +297,21 @@ class DeveloperDashboardAPI(DashboardAPI):
     def lab_sweep(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
             dataset = self._require_dataset()
-            configs = expand_configs(selection_from_payload(payload))
+            data = payload if isinstance(payload, dict) else {}
+            configs = expand_configs(selection_from_payload(data))
             if not configs:
                 return {"ok": False, "message": "Select one configuration to sweep."}
-            rows = sweep_thresholds(dataset, configs[0], cache=InferenceCache(dataset.cache_dir))
+            strong = data.get("strong_values") or list(DEFAULT_STRONG)
+            proposal = data.get("proposal_values")
+            if proposal is None or proposal == []:
+                proposal = list(DEFAULT_PROPOSAL)
+            rows = sweep_thresholds(
+                dataset,
+                configs[0],
+                strong_values=[float(value) for value in strong],
+                proposal_values=[float(value) for value in proposal],
+                cache=InferenceCache(dataset.cache_dir),
+            )
             return {"ok": True, "rows": rows}
         except Exception as error:  # noqa: BLE001
             return self._error_result("Could not run threshold sweep", error)

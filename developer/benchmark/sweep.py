@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from app.settings.schema import THRESHOLD_STEPS, merge_vision_settings
+from app.settings.schema import merge_vision_settings
 from developer.benchmark.configs import BenchmarkConfig
 from developer.benchmark.dataset import BenchmarkDataset, eligible_for_metrics
 from developer.benchmark.engine import policy_only_rerun
@@ -61,27 +61,49 @@ def sweep_thresholds(
             del image
         raw_by_sample[sample.id] = cached
 
-    strong_list = [value for value in strong_values if value in THRESHOLD_STEPS or True]
-    proposal_list = list(proposal_values) if proposal_values is not None else [None]
-    for strong in strong_list:
-        for proposal in proposal_list:
-            patched = _with_thresholds(config, strong=float(strong), proposal=proposal)
-            sweep_session = BenchmarkSession(patched, cache=cache, detector=base_session.detector)
-            evaluated = []
-            for sample in dataset.samples:
-                raw = raw_by_sample.get(sample.id)
-                if raw is None:
-                    continue
-                evaluated.append(policy_only_rerun(sweep_session, dataset, sample, raw))
-            summary = summarize_rows(evaluated)
-            rows.append(
-                {
-                    "strong": float(strong),
-                    "proposal": None if proposal is None else float(proposal),
-                    **summary,
-                }
-            )
+    strong_list = [float(value) for value in strong_values]
+    if proposal_values is None:
+        proposal_list: list[float | None] = [None]
+    else:
+        proposal_list = [float(value) for value in proposal_values]
+    for strong, proposal in iter_sweep_pairs(strong_list, proposal_list):
+        patched = _with_thresholds(config, strong=strong, proposal=proposal)
+        sweep_session = BenchmarkSession(patched, cache=cache, detector=base_session.detector)
+        evaluated = []
+        for sample in dataset.samples:
+            raw = raw_by_sample.get(sample.id)
+            if raw is None:
+                continue
+            evaluated.append(policy_only_rerun(sweep_session, dataset, sample, raw))
+        summary = summarize_rows(evaluated)
+        rows.append(
+            {
+                "strong": strong,
+                "proposal": proposal,
+                **summary,
+            }
+        )
     return rows
+
+
+def iter_sweep_pairs(
+    strong_values: Iterable[float],
+    proposal_values: Iterable[float | None],
+) -> list[tuple[float, float | None]]:
+    """Drop meaningless pairs. Proposal must stay strictly below strong."""
+
+    pairs: list[tuple[float, float | None]] = []
+    for strong in strong_values:
+        strong_v = float(strong)
+        for proposal in proposal_values:
+            if proposal is None:
+                pairs.append((strong_v, None))
+                continue
+            proposal_v = float(proposal)
+            if proposal_v >= strong_v:
+                continue
+            pairs.append((strong_v, proposal_v))
+    return pairs
 
 
 def _with_thresholds(
@@ -100,7 +122,7 @@ def _with_thresholds(
             current = dict(pair) if isinstance(pair, dict) else {}
             current["strong"] = strong
             if proposal is not None:
-                current["proposal"] = min(float(proposal), strong - 0.05)
+                current["proposal"] = float(proposal)
             updated[label] = current
         tables[model_name] = updated
     settings["thresholds"] = tables

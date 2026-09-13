@@ -61,8 +61,13 @@ class LabAPITests(unittest.TestCase):
                     "detectors": ["nudenet_640m"],
                     "context_models": ["off"],
                     "tile_modes": ["full_only"],
+                    "threshold_profile": "balanced",
+                    "crop_expansion": 1.5,
+                    "proposal_margin": 0.05,
                 }
             )
             self.assertGreaterEqual(configs["count"], 1)
+            self.assertEqual(configs["configs"][0]["threshold_profile"], "balanced")
+            self.assertIn("proposal_margins", configs["options"])
             edition = api.get_build_edition()
             self.assertEqual(edition["edition"], "developer")

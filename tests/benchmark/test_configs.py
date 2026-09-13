@@ -62,3 +62,45 @@ class ConfigExpansionTests(unittest.TestCase):
         )
         self.assertEqual(len(configs), 2)
         self.assertEqual({item.tile_rows for item in configs}, {2})
+
+    def test_threshold_profile_and_algorithm_settings_use_product_schema(self) -> None:
+        configs = expand_configs(
+            ConfigSelection(
+                detectors=("nudenet_640m",),
+                context_models=("off",),
+                full_input_sizes=(640,),
+                tile_modes=(TILE_FULL_ONLY,),
+                threshold_profile="high_recall",
+                settings={
+                    "recheck": {"crop_expansion": 2.0, "proposal_margin": 0.15},
+                    "temporal": {"confirmation": "evidence", "min_fresh_hits": 1},
+                    "tiles": {"max_skip": 2, "checks_per_scan": 2},
+                },
+            )
+        )
+        settings = configs[0].vision_settings()
+        self.assertEqual(configs[0].threshold_profile, "high_recall")
+        self.assertEqual(settings.preset, "high_recall")
+        self.assertAlmostEqual(settings.recheck.crop_expansion, 2.0)
+        self.assertAlmostEqual(settings.recheck.proposal_margin, 0.15)
+        self.assertEqual(settings.temporal.confirmation, "evidence")
+        self.assertEqual(settings.tiles.max_skip, 2)
+        self.assertEqual(settings.tiles.checks_per_scan, 2)
+
+    def test_payload_maps_algorithm_fields_onto_settings_schema(self) -> None:
+        from developer.benchmark.configs import selection_from_payload
+
+        selection = selection_from_payload(
+            {
+                "threshold_profile": "balanced",
+                "crop_expansion": 1.5,
+                "proposal_margin": 0.05,
+                "tile_ranking": False,
+                "confirmation": "both",
+                "window_size": 2,
+            }
+        )
+        self.assertEqual(selection.threshold_profile, "balanced")
+        self.assertAlmostEqual(selection.settings["recheck"]["crop_expansion"], 1.5)
+        self.assertEqual(selection.settings["temporal"]["confirmation"], "both")
+        self.assertFalse(selection.settings["context"]["tile_ranking"])
