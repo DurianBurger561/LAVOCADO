@@ -3,12 +3,18 @@
 import argparse
 import io
 import json
+import sqlite3
 import sys
+import tempfile
 import threading
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import main
+from app import config
+from app.context.models import ContextPolicyAction, WebsiteMatchMode, WebsiteRule
+from app.context.settings import RuleSettings, RuleSettingsStore
 from app.intervention.recorder import RecordedEvent
 
 
@@ -65,6 +71,49 @@ class MainTests(unittest.TestCase):
 
         platform.prepare_environment.assert_called_once_with()
         run_protection.assert_called_once_with(platform, False)
+
+    def test_protection_loads_persisted_rules_and_keeps_ambiguous_legacy_terms(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            RuleSettingsStore(data_dir / "events.db").save(RuleSettings(
+                website_rules=(WebsiteRule(
+                    "blocked.example", ContextPolicyAction.FORCE_BLOCK,
+                    WebsiteMatchMode.EXACT_HOST,
+                ),),
+            ))
+            platform = Mock(default_data_dir=Mock(return_value=data_dir))
+            with (
+                patch.object(config, "BLOCKED_APPS", ["chrome.exe", "Steam"]),
+                patch("app.service.LavocadoService") as service_class,
+                patch("sys.stdout", io.StringIO()),
+            ):
+                main.run_protection(platform)
+
+        arguments, keywords = service_class.call_args
+        self.assertEqual(arguments, (platform,))
+        self.assertEqual(
+            [rule.identifier for rule in keywords["context_policy"].application.rules],
+            ["chrome.exe"],
+        )
+        self.assertEqual(
+            [rule.domain for rule in keywords["context_policy"].website.rules],
+            ["blocked.example"],
+        )
+        self.assertEqual(keywords["watcher"]._blocked_terms, ("Steam",))
+
+    def test_broken_rule_schema_falls_back_to_existing_protection(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            with sqlite3.connect(data_dir / "events.db") as connection:
+                connection.execute("CREATE TABLE application_rules (broken TEXT)")
+            platform = Mock(default_data_dir=Mock(return_value=data_dir))
+            with (
+                patch("app.service.LavocadoService") as service_class,
+                patch("sys.stdout", io.StringIO()),
+            ):
+                main.run_protection(platform)
+
+        service_class.assert_called_once_with(platform)
 
     def test_overlay_process_flag_runs_the_internal_entry_point(self) -> None:
         platform = Mock()

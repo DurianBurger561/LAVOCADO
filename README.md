@@ -20,9 +20,10 @@ one guided breath, and a ready stage before enabling the continue button.
 
 ## Local data and privacy
 
-When protection is triggered, LAVOCADO stores only the UTC time, detector
-label, confidence, monitor number, and whether the intervention was shown. It
-does not store screenshots, URLs, or window titles.
+When protection is triggered, LAVOCADO stores only the UTC time, trigger type
+and label (detector class, application identifier, or hostname), confidence,
+monitor number, and whether the intervention was shown. It does not store
+screenshots, full URLs, or window titles.
 
 The SQLite event database is stored in the current user's application-data
 directory:
@@ -32,6 +33,10 @@ directory:
 - Linux or WSL: `${XDG_DATA_HOME:-~/.local/share}/lavocado/events.db`
 
 Set `LAVOCADO_DATA_DIR` before starting the app to use a different directory.
+The same SQLite file now has separate `application_rules` and `website_rules`
+tables. Website input is reduced to a hostname before saving; paths and query
+strings are never saved as rules. Protection loads these rules at startup. The
+dashboard rule editor is not available yet.
 
 ## Optional AI support message
 
@@ -65,6 +70,9 @@ BLOCKED_APPS = ["Steam", "reddit.com"]
 When a term matches, LAVOCADO uses the foreground window's center to cover only
 the display containing that window. Window metadata is checked in memory and is
 not stored or sent to the AI service. An empty list disables window inspection.
+Stable legacy identifiers such as `chrome.exe` are migrated once to structured
+application block rules. Ambiguous name/title terms such as `Steam` remain in
+the legacy watcher so their existing behaviour is preserved.
 
 On macOS, foreground-window details require Accessibility permission for the
 terminal or packaged application. On X11 Linux, install `xprop` and `xwininfo`

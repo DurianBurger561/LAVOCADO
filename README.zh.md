@@ -14,7 +14,7 @@ LAVOCADO 是一款本地优先的桌面守护工具。它独立监控每一块�
 
 ## 本地数据与隐私
 
-保护被触发时,LAVOCADO 只记录 UTC 时间、检测标签、置信度、显示器编号,以及是否展示了干预。它不会存储截图、URL 或窗口标题。
+保护被触发时,LAVOCADO 只记录 UTC 时间、触发类型与标签（检测类别、应用标识或域名）、置信度、显示器编号,以及是否展示了干预。它不会存储截图、完整 URL 或窗口标题。
 
 SQLite 事件数据库存放在当前用户的应用数据目录下:
 
@@ -23,6 +23,7 @@ SQLite 事件数据库存放在当前用户的应用数据目录下:
 - Linux 或 WSL:`${XDG_DATA_HOME:-~/.local/share}/lavocado/events.db`
 
 启动前设置 `LAVOCADO_DATA_DIR` 环境变量,可指定其他目录。
+同一个 SQLite 文件现在另有 `application_rules` 和 `website_rules` 规则表。网站输入在保存前会转成域名，路径与查询参数不会存入规则。Protection 子进程启动时加载规则；Dashboard 规则编辑界面将在后续步骤加入。
 
 ## 可选的 AI 支持消息
 
@@ -49,6 +50,7 @@ BLOCKED_APPS = ["Steam", "reddit.com"]
 ```
 
 当某个关键词匹配时,LAVOCADO 会以前台窗口的中心为准,只遮挡包含该窗口的那块屏幕。窗口元数据在内存中检查,不会被存储,也不会发送给 AI 服务。列表为空则禁用窗口检查。
+`chrome.exe` 等可确定的旧应用标识会迁移一次，成为结构化应用黑名单规则；`Steam` 等可能是应用名或窗口标题的词仍由旧逻辑处理，避免改变原有行为。
 
 在 macOS 上,读取前台窗口信息需要为终端或打包后的应用授予"辅助功能"权限。在 X11 的 Linux 上,需安装 `xprop` 和 `xwininfo`(Ubuntu 上由 `x11-utils` 提供)。WSL 只能读取 WSLg 暴露出来的窗口元数据;若要匹配所有 Windows 应用,请使用原生 Windows 构建版本。
 
