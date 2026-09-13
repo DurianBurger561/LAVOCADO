@@ -14,6 +14,9 @@ from app.platforms.capture import FallbackCaptureBackend, MSSCapture
 from app.platforms.linux import LinuxPlatform
 from app.platforms.macos import MacOSPlatform
 from app.platforms.windows import WindowsPlatform, enable_dpi_awareness
+from app.platforms.website.windows_uia import WindowsUIAWebsiteReader
+from app.platforms.website.macos_ax import MacOSAXWebsiteReader
+from app.platforms.website.linux_atspi import LinuxAtspiWebsiteReader
 
 
 class SuccessfulUser32:
@@ -44,6 +47,12 @@ class PlatformModuleTests(unittest.TestCase):
         self.assertIsInstance(capture, FallbackCaptureBackend)
         self.assertEqual(capture.status().preferred_backend, "windows_dxgi")
 
+    def test_windows_adapter_creates_uia_website_reader(self) -> None:
+        self.assertIsInstance(
+            WindowsPlatform(environ={}).create_website_reader(),
+            WindowsUIAWebsiteReader,
+        )
+
     def test_macos_adapter_creates_native_capture_with_mss_fallback(self) -> None:
         capture = MacOSPlatform(environ={}).create_screen_capture()
 
@@ -51,6 +60,12 @@ class PlatformModuleTests(unittest.TestCase):
         self.assertEqual(
             capture.status().preferred_backend,
             "macos_screencapturekit",
+        )
+
+    def test_macos_adapter_creates_ax_website_reader(self) -> None:
+        self.assertIsInstance(
+            MacOSPlatform(environ={}).create_website_reader(),
+            MacOSAXWebsiteReader,
         )
 
     def test_linux_x11_creates_xshm_capture_with_mss_fallback(self) -> None:
@@ -69,6 +84,31 @@ class PlatformModuleTests(unittest.TestCase):
         ).create_screen_capture()
 
         self.assertIsInstance(capture, MSSCapture)
+
+    def test_linux_adapter_creates_atspi_website_reader(self) -> None:
+        self.assertIsInstance(
+            LinuxPlatform(environ={}).create_website_reader(),
+            LinuxAtspiWebsiteReader,
+        )
+
+    def test_wayland_uses_atspi_active_pid_when_x11_has_no_window(self) -> None:
+        provider = Mock(active_window=Mock(return_value=None))
+        adapter = LinuxPlatform(environ={}, window_provider=provider)
+        with (
+            patch("app.platforms.website.linux_atspi._NativeAtspiBridge") as bridge,
+            patch("app.platforms.linux._linux_executable_for_pid", return_value="/usr/bin/firefox"),
+        ):
+            bridge.return_value.active_process_id.return_value = 42
+            application = adapter.get_foreground_application()
+
+        self.assertEqual(application.identifier, "firefox")
+        self.assertEqual(application.process_id, 42)
+        self.assertIsNone(application.window_id)
+
+    def test_missing_linux_atspi_does_not_guess_application(self) -> None:
+        adapter = LinuxPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=None)))
+        with patch("app.platforms.website.linux_atspi._NativeAtspiBridge", side_effect=ImportError):
+            self.assertIsNone(adapter.get_foreground_application())
 
     def test_linux_wayland_creates_portal_capture_with_mss_fallback(self) -> None:
         capture = LinuxPlatform(
@@ -196,6 +236,26 @@ class PlatformModuleTests(unittest.TestCase):
 
         self.assertIs(platform.get_foreground_window(), window)
         provider.active_window.assert_called_once_with()
+
+    def test_each_adapter_exposes_title_free_foreground_application(self) -> None:
+        window = WindowInfo(
+            title="Private page title",
+            app_name="Chrome",
+            app_identifier="chrome.exe",
+            window_id="123",
+            process_id=42,
+        )
+        for platform in (
+            WindowsPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=window))),
+            MacOSPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=window))),
+            LinuxPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=window))),
+        ):
+            with self.subTest(platform=platform.name):
+                application = platform.get_foreground_application()
+                self.assertEqual(application.identifier, "chrome.exe")
+                self.assertEqual(application.window_id, "123")
+                self.assertEqual(application.process_id, 42)
+                self.assertNotIn("Private page title", repr(application))
 
     def test_linux_explicitly_selects_the_qt_webview_backend(self) -> None:
         environment: dict[str, str] = {}

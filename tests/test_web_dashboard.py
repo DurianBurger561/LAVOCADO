@@ -90,6 +90,7 @@ class WebDashboardTests(unittest.TestCase):
             webview_module=webview,
             controller=controller,
             recorder=recorder,
+            rule_store=object(),
         )
 
         args, options = webview.window_call
@@ -120,10 +121,30 @@ class WebDashboardTests(unittest.TestCase):
             "get_events",
             "get_diagnostics",
             "test_intervention",
+            "get_rules",
+            "add_rule",
+            "remove_rule",
         ):
             self.assertIn(method, script)
         self.assertNotIn("innerHTML", script)
         self.assertNotIn("eval(", script)
+
+    def test_dashboard_has_four_rule_groups_and_whitelist_confirmation(self) -> None:
+        html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+        for group in (
+            "blocked_applications", "whitelisted_applications",
+            "blocked_websites", "whitelisted_websites",
+        ):
+            self.assertIn(f'data-rule-group="{group}"', html)
+            self.assertIn(f'"{group}"', script)
+        self.assertIn('id="rule-confirmation"', html)
+        self.assertIn("Visual protection will be completely disabled", script)
+        self.assertIn("You are responsible for content", script)
+        self.assertEqual(html.count('class="button ghost pick-app"'), 2)
+        self.assertIn('"begin_app_pick"', script)
+        self.assertIn('"get_app_pick_result"', script)
 
     def test_dashboard_renders_capture_backend_diagnostics(self) -> None:
         html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
@@ -141,6 +162,20 @@ class WebDashboardTests(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertIn(f'id="{field}"', html)
                 self.assertIn(f'"{field}"', script)
+
+    def test_dashboard_renders_coarse_foreground_context(self) -> None:
+        html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+        for field in (
+            "foreground-application", "foreground-browser", "foreground-website",
+            "foreground-app-rule", "foreground-website-rule", "foreground-effective",
+            "foreground-policy",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(f'id="{field}"', html)
+                self.assertIn(f'"{field}"', script)
+        self.assertIn("data.foreground_context", script)
 
     def test_dashboard_names_native_and_mss_capture_modes(self) -> None:
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
@@ -168,6 +203,24 @@ class WebDashboardTests(unittest.TestCase):
 
         self.assertIn('"app" / "ui" / "web"', spec)
         self.assertIn('"app/ui/web"', spec)
+
+    def test_windows_packaging_includes_generated_uia_interface(self) -> None:
+        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        self.assertIn('GetModule("UIAutomationCore.dll")', spec)
+        self.assertIn('"comtypes.gen.UIAutomationClient"', spec)
+
+    def test_macos_packaging_includes_accessibility_framework(self) -> None:
+        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn('"ApplicationServices"', spec)
+        self.assertIn('pyobjc-framework-ApplicationServices', requirements)
+
+    def test_linux_packaging_includes_atspi_reader(self) -> None:
+        spec = (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn('"gi.repository.Atspi"', spec)
+        self.assertIn('get_gi_typelibs(', spec)
+        self.assertIn('PyGObject>=3.50', requirements)
 
 
 if __name__ == "__main__":

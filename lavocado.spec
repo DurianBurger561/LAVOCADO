@@ -15,11 +15,23 @@ if not model_path.is_file():
     )
 model_data = [(str(model_path), "models")]
 web_data = [(str(Path(SPECPATH) / "app" / "ui" / "web"), "app/ui/web")]
+platform_binaries = []
+platform_data = []
 if sys.platform == "win32":
-    platform_hidden_imports = ["dxcam"]
+    from comtypes.client import GetModule
+
+    GetModule("UIAutomationCore.dll")
+    platform_hidden_imports = [
+        "dxcam",
+        "comtypes.client",
+        "comtypes.gen.UIAutomationClient",
+    ]
 elif sys.platform == "darwin":
     platform_hidden_imports = [
+        "AppKit",
+        "ApplicationServices",
         "CoreMedia",
+        "CoreText",
         "Foundation",
         "Quartz",
         "Quartz.CoreGraphics",
@@ -29,18 +41,25 @@ elif sys.platform == "darwin":
         "objc",
     ]
 else:
+    from PyInstaller.utils.hooks.gi import get_gi_typelibs
+
+    platform_binaries, platform_data, atspi_hidden_imports = get_gi_typelibs(
+        "Atspi", "2.0"
+    )
     platform_hidden_imports = [
         "dbus_fast",
         "dbus_fast.aio",
+        "gi",
+        "gi.repository.Atspi",
         "mss.linux.xgetimage",
         "mss.linux.xshmgetimage",
-    ]
+    ] + atspi_hidden_imports
 
 analysis = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=[],
-    datas=nudenet_data + model_data + web_data,
+    binaries=platform_binaries,
+    datas=nudenet_data + model_data + web_data + platform_data,
     hiddenimports=platform_hidden_imports,
     hookspath=[],
     hooksconfig={},

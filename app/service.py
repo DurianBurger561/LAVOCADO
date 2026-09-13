@@ -12,6 +12,15 @@ from threading import Event
 
 from app import config
 from app.blocklist.watcher import BlocklistResult, WindowWatcher
+from app.context.foreground_service import ForegroundContextService
+from app.context.models import (
+    ContextPolicyAction,
+    ContextPolicyResult,
+    ForegroundContext,
+)
+from app.context.policy.resolver import ContextPolicyService
+from app.context.store import ForegroundContextStore
+from app.context.worker import ForegroundContextWorker
 from app.intervention.intervene import InterventionGenerator
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platforms import PlatformAdapter
@@ -32,6 +41,7 @@ class State(str, Enum):
     STOPPED = "stopped"
     MONITORING = "monitoring"
     CANDIDATE = "candidate"
+    BYPASSED = "bypassed"
     BLOCKED = "blocked"
     COOLDOWN = "cooldown"
 
@@ -52,6 +62,9 @@ class LavocadoService:
         diagnostics: DiagnosticsStore | None = None,
         change_scheduler: ChangeScheduler | None = None,
         *,
+        context_store: ForegroundContextStore | None = None,
+        context_policy: ContextPolicyService | None = None,
+        context_worker: ForegroundContextWorker | None = None,
         verifier_factory: Callable[[], TemporalVerifier] | None = None,
         check_interval: float = config.CHECK_INTERVAL,
         cooldown_seconds: float = config.COOLDOWN_SECONDS,
@@ -124,8 +137,16 @@ class LavocadoService:
             )
         )
         self.change_scheduler = change_scheduler or ChangeScheduler()
+        self.context_store = context_store or ForegroundContextStore()
+        self.context_policy = context_policy or ContextPolicyService()
+        self.context_worker = (
+            context_worker
+            if context_worker is not None
+            else self._create_context_worker(platform_adapter)
+        )
         self._verifiers: dict[int, TemporalVerifier] = {}
         self._last_frame_sequences: dict[int, tuple[str, int]] = {}
+        self._bypass_active = False
         self.check_interval = check_interval
         self.cooldown_seconds = cooldown_seconds
         self._clock = clock
@@ -152,6 +173,8 @@ class LavocadoService:
         self._transition(State.MONITORING)
 
         try:
+            if self.context_worker is not None:
+                self.context_worker.start()
             while self._running and not (stop_event and stop_event.is_set()):
                 if test_intervention_event and test_intervention_event.is_set():
                     test_intervention_event.clear()
@@ -163,12 +186,16 @@ class LavocadoService:
         finally:
             try:
                 try:
-                    self.capturer.close()
+                    if self.context_worker is not None:
+                        self.context_worker.stop()
                 finally:
                     try:
-                        self.recorder.close()
+                        self.capturer.close()
                     finally:
-                        self.intervention.close()
+                        try:
+                            self.recorder.close()
+                        finally:
+                            self.intervention.close()
             finally:
                 self._transition(State.STOPPED)
                 self._running = False
@@ -190,7 +217,7 @@ class LavocadoService:
                 support_message=self._generate_intervention(),
             )
         finally:
-            self._transition(State.MONITORING)
+            self._transition(State.BYPASSED if self._bypass_active else State.MONITORING)
 
     def check_once(self) -> list[dict[str, object]] | None:
         """Advance the state machine by one monitoring step."""
@@ -208,7 +235,12 @@ class LavocadoService:
 
         blocklist_result = self.watcher.check()
         blocked_result = self._blocklist_detection(blocklist_result)
+        context = self.context_store.latest()
         if blocked_result is not None:
+            self.diagnostics.record_foreground_context(
+                context, None, effective_override=ContextPolicyAction.FORCE_BLOCK
+            )
+            self._leave_bypass()
             monitor_index = int(blocked_result["monitor_index"])
             self._show_intervention(
                 blocked_result,
@@ -216,6 +248,24 @@ class LavocadoService:
                 trigger_type="blocklist",
             )
             return [blocked_result]
+
+        policy_result = (
+            self.context_policy.evaluate(context) if context is not None else None
+        )
+        self.diagnostics.record_foreground_context(context, policy_result)
+        if policy_result is not None:
+            if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
+                self._leave_bypass()
+                result, monitor_index, trigger_type = self._context_rule_detection(
+                    context, policy_result
+                )
+                self._show_intervention(result, monitor_index, trigger_type)
+                return [result]
+            if policy_result.action is ContextPolicyAction.FULL_BYPASS:
+                self._enter_bypass()
+                return []
+
+        self._leave_bypass()
 
         results: list[dict[str, object]] = []
         has_candidate = False
@@ -306,6 +356,70 @@ class LavocadoService:
             reset_decisions()
         self.change_scheduler.reset()
 
+    def _enter_bypass(self) -> None:
+        if self._bypass_active:
+            self._transition(State.BYPASSED)
+            return
+        self._reset_verifiers()
+        self._last_frame_sequences.clear()
+        self._bypass_active = True
+        self._transition(State.BYPASSED)
+
+    def _leave_bypass(self) -> None:
+        if not self._bypass_active:
+            return
+        self._reset_verifiers()
+        self._last_frame_sequences.clear()
+        self._bypass_active = False
+        self._transition(State.MONITORING)
+
+    def _context_rule_detection(
+        self,
+        context: ForegroundContext,
+        policy: ContextPolicyResult,
+    ) -> tuple[dict[str, object], int, str]:
+        center = context.application.window_center
+        monitor_index = (
+            self.capturer.monitor_index_at(*center) if center is not None else None
+        )
+        if monitor_index is None:
+            indexes = tuple(self.capturer.monitor_indexes)
+            monitor_index = indexes[0] if indexes else config.MONITOR_INDEX
+
+        website_rule = (
+            policy.matched_website_rule
+            if policy.website_action is ContextPolicyAction.FORCE_BLOCK
+            else None
+        )
+        if website_rule is not None:
+            trigger_type = "website_rule"
+        else:
+            trigger_type = "application_rule"
+        result: dict[str, object] = {
+            "blocked": True,
+            "reason": f"Blocked by {trigger_type}",
+            "label": None,
+            "confidence": None,
+            "check_points": [],
+            "monitor_index": monitor_index,
+        }
+        return result, monitor_index, trigger_type
+
+    def _create_context_worker(
+        self,
+        platform_adapter: PlatformAdapter,
+    ) -> ForegroundContextWorker | None:
+        read_application = getattr(platform_adapter, "get_foreground_application", None)
+        create_reader = getattr(platform_adapter, "create_website_reader", None)
+        if not callable(read_application) or not callable(create_reader):
+            return None
+        service = ForegroundContextService(read_application, create_reader())
+        return ForegroundContextWorker(
+            service,
+            self.context_store,
+            application_policy=self.context_policy.application,
+        )
+
     def _record_trigger(
         self,
         result: dict[str, object],
@@ -360,8 +474,8 @@ class LavocadoService:
             return None
         return {
             "blocked": True,
-            "reason": f"Blocked window term: {result.matched_term}",
-            "label": result.matched_term,
+            "reason": "Blocked by legacy window rule",
+            "label": None,
             "confidence": None,
             "check_points": [],
             "monitor_index": monitor_index,

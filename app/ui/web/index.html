@@ -111,6 +111,39 @@
               </dl>
             </div>
 
+            <div class="capture-card foreground-card" aria-labelledby="foreground-heading">
+              <div class="capture-heading">
+                <span id="foreground-heading" class="signal-name">Foreground context</span>
+                <span id="foreground-policy" class="signal-tag neutral">Normal</span>
+              </div>
+              <dl class="capture-list">
+                <div>
+                  <dt>Application</dt>
+                  <dd id="foreground-application">Unavailable</dd>
+                </div>
+                <div>
+                  <dt>Browser</dt>
+                  <dd id="foreground-browser">—</dd>
+                </div>
+                <div>
+                  <dt>Website context</dt>
+                  <dd id="foreground-website">Unavailable</dd>
+                </div>
+                <div>
+                  <dt>Application rule</dt>
+                  <dd id="foreground-app-rule">No rule</dd>
+                </div>
+                <div>
+                  <dt>Website rule</dt>
+                  <dd id="foreground-website-rule">No rule</dd>
+                </div>
+                <div>
+                  <dt>Effective policy</dt>
+                  <dd id="foreground-effective">Normal</dd>
+                </div>
+              </dl>
+            </div>
+
             <div class="signal-card">
               <div class="signal-header">
                 <div>
@@ -170,6 +203,77 @@
           </aside>
         </div>
 
+        <section class="panel rules" aria-labelledby="rules-heading">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">LOCAL POLICY</p>
+              <h2 id="rules-heading">Protection rules</h2>
+            </div>
+          </div>
+          <p id="rules-hint" class="muted">Rules are loaded locally. Stop protection to edit them; changes apply on the next start.</p>
+          <p id="rules-message" class="rules-message" role="status" aria-live="polite"></p>
+          <div class="rules-grid">
+            <div class="rule-group" data-rule-group="blocked_applications">
+              <h3>Blocked applications</h3>
+              <p class="muted">Force an intervention when this app is active.</p>
+              <ul id="blocked-applications-list" class="rule-list"></ul>
+              <form class="rule-form" data-rule-group="blocked_applications">
+                <label for="blocked-applications-input">Executable name, desktop app ID, or bundle ID</label>
+                <div class="rule-entry">
+                  <input id="blocked-applications-input" name="value" type="text" maxlength="255" placeholder="chrome.exe" required>
+                  <button class="button ghost pick-app" type="button">Pick current app</button>
+                  <button class="button secondary" type="submit">Add app</button>
+                </div>
+              </form>
+            </div>
+            <div class="rule-group" data-rule-group="whitelisted_applications">
+              <h3>Whitelisted applications</h3>
+              <p class="muted">Bypass visual protection unless a blacklist matches.</p>
+              <ul id="whitelisted-applications-list" class="rule-list"></ul>
+              <form class="rule-form" data-rule-group="whitelisted_applications">
+                <label for="whitelisted-applications-input">Executable name, desktop app ID, or bundle ID</label>
+                <div class="rule-entry">
+                  <input id="whitelisted-applications-input" name="value" type="text" maxlength="255" placeholder="org.example.viewer" required>
+                  <button class="button ghost pick-app" type="button">Pick current app</button>
+                  <button class="button secondary" type="submit">Add app</button>
+                </div>
+              </form>
+            </div>
+            <div class="rule-group" data-rule-group="blocked_websites">
+              <h3>Blocked websites</h3>
+              <p class="muted">Only the hostname is saved; paths and queries are discarded.</p>
+              <ul id="blocked-websites-list" class="rule-list"></ul>
+              <form class="rule-form" data-rule-group="blocked_websites">
+                <label for="blocked-websites-input">Website hostname or HTTPS URL</label>
+                <div class="rule-entry">
+                  <input id="blocked-websites-input" name="value" type="text" placeholder="example.com" required>
+                  <select name="match_mode" aria-label="Website match mode">
+                    <option value="exact_host">Exact host</option>
+                    <option value="domain_and_subdomains">Include subdomains</option>
+                  </select>
+                  <button class="button secondary" type="submit">Add site</button>
+                </div>
+              </form>
+            </div>
+            <div class="rule-group" data-rule-group="whitelisted_websites">
+              <h3>Whitelisted websites</h3>
+              <p class="muted">Bypass visual protection for the active site unless a blacklist matches.</p>
+              <ul id="whitelisted-websites-list" class="rule-list"></ul>
+              <form class="rule-form" data-rule-group="whitelisted_websites">
+                <label for="whitelisted-websites-input">Website hostname or HTTPS URL</label>
+                <div class="rule-entry">
+                  <input id="whitelisted-websites-input" name="value" type="text" placeholder="example.com" required>
+                  <select name="match_mode" aria-label="Website match mode">
+                    <option value="exact_host">Exact host</option>
+                    <option value="domain_and_subdomains">Include subdomains</option>
+                  </select>
+                  <button class="button secondary" type="submit">Add site</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
         <section class="panel history" aria-labelledby="history-heading">
           <div class="section-heading history-heading">
             <div>
@@ -196,6 +300,16 @@
           </div>
         </section>
       </main>
+    </div>
+    <div id="rule-confirmation" class="modal-backdrop" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="rule-confirm-title" aria-describedby="rule-confirm-body">
+        <h2 id="rule-confirm-title">Confirm rule change</h2>
+        <p id="rule-confirm-body"></p>
+        <div class="modal-actions">
+          <button id="rule-confirm-cancel" class="button ghost" type="button">Cancel</button>
+          <button id="rule-confirm-accept" class="button primary" type="button">Confirm</button>
+        </div>
+      </div>
     </div>
   </body>
 </html>

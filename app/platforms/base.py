@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from app.context.models import ApplicationContext
+    from app.context.website.provider import WebsiteReader
     from app.platforms.capture import ScreenCaptureBackend
 
 
@@ -25,6 +27,9 @@ class WindowInfo:
     top: int | None = None
     width: int | None = None
     height: int | None = None
+    app_identifier: str | None = None
+    window_id: str | None = None
+    process_id: int | None = None
 
     @property
     def center(self) -> tuple[int, int] | None:
@@ -55,6 +60,10 @@ class PlatformAdapter(Protocol):
     def default_data_dir(self) -> Path: ...
 
     def get_foreground_window(self) -> WindowInfo | None: ...
+
+    def get_foreground_application(self) -> ApplicationContext | None: ...
+
+    def create_website_reader(self) -> WebsiteReader: ...
 
     def create_screen_capture(self) -> ScreenCaptureBackend: ...
 

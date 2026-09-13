@@ -38,10 +38,8 @@ class WindowWatcher:
 
         try:
             window = self._platform.get_foreground_window()
-        except Exception:
-            LOGGER.exception(
-                "Could not read the active window; skipping blocklist check"
-            )
+        except Exception:  # noqa: BLE001 - native error text may include a window title
+            LOGGER.warning("Could not read the active window; skipping blocklist check")
             return BlocklistResult(blocked=False)
         if window is None:
             return BlocklistResult(blocked=False)

@@ -14,7 +14,7 @@ LAVOCADO 是一款本地优先的桌面守护工具。它独立监控每一块�
 
 ## 本地数据与隐私
 
-保护被触发时,LAVOCADO 只记录 UTC 时间、检测标签、置信度、显示器编号,以及是否展示了干预。它不会存储截图、URL 或窗口标题。
+保护被触发时,LAVOCADO 只记录 UTC 时间、触发类型、置信度、显示器编号,以及是否展示了干预。视觉检测事件还可以保存检测类别。应用规则、网站规则和旧版窗口黑名单事件的标签始终为空,因此应用标识和域名不会写入历史。它不会存储截图、完整 URL 或窗口标题。
 
 SQLite 事件数据库存放在当前用户的应用数据目录下:
 
@@ -23,6 +23,38 @@ SQLite 事件数据库存放在当前用户的应用数据目录下:
 - Linux 或 WSL:`${XDG_DATA_HOME:-~/.local/share}/lavocado/events.db`
 
 启动前设置 `LAVOCADO_DATA_DIR` 环境变量,可指定其他目录。
+同一个文件还保存 `application_rules` 和 `website_rules`。网站输入在保存前会转成域名,路径与查询参数不会存入规则。请在保护停止时通过仪表盘编辑这些规则;Protection 进程启动时加载它们。
+
+发现、诊断和历史记录的边界见 [上下文隐私审计](docs/context_privacy_audit.md)。
+
+## 保护规则
+
+仪表盘在保护停止时可编辑四组本地规则。更改会在下次启动保护时生效:
+
+- 应用黑名单
+- 应用白名单
+- 网站黑名单
+- 网站白名单
+
+使用 **Pick current app** 可从前台窗口填入稳定的可执行文件名、桌面应用 ID 或 bundle ID。网站输入接受域名或 HTTPS URL,只保存域名。匹配方式可以是精确主机名,也可以包含子域名。
+
+加入白名单时会弹出确认:在该应用或网站处于活动状态期间,视觉保护会被完全跳过,除非同时命中更高优先级的黑名单。白名单上下文中显示的内容由用户自行负责。
+
+LAVOCADO 会先识别前台应用。如果它是受支持的浏览器,再通过平台辅助功能 API 读取活动标签页的域名(Windows UI Automation、macOS Accessibility、Linux AT-SPI)。它不会根据窗口标题猜测网站。若无法读取地址栏,网站上下文保持 UNKNOWN,只应用应用规则。
+
+应用规则与网站规则先独立计算,再统一合并:
+
+```text
+FORCE_BLOCK > FULL_BYPASS > NORMAL
+```
+
+黑名单始终优先于白名单。没有任何匹配规则时,保护行为与现有视觉检测路径完全一致。
+
+- `FORCE_BLOCK` 立即遮挡前台窗口所在的显示器,跳过 NudeNet、区域救援和时序确认。
+- `FULL_BYPASS` 在该上下文活动期间跳过整个视觉流水线,离开后再从干净状态恢复。
+- `NORMAL` 按原有方式运行截图、检测和"三帧中两帧"确认。
+
+实时诊断只显示粗粒度状态:是否识别到应用、是否为浏览器、网站是否已知,以及规则动作。不会包含应用标识、域名、窗口标题或 URL。
 
 ## 可选的 AI 支持消息
 
@@ -40,15 +72,16 @@ export OPENAI_API_KEY="你的-api-key"
 
 发送出去的仅仅是一个固定的"请给一句鼓励的话"的请求。截图、检测标签、置信度、显示器编号、URL、窗口标题都绝不会被包含在内。此请求已禁用 API 响应存储。设置 `LAVOCADO_OPENAI_MODEL` 可覆盖默认模型。
 
-## 前台窗口黑名单
+## 旧版前台窗口黑名单
 
-在 `app/config.py` 中添加不区分大小写的应用名或标题关键词:
+请优先使用上面的仪表盘规则。`app/config.py` 中的 `BLOCKED_APPS` 只留给无法存成稳定应用标识的名称或标题关键词:
 
 ```python
 BLOCKED_APPS = ["Steam", "reddit.com"]
 ```
 
-当某个关键词匹配时,LAVOCADO 会以前台窗口的中心为准,只遮挡包含该窗口的那块屏幕。窗口元数据在内存中检查,不会被存储,也不会发送给 AI 服务。列表为空则禁用窗口检查。
+当某个关键词匹配时,LAVOCADO 会以前台窗口的中心为准,只遮挡包含该窗口的那块屏幕。窗口元数据在内存中检查,不会被存储,也不会发送给 AI 服务。列表为空则禁用这段旧逻辑。
+`chrome.exe` 等可确定的旧应用标识会迁移一次,成为结构化应用黑名单规则;`Steam` 等可能是应用名或窗口标题的词仍由旧逻辑处理,避免改变原有行为。
 
 在 macOS 上,读取前台窗口信息需要为终端或打包后的应用授予"辅助功能"权限。在 X11 的 Linux 上,需安装 `xprop` 和 `xwininfo`(Ubuntu 上由 `x11-utils` 提供)。WSL 只能读取 WSLg 暴露出来的窗口元数据;若要匹配所有 Windows 应用,请使用原生 Windows 构建版本。
 
@@ -56,15 +89,17 @@ BLOCKED_APPS = ["Steam", "reddit.com"]
 
 - Windows 10/11
 - macOS
-- 支持 X11 屏幕捕获的 Linux(含 WSLg)
+- 支持原生 X11 或 Wayland 屏幕捕获的 Linux(含 WSLg)
 
-Wayland 的支持取决于其合成器的屏幕捕获权限。
+Wayland 使用桌面的 ScreenCast Portal 和 PipeWire。保护启动时请在系统选择器中批准显示器。明确取消或拒绝该请求会停止捕获,而不会改走 MSS 绕过这一决定。
 
 运行时的平台集成被隔离在 `app/platforms/` 目录下:
 
 - `windows.py` 包含 User32/Kernel32 前台窗口访问、DPI 设置、Windows 数据路径,以及原生运行时指引。
 - `macos.py` 包含通过 System Events 访问前台窗口、macOS 数据路径,以及权限指引。
 - `linux.py` 包含 X11 前台窗口访问、XDG 数据路径,以及 Linux 和 WSLg 所用的 Qt WebView 配置。
+
+网站发现同样按平台实现,位于 `app/platforms/website/`:Windows UI Automation、macOS `AXUIElement`、Linux AT-SPI。读取失败或不可用时绝不会停止视觉保护,网站一侧保持 UNKNOWN。
 
 每个进程只创建一个 `PlatformAdapter`,并将其传递给截图、黑名单、遮挡、存储和仪表盘等模块。因此各业务模块无需自行判断操作系统,也无需导入具体的平台实现。
 
@@ -93,14 +128,19 @@ python main.py
 ```
 
 首次启动时,请在 **系统设置 → 隐私与安全性 → 屏幕与系统音频录制** 中允许"终端"或 LAVOCADO,然后重启应用。
+浏览器地址栏发现还需要 **隐私与安全性 → 辅助功能**;没有该权限时,网站上下文保持 UNKNOWN。
 
 ### Ubuntu、Linux 或 WSL
 
 ```bash
 sudo apt install \
-  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 \
+  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 libxcb-shm0 \
+  gstreamer1.0-tools gstreamer1.0-pipewire \
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
-  libxcb-render-util0 libxcb-util1 libxcb-xkb1
+  libxcb-render-util0 libxcb-util1 libxcb-xkb1 \
+  gcc libcairo2-dev pkg-config python3-dev \
+  libgirepository-2.0-dev gir1.2-atspi-2.0
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -108,7 +148,22 @@ python scripts/download_models.py
 python main.py
 ```
 
-Linux 会显式选择 pywebview 的 Qt 后端,因此即便缺少可选的 GTK `gi` 模块,也不会被当作启动失败。在 WSLg 环境下,当没有暴露 DRM 渲染节点时,LAVOCADO 会默认让 Qt WebEngine 使用软件渲染,以避免 Mesa/Zink 报错。用户自行提供的 Qt 或 Mesa 环境变量不会被覆盖。
+Linux 会显式选择 pywebview 的 Qt 后端。PyGObject/AT-SPI 只用于前台浏览器地址栏发现;若桌面辅助功能不可用,网站保持 UNKNOWN,视觉保护继续运行。
+在 WSLg 环境下,当没有暴露 DRM 渲染节点时,LAVOCADO 会默认让 Qt WebEngine 使用软件渲染,以避免 Mesa/Zink 报错。用户自行提供的 Qt 或 Mesa 环境变量不会被覆盖。
+
+可在不打开捕获会话的情况下校验当前 Linux 捕获路径:
+
+```bash
+python scripts/validate_linux_capture.py --self-check
+```
+
+在真实的 X11、Wayland 或 WSLg 桌面上运行现场校验:
+
+```bash
+python scripts/validate_linux_capture.py
+```
+
+现场检查会向每个已选显示器请求两帧新画面,校验尺寸、BGR 格式和递增序号,然后丢弃它们。它不会保存或上传像素。在 Wayland 上,请在系统选择器中批准每一块显示器。取消选择器会报告 `permission_denied`,不会改试 MSS。JSON 结果在 X11 上应为 `linux_xshm`,在 Wayland 上应为 `linux_pipewire_portal`;原生后端技术上不可用时则为带降级原因的 `mss`。完整的 GNOME、KDE、WSLg、权限和多显示器矩阵见 [Linux 捕获校验清单](docs/linux-capture-validation.md)。
 
 固定版本的 640m 模型约 99 MiB,从 NudeNet 官方 GitHub release 下载,并做字节大小和 SHA-256 校验。该模型不纳入 Git。源码运行时若缺少它,LAVOCADO 会记录一条警告并降级到 NudeNet 320n;而打包构建版本则要求必须有经校验的 640m 文件。设置 `LAVOCADO_NUDENET_MODEL` 可指定使用位于其他路径的本地 640m 文件。
 
@@ -117,6 +172,23 @@ Linux 会显式选择 pywebview 的 Qt 后端,因此即便缺少可选的 GTK `g
 ```bash
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 ```
+
+若要在隔离的开发进程中对比原生捕获路径和 MSS:
+
+```bash
+python -m pip install -r requirements-benchmark.txt
+python scripts/benchmark_capture.py
+```
+
+捕获基准会汇总延迟、帧龄、CPU、常驻内存、显示器分辨率,以及从捕获到 NudeNet 决策的耗时。它不会保留或上传帧。各后端命令、权限行为和分辨率/显示器测试矩阵见 [捕获基准指南](docs/capture-benchmark.md)。
+
+发布稳定性校验时,请按平台和后端模式至少运行一小时捕获浸泡测试:
+
+```bash
+python scripts/soak_capture.py --backend auto --duration-seconds 3600
+```
+
+它会检测停滞序号、不健康后端、内存/资源增长、降级切换和未完成清理,且不保留帧。八小时命令、失败阈值和平台矩阵见 [捕获浸泡测试指南](docs/capture-soak-testing.md)。
 
 ### 可选的上下文模型基准测试
 
@@ -131,9 +203,15 @@ python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-imag
 
 对于小面积内容的救援机制,每块显示器被分为四块区域,每次扫描只对其中一块做上下文分类。当某块区域的本地 `porn` 分数非常高时,只是让同一个 NudeNet 640m 实例重新检查该区域;Viddexa 绝不会单独生成候选。被救援的区域会在接下来的两次检查中被锁定,以便原有的"三帧中两帧"时序验证器对同一区域做确认或排除。当只有 NudeNet 320n 降级方案可用时,救援机制会自动禁用。
 
-保护诊断信息保存在一个线程安全的内存快照中。它包含模型可用性、最近一次扫描延迟、显示器编号、置信度最高的检测器元数据、上下文结果、决策来源、时序历史,以及救援计划。该快照采用明确的安全数据结构,绝不包含图像像素、截图、裁剪图、URL、窗口标题或图片路径。它不会被写入 SQLite,也不会发送给 OpenAI。
+保护诊断信息保存在一个线程安全的内存快照中。它包含模型可用性、最近一次扫描延迟、显示器编号、置信度最高的检测器元数据、上下文结果、决策来源、时序历史、救援计划,以及粗粒度的前台策略状态。捕获健康信息报告首选与当前后端、是否降级及原因、帧龄和检测到的显示器数量。该快照采用明确的安全数据结构,绝不包含图像像素、截图、裁剪图、URL、窗口标题、应用标识、域名或图片路径。它不会被写入 SQLite,也不会发送给 OpenAI。
 
-当保护由仪表盘托管时,一套固定的 stdin/stdout 消息协议会把这份安全快照从保护子进程复制到仪表盘内存中。该协议只支持启动、停止、读取诊断和测试干预这几种操作;这座桥梁无法执行命令或访问任意文件。手动测试干预由保护进程在其 GUI 主线程上展示,不会创建 SQLite 保护事件。
+每一帧新画面在进入 NudeNet 推理前,还会经过按显示器划分的变化调度器。若当前后端提供原生脏区域元数据则优先使用;否则 LAVOCADO 会在内存中比较一份有界的 64x64 灰度图。第一帧、周期性安全帧,以及候选出现后的时序跟进帧始终会被扫描。变化图不会写入磁盘、进入诊断或被上传。
+
+源码开发者可以显式测试 `Auto`、仅原生和仅 MSS 的捕获路径。该覆盖由环境变量控制,在打包给用户的构建中禁用,也不会出现在仪表盘上。跨平台命令和权限策略说明见 [开发者捕获覆盖指南](docs/developer-capture-override.md)。
+
+实现与需求的对应关系,以及仍待在真实设备上核对的项目,记录在 [原生捕获验收清单](docs/native-capture-acceptance.md)。
+
+当保护由仪表盘托管时,一套固定的 stdin/stdout 消息协议会把这份安全快照从保护子进程复制到仪表盘内存中。该协议只支持启动、停止、读取诊断、测试干预和本地规则编辑这几种操作;这座桥梁无法执行命令或访问任意文件。手动测试干预由保护进程在其 GUI 主线程上展示,不会创建 SQLite 保护事件。
 
 ## 使用 LAVOCADO
 
@@ -143,7 +221,7 @@ python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-imag
 python main.py
 ```
 
-或打开 WebView 仪表盘,用于启动/停止保护、查看实时诊断、测试干预,以及查看近期的隐私安全事件:
+或打开 WebView 仪表盘,用于启动/停止保护、编辑应用和网站规则、查看实时诊断、测试干预,以及查看近期的隐私安全事件:
 
 ```bash
 python main.py dashboard

@@ -8,6 +8,8 @@ from collections.abc import Mapping, MutableMapping
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
+from app.context.application import application_from_window
+from app.context.models import ApplicationContext
 from app.platforms.base import (
     Environment,
     WindowInfo,
@@ -97,25 +99,29 @@ class WindowsWindowProvider:
         has_rectangle = bool(
             self._user32.GetWindowRect(window_handle, ctypes.byref(rectangle))
         )
+        app_name, app_identifier, process_id = self._process_identity(window_handle)
         if not has_rectangle:
             return WindowInfo(
                 title=title_buffer.value,
-                app_name=self._app_name(window_handle),
+                app_name=app_name,
+                app_identifier=app_identifier,
+                window_id=str(window_handle),
+                process_id=process_id,
             )
 
         return WindowInfo(
             title=title_buffer.value,
-            app_name=self._app_name(window_handle),
+            app_name=app_name,
             left=rectangle.left,
             top=rectangle.top,
             width=rectangle.right - rectangle.left,
             height=rectangle.bottom - rectangle.top,
+            app_identifier=app_identifier,
+            window_id=str(window_handle),
+            process_id=process_id,
         )
 
-    def _app_name(self, window_handle: int) -> str:
-        if self._kernel32 is None:
-            return ""
-
+    def _process_identity(self, window_handle: int) -> tuple[str, str | None, int | None]:
         from ctypes import wintypes
 
         process_id = wintypes.DWORD()
@@ -124,7 +130,9 @@ class WindowsWindowProvider:
             ctypes.byref(process_id),
         )
         if not process_id.value:
-            return ""
+            return "", None, None
+        if self._kernel32 is None:
+            return "", None, process_id.value
 
         process_handle = self._kernel32.OpenProcess(
             0x1000,  # PROCESS_QUERY_LIMITED_INFORMATION
@@ -132,7 +140,7 @@ class WindowsWindowProvider:
             process_id.value,
         )
         if not process_handle:
-            return ""
+            return "", None, process_id.value
 
         try:
             path_buffer = ctypes.create_unicode_buffer(32768)
@@ -143,8 +151,9 @@ class WindowsWindowProvider:
                 path_buffer,
                 ctypes.byref(path_length),
             ):
-                return ""
-            return PureWindowsPath(path_buffer.value).stem
+                return "", None, process_id.value
+            executable = PureWindowsPath(path_buffer.value)
+            return executable.stem, executable.name, process_id.value
         finally:
             self._kernel32.CloseHandle(process_handle)
 
@@ -178,6 +187,14 @@ class WindowsPlatform:
         if self._window_provider is None:
             self._window_provider = WindowsWindowProvider()
         return self._window_provider.active_window()
+
+    def get_foreground_application(self) -> ApplicationContext | None:
+        return application_from_window(self.get_foreground_window())
+
+    def create_website_reader(self):
+        from app.platforms.website.windows_uia import WindowsUIAWebsiteReader
+
+        return WindowsUIAWebsiteReader()
 
     def create_screen_capture(self):
         from app.platforms.capture import (
