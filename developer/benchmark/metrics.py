@@ -115,10 +115,41 @@ def summarize_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         if isinstance(row.get("total_ms"), (int, float))
     ]
     return {
+        "target": "full_protection_pipeline",
         **metric_bundle(counts),
         "mean_latency_ms": _mean(latencies),
         "p95_latency_ms": _percentile(latencies, 0.95),
         "tag_metrics": tag_metrics(eligible),
+    }
+
+
+def summarize_detector_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Detector Only summary. Never computes product Block/Allow FP/FN."""
+
+    samples = list(rows)
+    detections: list[dict[str, Any]] = []
+    latencies: list[float] = []
+    for row in samples:
+        raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
+        items = raw.get("detections") or []
+        if isinstance(items, list):
+            detections.extend(item for item in items if isinstance(item, dict))
+        if isinstance(raw.get("inference_ms"), (int, float)):
+            latencies.append(float(raw["inference_ms"]))
+    return {
+        "target": "detector_only",
+        "sample_count": len(samples),
+        "detection_count": len(detections),
+        "mean_latency_ms": _mean(latencies),
+        "p95_latency_ms": _percentile(latencies, 0.95),
+        "detections": [
+            {
+                "label": item.get("class") or item.get("label"),
+                "confidence": item.get("score"),
+                "box": item.get("box"),
+            }
+            for item in detections
+        ],
     }
 
 

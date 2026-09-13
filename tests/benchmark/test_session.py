@@ -97,3 +97,29 @@ class SessionTests(unittest.TestCase):
         self.assertIn(result["predicted"], {"block", "allow"})
         self.assertIn(result["outcome"], {"tp", "tn", "fp", "fn"})
         self.assertIn("decision_summary", result)
+
+    def test_policy_rerun_does_not_call_the_real_detector(self) -> None:
+        config = BenchmarkConfig(
+            id="policy",
+            benchmark_target="full_protection_pipeline",
+            detector="nudenet_640m",
+            context_model=None,
+            full_input_size=640,
+            tile_input_size=None,
+            tile_rows=None,
+            tile_columns=None,
+            tile_overlap=0.0,
+            checks_per_scan=None,
+            threshold_profile="current",
+        )
+        detector = RecordingDetector()
+        session = BenchmarkSession(config, detector=detector, context_ranker=None)
+        sample = BenchmarkSample("000001", "a.png", "block", False, set())
+        image = np.zeros((20, 20, 3), dtype=np.uint8)
+        raw = session.run_detector_only(sample, image, sample_hash="hash")
+        detect_after_inference = detector.detect_calls
+        check_after_inference = detector.check_calls
+        session.evaluate_policy(sample, image, raw)
+        session.evaluate_policy(sample, image, raw)
+        self.assertEqual(detector.detect_calls, detect_after_inference)
+        self.assertEqual(detector.check_calls, check_after_inference)

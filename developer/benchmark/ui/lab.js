@@ -265,23 +265,51 @@ function renderSummary(run) {
   if (!box) return;
   const summaries = Object.values((run && run.summaries) || {});
   const summary = summaries[0] || {};
-  const items = [
-    ["Accuracy", percent(summary.accuracy)],
-    ["Failure rate", percent(summary.failure_rate)],
-    ["Recall", percent(summary.recall)],
-    ["Precision", percent(summary.precision)],
-    ["FNR", percent(summary.fnr)],
-    ["FPR", percent(summary.fpr)],
-    ["Mean latency", summary.mean_latency_ms == null ? "—" : `${Number(summary.mean_latency_ms).toFixed(0)} ms`],
-    ["p95 latency", summary.p95_latency_ms == null ? "—" : `${Number(summary.p95_latency_ms).toFixed(0)} ms`],
-  ];
+  const detectorOnly = summary.target === "detector_only";
+  const matrix = labEl("lab-matrix");
+  const detectorNote = labEl("lab-detector-note");
+  const detectorList = labEl("lab-detector-list");
+  if (matrix) matrix.hidden = detectorOnly;
+  if (detectorNote) detectorNote.hidden = !detectorOnly;
+  if (detectorList) detectorList.hidden = !detectorOnly;
+  const latency = (value) => (value == null ? "—" : `${Number(value).toFixed(0)} ms`);
+  const items = detectorOnly
+    ? [
+        ["Samples", summary.sample_count ?? 0],
+        ["Detections", summary.detection_count ?? 0],
+        ["Mean latency", latency(summary.mean_latency_ms)],
+        ["p95 latency", latency(summary.p95_latency_ms)],
+      ]
+    : [
+        ["Accuracy", percent(summary.accuracy)],
+        ["Failure rate", percent(summary.failure_rate)],
+        ["Recall", percent(summary.recall)],
+        ["Precision", percent(summary.precision)],
+        ["FNR", percent(summary.fnr)],
+        ["FPR", percent(summary.fpr)],
+        ["Mean latency", latency(summary.mean_latency_ms)],
+        ["p95 latency", latency(summary.p95_latency_ms)],
+      ];
   box.innerHTML = items.map(([label, value]) => `<div><span class="muted">${label}</span><strong>${value}</strong></div>`).join("");
-  labText("lab-tp", summary.tp ?? "—");
-  labText("lab-tn", summary.tn ?? "—");
-  labText("lab-fp", summary.fp ?? "—");
-  labText("lab-fn", summary.fn ?? "—");
+  if (!detectorOnly) {
+    labText("lab-tp", summary.tp ?? "—");
+    labText("lab-tn", summary.tn ?? "—");
+    labText("lab-fp", summary.fp ?? "—");
+    labText("lab-fn", summary.fn ?? "—");
+  }
+  if (detectorList) {
+    detectorList.innerHTML = (summary.detections || []).slice(0, 80).map((item) => {
+      const boxText = Array.isArray(item.box) ? item.box.map((value) => Number(value).toFixed(0)).join(", ") : "—";
+      const score = item.confidence == null ? "—" : Number(item.confidence).toFixed(2);
+      return `<div class="lab-fail-row">${item.label || "detection"} · ${score} · bbox [${boxText}]</div>`;
+    }).join("");
+  }
   const tagBox = labEl("lab-tag-metrics");
   if (tagBox) {
+    if (detectorOnly) {
+      tagBox.innerHTML = "";
+      return;
+    }
     const tags = summary.tag_metrics || {};
     tagBox.innerHTML = Object.entries(tags).filter(([key]) => key !== "non_pornographic_purpose_allow_rate").slice(0, 12).map(([key, value]) => {
       const label = value.label || key;
@@ -309,7 +337,14 @@ async function refreshFailures() {
   (response.rows || []).slice(0, 80).forEach((row) => {
     const item = document.createElement("div");
     item.className = "lab-fail-row";
-    item.textContent = `${row.sample_id} · expected ${row.expected || "unlabelled"} · predicted ${row.predicted || "—"} · ${row.outcome || ""}`;
+    if (row.target === "detector_only") {
+      const detections = (row.raw && row.raw.detections) || [];
+      const top = detections[0] || {};
+      const score = top.score == null ? "—" : Number(top.score).toFixed(2);
+      item.textContent = `${row.sample_id} · ${detections.length} detections · ${top.class || "none"} ${score}`;
+    } else {
+      item.textContent = `${row.sample_id} · expected ${row.expected || "unlabelled"} · predicted ${row.predicted || "—"} · ${row.outcome || ""}`;
+    }
     item.addEventListener("click", () => {
       document.querySelectorAll(".lab-fail-row").forEach((node) => node.classList.remove("is-active"));
       item.classList.add("is-active");

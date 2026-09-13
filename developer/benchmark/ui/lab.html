@@ -165,7 +165,12 @@
 
           <div class="lab-pane" data-lab-pane="results">
             <div id="lab-summary" class="lab-summary"></div>
-            <table class="lab-matrix" aria-label="Confusion matrix">
+            <p id="lab-detector-note" class="muted" hidden>
+              Detector Only reports detections, boxes, confidence, and latency.
+              It does not score product Block / Allow FP or FN.
+            </p>
+            <div id="lab-detector-list" class="lab-failures" hidden></div>
+            <table id="lab-matrix" class="lab-matrix" aria-label="Confusion matrix">
               <thead>
                 <tr><th></th><th>Predicted Block</th><th>Predicted Allow</th></tr>
               </thead>

@@ -14,7 +14,11 @@ from app.settings.schema import VisionSettings
 from app.vision.capture import CapturedFrame
 from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
-from app.vision.detectors.base import DetectionEvidence
+from app.vision.detectors.base import (
+    DetectionEvidence,
+    box_from_raw,
+    check_result_from_evidence,
+)
 from app.vision.detectors.factory import load_primary_bundle
 from app.vision.model_assets import (
     NUDENET_640M_SHA256,
@@ -91,6 +95,50 @@ def detections_payload(evidence: list[DetectionEvidence]) -> list[dict[str, Any]
             }
         )
     return payload
+
+
+def evidence_from_payload(
+    detections: list[dict[str, Any]],
+    model_id: str,
+) -> list[DetectionEvidence]:
+    evidence: list[DetectionEvidence] = []
+    for item in detections:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("class") or item.get("label") or "").strip()
+        if not label:
+            continue
+        try:
+            score = float(item.get("score") if item.get("score") is not None else item.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        evidence.append(
+            DetectionEvidence(
+                label=label,
+                confidence=max(0.0, min(1.0, score)),
+                box=box_from_raw(item.get("box")),
+                model=str(item.get("model") or model_id),
+            )
+        )
+    return evidence
+
+
+class CachedPrimaryDetector:
+    """Replay cached detections. Does not run a vision model."""
+
+    def __init__(self, detections: list[dict[str, Any]], model_id: str) -> None:
+        self.name = model_id
+        self.model_variant = model_id
+        self._evidence = evidence_from_payload(detections, model_id)
+        self._raw = list(detections)
+
+    def detect(self, frame: np.ndarray, *, input_size: int) -> list[DetectionEvidence]:
+        del frame, input_size
+        return list(self._evidence)
+
+    def check(self, image: np.ndarray) -> dict[str, Any]:
+        del image
+        return check_result_from_evidence(self._evidence, raw_detections=self._raw)
 
 
 class BenchmarkSession:
@@ -217,18 +265,37 @@ class BenchmarkSession:
         image: np.ndarray,
         raw: RawInferenceResult,
     ) -> dict[str, Any]:
+        """Re-run Decision on cached detections. Never re-infers the primary model."""
+
         self.reset()
+        cached = CachedPrimaryDetector(raw.detections, self.config.detector)
+        previous_local = self.decision_engine.local_detector
+        previous_pipeline = self.pipeline.detector
+        self.decision_engine.local_detector = cached
+        self.pipeline.detector = cached
         repeats = max(1, int(self.settings.temporal.window_size))
         decided: dict[str, Any] = {}
         started = time.perf_counter()
-        with isolated_threshold_policy(self._threshold_policy):
-            for index in range(repeats):
-                frame = captured_frame_from_bgr(
-                    image,
-                    max_edge=self.settings.detector.full_input_size,
-                    sequence=index + 1,
+        try:
+            with isolated_threshold_policy(self._threshold_policy):
+                nudenet_result = check_result_from_evidence(
+                    cached.detect(image, input_size=self.config.full_input_size),
+                    raw_detections=raw.detections,
                 )
-                decided = self.pipeline.evaluate(frame, monitor_index=1)
+                for index in range(repeats):
+                    frame = captured_frame_from_bgr(
+                        image,
+                        max_edge=self.settings.detector.full_input_size,
+                        sequence=index + 1,
+                    )
+                    decided = self.decision_engine.evaluate(
+                        nudenet_result,
+                        frame,
+                        monitor_index=1,
+                    )
+        finally:
+            self.decision_engine.local_detector = previous_local
+            self.pipeline.detector = previous_pipeline
         total_ms = (time.perf_counter() - started) * 1000
         predicted = (
             EXPECTED_BLOCK if bool(decided.get("blocked")) else EXPECTED_ALLOW

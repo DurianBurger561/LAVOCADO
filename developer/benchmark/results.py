@@ -12,7 +12,8 @@ from uuid import uuid4
 from developer.benchmark import ENGINE_VERSION
 from developer.benchmark.configs import BenchmarkConfig
 from developer.benchmark.dataset import BenchmarkDataset, hash_file
-from developer.benchmark.metrics import summarize_rows
+from developer.benchmark.configs import TARGET_DETECTOR
+from developer.benchmark.metrics import summarize_detector_rows, summarize_rows
 
 
 @dataclass
@@ -67,8 +68,14 @@ def finalize_run(run: BenchmarkRun) -> BenchmarkRun:
         by_config.setdefault(str(row.get("config_id") or ""), []).append(row)
     summaries = {}
     for config_id, rows in by_config.items():
-        pipeline_rows = [row for row in rows if row.get("target") != "detector_only"]
-        summaries[config_id] = summarize_rows(pipeline_rows or rows)
+        detector_rows = [row for row in rows if row.get("target") == TARGET_DETECTOR]
+        pipeline_rows = [row for row in rows if row.get("target") != TARGET_DETECTOR]
+        if pipeline_rows:
+            summaries[config_id] = summarize_rows(pipeline_rows)
+        elif detector_rows:
+            summaries[config_id] = summarize_detector_rows(detector_rows)
+        else:
+            summaries[config_id] = summarize_rows([])
     run.summaries = summaries
     return run
 
