@@ -240,6 +240,7 @@ class WebDashboardTests(unittest.TestCase):
             "vision-proposal-select",
             "vision-adaptive-select",
             "vision-fresh-hits-select",
+            "vision-threshold-table",
         ):
             with self.subTest(extra=field):
                 self.assertIn(f'id="{field}"', html)

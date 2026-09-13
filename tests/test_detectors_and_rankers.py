@@ -275,6 +275,51 @@ class TrackingAndEvidenceTests(unittest.TestCase):
         )
 
 
+class PerModelThresholdTests(unittest.TestCase):
+    def test_nudenet_and_yolo_keep_independent_strong_values(self) -> None:
+        from app.vision.violation_policy import ThresholdPolicy
+
+        settings = sanitize_vision_settings(
+            {
+                "thresholds": {
+                    "nudenet_640m": {
+                        "FEMALE_BREAST_EXPOSED": {"proposal": 0.55, "strong": 0.65}
+                    },
+                    "yolo11_nsfw_small": {
+                        "breast": {"proposal": 0.40, "strong": 0.60}
+                    },
+                }
+            }
+        )
+        policy = ThresholdPolicy.from_settings(settings)
+        self.assertEqual(
+            policy.strong("FEMALE_BREAST_EXPOSED", "nudenet_640m"), 0.65
+        )
+        self.assertEqual(policy.strong("breast", "yolo11_nsfw_small"), 0.60)
+        self.assertEqual(
+            policy.tier(0.62, "FEMALE_BREAST_EXPOSED", "nudenet_640m"),
+            DetectionTier.PROPOSAL,
+        )
+        self.assertEqual(
+            policy.tier(0.62, "breast", "yolo11_nsfw_small"),
+            DetectionTier.STRONG,
+        )
+
+    def test_invalid_threshold_pairs_are_clamped_and_ordered(self) -> None:
+        settings = sanitize_vision_settings(
+            {
+                "thresholds": {
+                    "yolo11_nsfw_small": {
+                        "breast": {"proposal": 0.99, "strong": 0.20}
+                    }
+                }
+            }
+        )
+        pair = settings.thresholds.yolo11_nsfw_small["breast"]
+        self.assertLess(pair["proposal"], pair["strong"])
+        self.assertIn(pair["strong"], (0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75))
+
+
 class ProposalTierTests(unittest.TestCase):
     def test_ignore_proposal_and_strong_bands(self) -> None:
         self.assertEqual(

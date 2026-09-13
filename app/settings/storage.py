@@ -84,5 +84,6 @@ def public_settings_view(settings: VisionSettings) -> dict[str, Any]:
         "min_fresh_hits": [1, 2, 3],
         "evidence_threshold": [1.5, 2.0, 2.5, 3.0, 3.5],
         "decay": [0.3, 0.5, 0.7],
+        "threshold_steps": [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75],
     }
     return payload

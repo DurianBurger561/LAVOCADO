@@ -18,7 +18,13 @@ class VisionSettingsTests(unittest.TestCase):
         self.assertFalse(snapshot["context_model"]["can_block"])
         self.assertEqual(snapshot["detection_mode"]["id"], "visual_violation")
         self.assertFalse(snapshot["detection_mode"]["evaluates_viewing_intent"])
-        self.assertIn("FEMALE_GENITALIA_EXPOSED", snapshot["thresholds"])
+        self.assertIn(
+            "FEMALE_GENITALIA_EXPOSED",
+            snapshot["thresholds"]["nudenet_640m"],
+        )
+        self.assertIn("breast", snapshot["thresholds"]["yolo11_nsfw_small"])
+        self.assertIn("proposal", snapshot["thresholds"]["nudenet_640m"]["FEMALE_BREAST_EXPOSED"])
+        self.assertIn("strong", snapshot["thresholds"]["yolo11_nsfw_small"]["breast"])
         self.assertEqual(snapshot["tile"]["rows"] * snapshot["tile"]["columns"], 4)
         self.assertEqual(snapshot["temporal"]["required_hits"], 2)
         self.assertEqual(snapshot["intent_modes"], [])

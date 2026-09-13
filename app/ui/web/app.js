@@ -670,9 +670,14 @@ function renderVisionSettings(settings) {
   );
   const mode = settings.detection_mode || {};
   text("vision-detection-mode", mode.label || "Visual violation only");
-  const thresholds = settings.thresholds && typeof settings.thresholds === "object"
-    ? Object.entries(settings.thresholds)
-      .map(([label, score]) => `${humanize(label)} ${formatNumber(score)}`)
+  const thresholdTables = settings.thresholds || {};
+  const nudenetTable = thresholdTables.nudenet_640m || thresholdTables.legacy_strong || {};
+  const thresholds = typeof nudenetTable === "object"
+    ? Object.entries(nudenetTable)
+      .map(([label, pair]) => {
+        const strong = pair && typeof pair === "object" ? pair.strong : pair;
+        return `${humanize(label)} ${formatNumber(strong)}`;
+      })
       .join(" · ")
     : "";
   text("vision-thresholds", thresholds || "—");
@@ -726,6 +731,7 @@ function renderVisionSettings(settings) {
   setSelectValue("vision-fresh-hits-select", temporalSchema.min_fresh_hits || temporalSchema.required_hits || 2);
   setSelectValue("vision-evidence-select", temporalSchema.evidence_threshold || 2.5);
   setSelectValue("vision-decay-select", temporalSchema.decay || 0.5);
+  renderThresholdTable(thresholdTables);
 }
 
 function visionFormPayload() {
@@ -767,7 +773,72 @@ function visionFormPayload() {
       decay: Number(element("vision-decay-select").value),
     },
     shadow: { enabled: element("vision-shadow-select").value === "true" },
+    thresholds: collectThresholdTables(),
   };
+}
+
+function thresholdSteps() {
+  return [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75];
+}
+
+function renderThresholdTable(tables) {
+  const root = element("vision-threshold-table");
+  if (!root) return;
+  root.replaceChildren();
+  const groups = [
+    ["nudenet_640m", "NudeNet 640m", tables.nudenet_640m || {}],
+    ["yolo11_nsfw_small", "YOLO11 NSFW Small", tables.yolo11_nsfw_small || {}],
+  ];
+  groups.forEach(([model, title, rows]) => {
+    const heading = document.createElement("p");
+    heading.className = "signal-name";
+    heading.textContent = title;
+    root.append(heading);
+    Object.entries(rows).forEach(([label, pair]) => {
+      const row = document.createElement("div");
+      row.className = "vision-threshold-row";
+      const name = document.createElement("span");
+      name.className = "muted";
+      name.textContent = humanize(label);
+      row.append(
+        name,
+        thresholdSelect(model, label, "proposal", pair && pair.proposal),
+        thresholdSelect(model, label, "strong", pair && pair.strong),
+      );
+      root.append(row);
+    });
+  });
+}
+
+function thresholdSelect(model, label, kind, value) {
+  const wrap = document.createElement("label");
+  wrap.textContent = kind === "proposal" ? "Proposal" : "Strong";
+  const select = document.createElement("select");
+  select.dataset.thresholdModel = model;
+  select.dataset.thresholdLabel = label;
+  select.dataset.thresholdKind = kind;
+  thresholdSteps().forEach((step) => {
+    const option = document.createElement("option");
+    option.value = step.toFixed(2);
+    option.textContent = step.toFixed(2);
+    select.append(option);
+  });
+  if (value !== undefined && value !== null) select.value = Number(value).toFixed(2);
+  wrap.append(select);
+  return wrap;
+}
+
+function collectThresholdTables() {
+  const tables = { nudenet_640m: {}, yolo11_nsfw_small: {} };
+  document.querySelectorAll("[data-threshold-model]").forEach((node) => {
+    const model = node.dataset.thresholdModel;
+    const label = node.dataset.thresholdLabel;
+    const kind = node.dataset.thresholdKind;
+    if (!tables[model]) tables[model] = {};
+    if (!tables[model][label]) tables[model][label] = {};
+    tables[model][label][kind] = Number(node.value);
+  });
+  return tables;
 }
 
 function showVisionMessage(message, isError = false) {

@@ -47,7 +47,11 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
             "tile_ranking": tile_ranking,
         },
         "thresholds": {
-            label: float(score) for label, score in config.BLOCK_THRESHOLDS.items()
+            "legacy_strong": {
+                label: float(score) for label, score in config.BLOCK_THRESHOLDS.items()
+            },
+            "nudenet_640m": dict(current.thresholds.nudenet_640m),
+            "yolo11_nsfw_small": dict(current.thresholds.yolo11_nsfw_small),
         },
         "tile": {
             "enabled": bool(current.tiles.enabled),

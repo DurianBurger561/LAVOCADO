@@ -38,7 +38,11 @@ from app.vision.overlay import Overlay
 from app.vision.pipeline import VisionPipeline
 from app.vision.runtime import VisionSession, allows_vision
 from app.vision.temporal import TemporalVerifier
-from app.vision.violation_policy import VisualViolationClassification
+from app.vision.violation_policy import (
+    ThresholdPolicy,
+    VisualViolationClassification,
+    activate_threshold_policy,
+)
 from app.vision.yolo_adapter import load_yolo_adapter, yolo_is_requested
 
 LOGGER = logging.getLogger(__name__)
@@ -83,6 +87,7 @@ class LavocadoService:
         data_dir_getter = getattr(platform_adapter, "default_data_dir", None)
         data_dir = data_dir_getter() if callable(data_dir_getter) else None
         self.vision_settings = load_vision_settings(data_dir)
+        activate_threshold_policy(ThresholdPolicy.from_settings(self.vision_settings))
         uses_default_detector = detector is None
         yolo_adapter = None
         shadow_adapter = None

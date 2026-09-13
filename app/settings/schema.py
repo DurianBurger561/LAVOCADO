@@ -21,6 +21,21 @@ PROPOSAL_MARGINS = (0.05, 0.10, 0.15, 0.20)
 CHANGE_SENSITIVITIES = (0.005, 0.01, 0.02, 0.05)
 EVIDENCE_DECAYS = (0.3, 0.5, 0.7)
 EVIDENCE_THRESHOLDS = (1.5, 2.0, 2.5, 3.0, 3.5)
+THRESHOLD_STEPS = (0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75)
+
+YOLO_LABEL_DEFAULTS: dict[str, tuple[float, float]] = {
+    "breast": (0.55, 0.65),
+    "nipple": (0.55, 0.65),
+    "penis": (0.35, 0.45),
+    "vagina": (0.35, 0.45),
+    "vulva": (0.35, 0.45),
+    "anus": (0.40, 0.50),
+    "buttocks": (0.60, 0.70),
+    "blowjob": (0.35, 0.45),
+    "handjob": (0.35, 0.45),
+    "sex": (0.35, 0.45),
+    "make_love": (0.35, 0.45),
+}
 SCAN_SPEEDS = {
     "slow": (1000, 250),
     "balanced": (750, 150),
@@ -111,6 +126,12 @@ class ShadowSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class ThresholdSettings:
+    nudenet_640m: dict[str, dict[str, float]] = field(default_factory=dict)
+    yolo11_nsfw_small: dict[str, dict[str, float]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class VisionSettings:
     schema_version: int = SCHEMA_VERSION
     preset: str = "balanced"
@@ -121,9 +142,78 @@ class VisionSettings:
     scan: ScanSettings = field(default_factory=ScanSettings)
     temporal: TemporalSettings = field(default_factory=TemporalSettings)
     shadow: ShadowSettings = field(default_factory=ShadowSettings)
+    thresholds: ThresholdSettings = field(default_factory=ThresholdSettings)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _pair_from_strong(strong: float, margin: float = 0.10) -> dict[str, float]:
+    strong_v = _closest(float(strong), THRESHOLD_STEPS)
+    proposal = _closest(max(THRESHOLD_STEPS[0], strong_v - margin), THRESHOLD_STEPS)
+    if proposal >= strong_v:
+        index = THRESHOLD_STEPS.index(strong_v)
+        if index == 0:
+            strong_v = THRESHOLD_STEPS[1]
+            proposal = THRESHOLD_STEPS[0]
+        else:
+            proposal = THRESHOLD_STEPS[index - 1]
+    return {"proposal": proposal, "strong": strong_v}
+
+
+def default_threshold_tables() -> ThresholdSettings:
+    """Experimental per-model proposal/strong tables. Not Recommended values."""
+
+    nudenet = {
+        label: _pair_from_strong(strong)
+        for label, strong in config.BLOCK_THRESHOLDS.items()
+    }
+    yolo = {
+        label: {"proposal": proposal, "strong": strong}
+        for label, (proposal, strong) in YOLO_LABEL_DEFAULTS.items()
+    }
+    return ThresholdSettings(nudenet_640m=nudenet, yolo11_nsfw_small=yolo)
+
+
+def sanitize_threshold_tables(raw: object, defaults: ThresholdSettings) -> ThresholdSettings:
+    payload = raw if isinstance(raw, dict) else {}
+    return ThresholdSettings(
+        nudenet_640m=_sanitize_label_table(
+            payload.get("nudenet_640m"), defaults.nudenet_640m
+        ),
+        yolo11_nsfw_small=_sanitize_label_table(
+            payload.get("yolo11_nsfw_small"), defaults.yolo11_nsfw_small
+        ),
+    )
+
+
+def _sanitize_label_table(
+    raw: object,
+    defaults: dict[str, dict[str, float]],
+) -> dict[str, dict[str, float]]:
+    incoming = raw if isinstance(raw, dict) else {}
+    sanitized: dict[str, dict[str, float]] = {}
+    for label, default_pair in defaults.items():
+        item = incoming.get(label)
+        if not isinstance(item, dict):
+            item = {}
+        strong = _closest(
+            _clamp_float(item.get("strong"), 0.2, 0.9, default_pair["strong"]),
+            THRESHOLD_STEPS,
+        )
+        proposal = _closest(
+            _clamp_float(item.get("proposal"), 0.2, 0.9, default_pair["proposal"]),
+            THRESHOLD_STEPS,
+        )
+        if proposal >= strong:
+            index = THRESHOLD_STEPS.index(strong)
+            if index == 0:
+                strong = THRESHOLD_STEPS[1]
+                proposal = THRESHOLD_STEPS[0]
+            else:
+                proposal = THRESHOLD_STEPS[index - 1]
+        sanitized[str(label)] = {"proposal": proposal, "strong": strong}
+    return sanitized
 
 
 def default_vision_settings() -> VisionSettings:
@@ -153,6 +243,7 @@ def default_vision_settings() -> VisionSettings:
             normal_interval_ms=round(float(config.CHECK_INTERVAL) * 1000),
             change_sensitivity=float(config.CHANGE_RATIO_THRESHOLD),
         ),
+        thresholds=default_threshold_tables(),
         temporal=TemporalSettings(
             min_fresh_hits=int(config.CONFIRMATION_REQUIRED_HITS),
             window_size=int(config.CONFIRMATION_WINDOW_SIZE),
@@ -174,6 +265,9 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
     scan_raw = payload.get("scan") if isinstance(payload.get("scan"), dict) else {}
     temporal_raw = payload.get("temporal") if isinstance(payload.get("temporal"), dict) else {}
     shadow_raw = payload.get("shadow") if isinstance(payload.get("shadow"), dict) else {}
+    thresholds = sanitize_threshold_tables(
+        payload.get("thresholds"), base.thresholds
+    )
 
     primary = _choice(detector_raw.get("primary", base.detector.primary), PRIMARY_DETECTORS, base.detector.primary)
     full_input = int(_closest(
@@ -296,6 +390,7 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
             enabled=bool(shadow_raw.get("enabled", False)),
             detector=shadow_detector,
         ),
+        thresholds=thresholds,
     )
 
 
@@ -305,10 +400,23 @@ def merge_vision_settings(
 ) -> VisionSettings:
     payload = current.to_dict()
     for key, value in patch.items():
-        if key in payload and isinstance(payload[key], dict) and isinstance(value, dict):
+        if key == "thresholds" and isinstance(payload.get(key), dict) and isinstance(value, dict):
+            payload[key] = _deep_merge_maps(payload[key], value)
+        elif key in payload and isinstance(payload[key], dict) and isinstance(value, dict):
             merged = dict(payload[key])
             merged.update(value)
             payload[key] = merged
         elif key in payload or key in {"preset", "schema_version"}:
             payload[key] = value
     return sanitize_vision_settings(payload)
+
+
+def _deep_merge_maps(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in patch.items():
+        current = merged.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_maps(current, value)
+        else:
+            merged[key] = value
+    return merged

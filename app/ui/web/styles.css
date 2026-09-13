@@ -381,6 +381,27 @@ main {
   border-bottom: 0;
 }
 
+.vision-threshold-block {
+  grid-column: 1 / -1;
+}
+
+.vision-threshold-table {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.vision-threshold-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.vision-threshold-row .muted {
+  font-size: 11px;
+}
+
 .rules-message {
   min-height: 18px;
   margin-bottom: 10px;

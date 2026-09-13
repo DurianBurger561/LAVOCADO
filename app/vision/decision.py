@@ -27,6 +27,7 @@ from app.vision.tiles import TileState, mark_checked, rank_tiles
 from app.vision.tracking import CandidateTracker, box_to_region
 from app.vision.violation_policy import (
     DetectionTier,
+    ThresholdPolicy,
     ViolationEvidence,
     ViolationEvidenceType,
     VisualViolationClassification,
@@ -107,6 +108,7 @@ class DecisionEngine:
             int(config.RESCUE_CHECKS_PER_SCAN) if checks_per_scan is None else checks_per_scan
         )
         self.tracker = tracker or CandidateTracker()
+        self.threshold_policy = ThresholdPolicy.from_settings(self.settings)
         self.scheduler = VisionScheduler(self.settings)
         self._rescue_schedules: dict[int, _RescueSchedule] = {}
         self._tiles: dict[int, list[TileState]] = {}
@@ -189,8 +191,10 @@ class DecisionEngine:
         strong = [
             item
             for item in evidence
-            if (threshold := threshold_for_label(item.label)) is not None
-            and item.confidence >= threshold
+            if self.threshold_policy.tier(
+                item.confidence, item.label, item.model
+            )
+            is DetectionTier.STRONG
         ]
         if strong:
             chosen = strongest_evidence(strong)
@@ -240,7 +244,9 @@ class DecisionEngine:
                 "class": borderline.label,
                 "score": borderline.confidence,
                 "box": None if borderline.bbox is None else list(borderline.bbox),
-                "threshold": threshold_for_label(borderline.label),
+                "threshold": self.threshold_policy.strong(
+                    borderline.label, borderline.model
+                ),
             }
             base = self._evaluate_borderline(result, captured_frame, detection)
             if bool(base.get("blocked")):
@@ -806,9 +812,17 @@ class DecisionEngine:
         label = decided.get("label") or decided.get("nudenet_label")
         score = float(decided.get("confidence") or decided.get("nudenet_score") or 0.0)
         if label and "tier" not in decided:
-            decided["tier"] = tier_for_score(
-                score, str(label), margin=self.borderline_margin
+            model = None
+            payload = decided.get("evidence")
+            if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+                model = payload[0].get("model")
+            decided["tier"] = self.threshold_policy.tier(
+                score, str(label), None if model is None else str(model)
             ).value
+            if decided["tier"] == DetectionTier.IGNORE.value:
+                decided["tier"] = tier_for_score(
+                    score, str(label), margin=self.borderline_margin
+                ).value
         hit_ids: set[int] = set()
         if bool(decided.get("blocked")):
             region = decided.get("region")
@@ -922,11 +936,11 @@ class DecisionEngine:
     ) -> ViolationEvidence | None:
         candidates: list[ViolationEvidence] = []
         for item in evidence:
-            threshold = threshold_for_label(item.label)
-            if threshold is None:
-                continue
-            if is_borderline_score(
-                item.confidence, threshold, self.borderline_margin
+            if (
+                self.threshold_policy.tier(
+                    item.confidence, item.label, item.model
+                )
+                is DetectionTier.PROPOSAL
             ):
                 candidates.append(item)
         return strongest_evidence(candidates)
@@ -942,10 +956,17 @@ class DecisionEngine:
             if not isinstance(detection, dict):
                 continue
             label = str(detection.get("class", ""))
-            threshold = threshold_for_label(label)
             score = float(detection.get("score", 0.0))
-            if threshold is not None and is_borderline_score(
-                score, threshold, self.borderline_margin
+            model = detection.get("model")
+            threshold = self.threshold_policy.strong(
+                label, None if model is None else str(model)
+            ) or threshold_for_label(label)
+            if threshold is not None and (
+                self.threshold_policy.tier(
+                    score, label, None if model is None else str(model)
+                )
+                is DetectionTier.PROPOSAL
+                or is_borderline_score(score, threshold, self.borderline_margin)
             ):
                 candidate = dict(detection)
                 candidate["threshold"] = threshold

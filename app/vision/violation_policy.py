@@ -90,6 +90,114 @@ YOLO_DEFAULT_THRESHOLDS: dict[ViolationEvidenceType, float] = {
     ViolationEvidenceType.BUTTOCKS_EXPOSURE: 0.70,
 }
 
+_ACTIVE_POLICY: ThresholdPolicy | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ThresholdPolicy:
+    """Per-model proposal/strong tables. Numbers are experimental starting points."""
+
+    tables: dict[str, dict[str, dict[str, float]]]
+
+    @classmethod
+    def from_settings(cls, settings: object | None = None) -> ThresholdPolicy:
+        tables = {}
+        raw = getattr(settings, "thresholds", None)
+        if isinstance(raw, dict):
+            tables = {
+                "nudenet_640m": dict(raw.get("nudenet_640m") or {}),
+                "yolo11_nsfw_small": dict(raw.get("yolo11_nsfw_small") or {}),
+            }
+        elif raw is not None:
+            tables = {
+                "nudenet_640m": dict(getattr(raw, "nudenet_640m", {}) or {}),
+                "yolo11_nsfw_small": dict(getattr(raw, "yolo11_nsfw_small", {}) or {}),
+            }
+        if not tables.get("nudenet_640m") and not tables.get("yolo11_nsfw_small"):
+            from app.settings.schema import default_threshold_tables
+
+            defaults = default_threshold_tables()
+            tables = {
+                "nudenet_640m": dict(defaults.nudenet_640m),
+                "yolo11_nsfw_small": dict(defaults.yolo11_nsfw_small),
+            }
+        return cls(tables=tables)
+
+    def pair(
+        self, label: str, model: str | None = None
+    ) -> tuple[float, float] | None:
+        key = _model_bucket(model)
+        raw = str(label).strip()
+        if key == "yolo11_nsfw_small":
+            found = self._yolo_pair(raw)
+            if found is not None:
+                return found
+        nudenet = self.tables.get("nudenet_640m") or {}
+        if raw in nudenet:
+            return _pair_from_dict(nudenet[raw])
+        if key is None:
+            found = self._yolo_pair(raw)
+            if found is not None:
+                return found
+        return None
+
+    def strong(self, label: str, model: str | None = None) -> float | None:
+        pair = self.pair(label, model)
+        return None if pair is None else pair[1]
+
+    def proposal(self, label: str, model: str | None = None) -> float | None:
+        pair = self.pair(label, model)
+        return None if pair is None else pair[0]
+
+    def tier(self, score: float, label: str, model: str | None = None) -> DetectionTier:
+        pair = self.pair(label, model)
+        if pair is None:
+            return DetectionTier.IGNORE
+        proposal, strong = pair
+        if score >= strong:
+            return DetectionTier.STRONG
+        if score >= proposal:
+            return DetectionTier.PROPOSAL
+        return DetectionTier.IGNORE
+
+    def _yolo_pair(self, label: str) -> tuple[float, float] | None:
+        yolo = self.tables.get("yolo11_nsfw_small") or {}
+        normalized = normalize_model_label(label)
+        if normalized in yolo:
+            return _pair_from_dict(yolo[normalized])
+        if label in yolo:
+            return _pair_from_dict(yolo[label])
+        return None
+
+
+def _model_bucket(model: str | None) -> str | None:
+    raw = str(model or "").strip().lower().replace("-", "_")
+    if raw.startswith("yolo"):
+        return "yolo11_nsfw_small"
+    if raw.startswith("nudenet") or raw in {"injected", "640m", "320n_fallback", "320n-fallback"}:
+        return "nudenet_640m"
+    return None
+
+
+def _pair_from_dict(payload: object) -> tuple[float, float] | None:
+    if not isinstance(payload, dict):
+        return None
+    try:
+        proposal = float(payload.get("proposal"))
+        strong = float(payload.get("strong"))
+    except (TypeError, ValueError):
+        return None
+    return (proposal, strong)
+
+
+def activate_threshold_policy(policy: ThresholdPolicy | None) -> None:
+    global _ACTIVE_POLICY
+    _ACTIVE_POLICY = policy
+
+
+def active_threshold_policy() -> ThresholdPolicy:
+    return _ACTIVE_POLICY or ThresholdPolicy.from_settings()
+
 
 @dataclass(frozen=True, slots=True)
 class ViolationEvidence:
@@ -125,9 +233,14 @@ def evidence_type_for_label(label: str) -> ViolationEvidenceType | None:
     return _YOLO_LABEL_TYPES.get(normalize_model_label(raw))
 
 
-def threshold_for_label(label: str) -> float | None:
+def threshold_for_label(label: str, model: str | None = None) -> float | None:
     from app import config
 
+    policy = _ACTIVE_POLICY
+    if policy is not None:
+        strong = policy.strong(label, model)
+        if strong is not None:
+            return strong
     raw = str(label).strip()
     if raw in config.BLOCK_THRESHOLDS:
         return float(config.BLOCK_THRESHOLDS[raw])
@@ -145,8 +258,17 @@ def is_borderline_score(score: float, threshold: float, margin: float) -> bool:
     return threshold - margin <= score < threshold
 
 
-def proposal_threshold_for_label(label: str, margin: float) -> float | None:
-    strong = threshold_for_label(label)
+def proposal_threshold_for_label(
+    label: str,
+    margin: float,
+    model: str | None = None,
+) -> float | None:
+    policy = _ACTIVE_POLICY
+    if policy is not None:
+        proposal = policy.proposal(label, model)
+        if proposal is not None:
+            return proposal
+    strong = threshold_for_label(label, model)
     if strong is None:
         return None
     return max(0.0, float(strong) - float(margin))
@@ -157,8 +279,14 @@ def tier_for_score(
     label: str,
     *,
     margin: float,
+    model: str | None = None,
 ) -> DetectionTier:
-    strong = threshold_for_label(label)
+    policy = _ACTIVE_POLICY
+    if policy is not None:
+        pair = policy.pair(label, model)
+        if pair is not None:
+            return policy.tier(score, label, model)
+    strong = threshold_for_label(label, model)
     if strong is None:
         return DetectionTier.IGNORE
     if score >= strong:

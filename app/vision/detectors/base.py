@@ -128,7 +128,7 @@ def check_result_from_evidence(
 
     blocking: list[tuple[DetectionEvidence, float]] = []
     for item in evidence:
-        threshold = threshold_for_label(item.label)
+        threshold = threshold_for_label(item.label, item.model)
         if threshold is not None and item.confidence >= threshold:
             blocking.append((item, threshold))
 
