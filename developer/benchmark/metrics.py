@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Iterable, Mapping
 
 from developer.benchmark.dataset import EXPECTED_ALLOW, EXPECTED_BLOCK
+from developer.benchmark.ranking import summarize_ranking
 from developer.benchmark.tags import (
     NON_PORNOGRAPHIC_PURPOSE,
     PURPOSE_SUBTAGS,
@@ -114,13 +115,17 @@ def summarize_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         for row in eligible
         if isinstance(row.get("total_ms"), (int, float))
     ]
-    return {
+    payload = {
         "target": "full_protection_pipeline",
         **metric_bundle(counts),
         "mean_latency_ms": _mean(latencies),
         "p95_latency_ms": _percentile(latencies, 0.95),
         "tag_metrics": tag_metrics(eligible),
     }
+    ranking = summarize_ranking(rows)
+    if ranking is not None:
+        payload["ranking"] = ranking
+    return payload
 
 
 def summarize_detector_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:

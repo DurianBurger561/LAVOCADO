@@ -40,6 +40,7 @@ class DeveloperDashboardTests(unittest.TestCase):
         self.assertIn("Threshold profile", composed)
         self.assertIn("Proposal margin", composed)
         self.assertIn("Sweep proposal and strong", composed)
+        self.assertIn("Top-1 tile", composed)
         self.assertIn("lab.js", composed)
         self.assertIn("Start protection", composed)
         self.assertNotIn("Medical whitelist", composed)

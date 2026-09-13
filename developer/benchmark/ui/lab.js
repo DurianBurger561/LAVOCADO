@@ -318,6 +318,14 @@ function renderSummary(run) {
         ["Mean latency", latency(summary.mean_latency_ms)],
         ["p95 latency", latency(summary.p95_latency_ms)],
       ];
+  const ranking = summary.ranking || {};
+  if (!detectorOnly && ranking.eligible_samples) {
+    items.push(
+      ["Top-1 relevant tile", percent(ranking.top1_relevant_tile_rate)],
+      ["Top-2 relevant tile", percent(ranking.top2_relevant_tile_rate)],
+      ["Context latency", latency(ranking.mean_context_latency_ms)],
+    );
+  }
   box.innerHTML = items.map(([label, value]) => `<div><span class="muted">${label}</span><strong>${value}</strong></div>`).join("");
   if (!detectorOnly) {
     labText("lab-tp", summary.tp ?? "—");
@@ -386,6 +394,7 @@ async function refreshFailures() {
         <p>Detector: ${detector.best_label || "none"} ${detector.best_confidence == null ? "" : detector.best_confidence}</p>
         <p>Decision: ${decision.source || "—"} · ${decision.classification || "—"} · ${decision.label || ""}</p>
         <p>Latency: ${row.total_ms == null ? "—" : `${Number(row.total_ms).toFixed(1)} ms`}</p>
+        <p>Ranking: ${row.ranking && row.ranking.eligible ? `Top-1 ${row.ranking.top1} · Top-2 ${row.ranking.top2} · context ${row.ranking.context_latency_ms == null ? "—" : `${Number(row.ranking.context_latency_ms).toFixed(1)} ms`}` : "n/a"}</p>
       `;
     });
     box.appendChild(item);
@@ -413,6 +422,9 @@ async function refreshCompare() {
       <td>${percent(row.precision)}</td>
       <td>${percent(row.accuracy)}</td>
       <td>${row.p95_latency_ms == null ? "—" : `${Number(row.p95_latency_ms).toFixed(0)} ms`}</td>
+      <td>${percent(row.top1_relevant_tile_rate)}</td>
+      <td>${percent(row.top2_relevant_tile_rate)}</td>
+      <td>${row.mean_context_latency_ms == null ? "—" : `${Number(row.mean_context_latency_ms).toFixed(0)} ms`}</td>
     `;
     body.appendChild(tr);
   });

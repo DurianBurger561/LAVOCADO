@@ -30,6 +30,9 @@ def compare_summaries(
                 "failure_rate": summary.get("failure_rate"),
                 "p95_latency_ms": summary.get("p95_latency_ms"),
                 "mean_latency_ms": summary.get("mean_latency_ms"),
+                "top1_relevant_tile_rate": (summary.get("ranking") or {}).get("top1_relevant_tile_rate"),
+                "top2_relevant_tile_rate": (summary.get("ranking") or {}).get("top2_relevant_tile_rate"),
+                "mean_context_latency_ms": (summary.get("ranking") or {}).get("mean_context_latency_ms"),
                 "tp": summary.get("tp"),
                 "tn": summary.get("tn"),
                 "fp": summary.get("fp"),
@@ -46,7 +49,13 @@ def compare_summaries(
 
 
 def sort_rows(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
-    descending = key in {"recall", "precision", "accuracy"}
+    descending = key in {
+        "recall",
+        "precision",
+        "accuracy",
+        "top1_relevant_tile_rate",
+        "top2_relevant_tile_rate",
+    }
     def sort_value(row: dict[str, Any]) -> tuple[int, float]:
         value = row.get(key)
         if not isinstance(value, (int, float)):

@@ -39,6 +39,7 @@ from developer.benchmark.inference_cache import (
 )
 from developer.benchmark.dataset import EXPECTED_ALLOW, EXPECTED_BLOCK
 from developer.benchmark.metrics import outcome_for
+from developer.benchmark.ranking import measure_ranking
 
 _POLICY_LOCK = Lock()
 
@@ -296,6 +297,15 @@ class BenchmarkSession:
         finally:
             self.decision_engine.local_detector = previous_local
             self.pipeline.detector = previous_pipeline
+        ranking = measure_ranking(
+            self.decision_engine.context_classifier,
+            image,
+            raw.detections,
+            rows=self.config.tile_rows,
+            columns=self.config.tile_columns,
+            overlap=self.config.tile_overlap,
+            context_model=self.config.context_model,
+        )
         total_ms = (time.perf_counter() - started) * 1000
         predicted = (
             EXPECTED_BLOCK if bool(decided.get("blocked")) else EXPECTED_ALLOW
@@ -325,7 +335,9 @@ class BenchmarkSession:
                 "score": decided.get("context_score"),
                 "scores": decided.get("context_scores"),
                 "rescue_tile_index": decided.get("rescue_tile_index"),
+                "ranking": ranking,
             },
+            "ranking": ranking,
             "decision_summary": {
                 "blocked": bool(decided.get("blocked")),
                 "classification": decided.get("classification"),
