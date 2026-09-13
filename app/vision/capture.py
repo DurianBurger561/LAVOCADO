@@ -21,15 +21,7 @@ __all__ = [
     "CaptureFrame",
     "Capturer",
     "MonitorInfo",
-    "frame_image",
 ]
-
-
-def frame_image(captured: object) -> np.ndarray | None:
-    """Return the canonical pixel buffer, or None when a test double has none."""
-
-    image = getattr(captured, "image", None)
-    return image if isinstance(image, np.ndarray) else None
 
 
 class Capturer:

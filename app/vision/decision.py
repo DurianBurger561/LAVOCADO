@@ -10,7 +10,6 @@ import numpy as np
 from app import config
 from app.settings.schema import VisionSettings, default_vision_settings
 from app.platforms.capture.models import CaptureFrame
-from app.vision.capture import frame_image
 from app.vision.change_map import build_change_map, tile_change_scores
 from app.vision.evidence import evidence_from_confidence
 from app.vision.detectors.base import DetectionEvidence
@@ -171,7 +170,7 @@ class DecisionEngine:
         if plan is None:
             active = self.tracker.active_track(monitor_index)
             if active is not None:
-                original = frame_image(captured_frame)
+                original = captured_frame.image
                 roi = active.box
                 if isinstance(original, np.ndarray):
                     predicted = self.tracker.predicted_roi(
@@ -383,7 +382,7 @@ class DecisionEngine:
             threshold=threshold,
             classification=VisualViolationClassification.UNCERTAIN,
         )
-        original = frame_image(captured_frame)
+        original = captured_frame.image
         model = original
         if (
             not self.settings.recheck.enabled
@@ -441,7 +440,7 @@ class DecisionEngine:
     ) -> dict[str, Any]:
         """Check priority tiles. Viddexa only orders them; it never vetoes."""
 
-        original = frame_image(captured_frame)
+        original = captured_frame.image
         if (
             not self.rescue_enabled
             or self.local_detector is None
@@ -610,7 +609,7 @@ class DecisionEngine:
     ) -> ScanPlan:
         """Refresh tile scores and ask the scheduler what to inspect next."""
 
-        original = frame_image(captured_frame)
+        original = captured_frame.image
         tiles: list[TileState] = []
         change_map = None
         if isinstance(original, np.ndarray):
@@ -724,7 +723,7 @@ class DecisionEngine:
         roi: Region,
         frame_sequence: int,
     ) -> dict[str, Any]:
-        original = frame_image(captured_frame)
+        original = captured_frame.image
         base = self._with_metadata(
             result,
             source="focused_roi",
@@ -904,7 +903,7 @@ class DecisionEngine:
     ) -> dict[str, Any]:
         box = result.get("box")
         region: Region | None = None
-        original = frame_image(captured_frame)
+        original = captured_frame.image
         if isinstance(box, (list, tuple)) and original is not None:
             region = map_box_to_original(
                 box,

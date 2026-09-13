@@ -8,7 +8,6 @@ from typing import Any
 import numpy as np
 
 from app.platforms.capture.models import CaptureFrame
-from app.vision.capture import frame_image
 from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
 from app.vision.scheduler import ScanPlan
@@ -70,7 +69,7 @@ class VisionPipeline:
                 is_active_monitor=is_active_monitor,
             )
         else:
-            image = getattr(captured_frame, "image", None)
+            image = captured_frame.image
             from app.vision.detectors.base import check_result_from_evidence
 
             evidence = self.detector.detect(image, input_size=self.full_input_size)
@@ -100,7 +99,7 @@ class VisionPipeline:
         if self.shadow_adapter is None:
             self.last_shadow = None
             return decided
-        image = frame_image(captured_frame)
+        image = captured_frame.image
         import time as _time
 
         started = _time.perf_counter()

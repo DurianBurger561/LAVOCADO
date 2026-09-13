@@ -2,11 +2,12 @@
 
 import unittest
 from concurrent.futures import Future
-from dataclasses import dataclass
 from threading import Event
 
+import numpy as np
+
 from app.intervention.recorder import ProtectionEvent
-from app.platforms.capture import CaptureBackendStatus
+from app.platforms.capture import CaptureBackendStatus, CaptureFrame, Rect
 from app.service import LavocadoService, State
 from app.vision.change_scheduler import ChangeDecision
 from app.vision.diagnostics import DiagnosticsStore
@@ -17,13 +18,6 @@ from app.vision.violation_policy import (
     VisualViolationClassification,
     VisualViolationDecision,
 )
-
-
-@dataclass(frozen=True)
-class FakeCaptureFrame:
-    image: int
-    sequence: int = 0
-    backend: str = "fake"
 
 
 class FakePlatform:
@@ -48,7 +42,7 @@ class FakeCapturer:
         }
         self._sequence_counts: dict[int, int] = {}
 
-    def grab(self, monitor_index: int) -> FakeCaptureFrame:
+    def grab(self, monitor_index: int) -> CaptureFrame:
         self.grabbed_indexes.append(monitor_index)
         sequence_source = self._sequences.get(monitor_index)
         if sequence_source is None:
@@ -56,9 +50,12 @@ class FakeCapturer:
             self._sequence_counts[monitor_index] = sequence
         else:
             sequence = next(sequence_source)
-        return FakeCaptureFrame(
-            image=monitor_index,
+        return CaptureFrame(
+            image=np.full((8, 8, 3), monitor_index, dtype=np.uint8),
+            monitor_id=str(monitor_index),
             sequence=sequence,
+            changed_regions=(Rect(0, 0, 8, 8),),
+            backend="fake",
         )
 
     def close(self) -> None:
@@ -90,7 +87,9 @@ class FakeDetector:
 
     def detect(self, image: object, *, input_size: int = 640) -> list[DetectionEvidence]:
         del input_size
-        monitor_index = int(image)
+        if not isinstance(image, np.ndarray) or image.shape != (8, 8, 3):
+            return []
+        monitor_index = int(image[0, 0, 0])
         self.checked_indexes.append(monitor_index)
         blocked = next(self._results_by_monitor[monitor_index])
         if not blocked:
@@ -99,7 +98,7 @@ class FakeDetector:
             DetectionEvidence(
                 label="FEMALE_BREAST_EXPOSED",
                 confidence=1.0,
-                box=(0.0, 0.0, 1.0, 1.0),
+                box=None,
                 model="nudenet_640m",
             )
         ]
@@ -113,7 +112,7 @@ class FakeChangeScheduler:
 
     def should_scan(
         self,
-        _captured: FakeCaptureFrame,
+        _captured: CaptureFrame,
         _monitor_index: int,
         *,
         vision_allowed: bool = True,
@@ -240,7 +239,7 @@ class FakeDecisionEngine:
     def evaluate(
         self,
         result: dict[str, object],
-        captured: FakeCaptureFrame,
+        captured: CaptureFrame,
         *,
         monitor_index: int,
         extra_evidence: object | None = None,
@@ -248,7 +247,7 @@ class FakeDecisionEngine:
         is_active_monitor: bool = True,
     ) -> VisualViolationDecision:
         del extra_evidence, scan_plan, is_active_monitor
-        self.original_frames.append(captured.image)
+        self.original_frames.append(int(captured.image[0, 0, 0]))
         return _decision_from_detector_result(
             result,
             monitor_index=monitor_index,
@@ -257,7 +256,7 @@ class FakeDecisionEngine:
 
     def prepare_scan(
         self,
-        _captured: FakeCaptureFrame,
+        _captured: CaptureFrame,
         _monitor_index: int,
         *,
         is_active_monitor: bool = True,
@@ -279,7 +278,7 @@ class SequenceDecisionEngine:
     def evaluate(
         self,
         result: dict[str, object],
-        captured: FakeCaptureFrame,
+        captured: CaptureFrame,
         *,
         monitor_index: int,
         extra_evidence: object | None = None,
@@ -304,7 +303,7 @@ class SequenceDecisionEngine:
 
     def prepare_scan(
         self,
-        _captured: FakeCaptureFrame,
+        _captured: CaptureFrame,
         _monitor_index: int,
         *,
         is_active_monitor: bool = True,

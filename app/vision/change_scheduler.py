@@ -9,7 +9,6 @@ import numpy as np
 from app import config
 from app.platforms.capture import Rect
 from app.platforms.capture.models import CaptureFrame
-from app.vision.capture import frame_image
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +72,7 @@ class ChangeScheduler:
         if not self.adaptive:
             return ChangeDecision(True, "always", 1.0)
 
-        current_gray = self._grayscale_map(frame_image(captured))
+        current_gray = self._grayscale_map(captured.image)
         if current_gray is None:
             return ChangeDecision(True, "invalid_frame_failsafe", 1.0)
 
