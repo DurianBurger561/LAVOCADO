@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/神秘牛油果.png" length="300" width="300" alt="LAVOCADO logo">
+  <img src="assets/神秘牛油果.png" height="300" width="300" alt="LAVOCADO logo">
 </p>
 
 <h1 align="center">LAVOCADO / 小油果</h1>
@@ -20,10 +20,12 @@ one guided breath, and a ready stage before enabling the continue button.
 
 ## Local data and privacy
 
-When protection is triggered, LAVOCADO stores only the UTC time, trigger type
-and label (detector class, application identifier, or hostname), confidence,
-monitor number, and whether the intervention was shown. It does not store
-screenshots, full URLs, or window titles.
+When protection is triggered, LAVOCADO stores only the UTC time, trigger type,
+confidence, monitor number, and whether the intervention was shown. Vision
+events may also store the detector class. Application-rule, website-rule, and
+legacy blocklist events store a null label, so application identifiers and
+hostnames are not written to history. It does not store screenshots, full URLs,
+or window titles.
 
 The SQLite event database is stored in the current user's application-data
 directory:
@@ -33,10 +35,58 @@ directory:
 - Linux or WSL: `${XDG_DATA_HOME:-~/.local/share}/lavocado/events.db`
 
 Set `LAVOCADO_DATA_DIR` before starting the app to use a different directory.
-The same SQLite file now has separate `application_rules` and `website_rules`
-tables. Website input is reduced to a hostname before saving; paths and query
-strings are never saved as rules. Protection loads these rules at startup. The
-dashboard rule editor is not available yet.
+The same file also stores `application_rules` and `website_rules`. Website
+input is reduced to a hostname before saving; paths and query strings are never
+saved as rules. Edit these rules in the dashboard while protection is stopped.
+Protection loads them at startup.
+
+See the [context privacy audit](docs/context_privacy_audit.md) for the
+discovery, diagnostics, and history boundaries.
+
+## Protection rules
+
+The dashboard edits four local rule groups while protection is stopped.
+Changes apply the next time protection starts:
+
+- Blocked applications
+- Whitelisted applications
+- Blocked websites
+- Whitelisted websites
+
+Use **Pick current app** to fill a stable executable name, desktop app ID, or
+bundle ID from the foreground window. Website fields accept a hostname or HTTPS
+URL; only the hostname is saved. Matching can be exact-host or include
+subdomains.
+
+Adding a whitelist asks you to confirm that visual protection will be skipped
+while that app or site is active, unless a higher-priority blacklist also
+matches. You are responsible for content shown in a whitelisted context.
+
+LAVOCADO first identifies the foreground application. If it is a supported
+browser, it also reads the active-tab hostname through the platform
+accessibility API (Windows UI Automation, macOS Accessibility, Linux AT-SPI).
+It never guesses a site from the window title. If the address cannot be read,
+website context stays UNKNOWN and only the application rule applies.
+
+Application and website rules are evaluated independently, then combined:
+
+```text
+FORCE_BLOCK > FULL_BYPASS > NORMAL
+```
+
+A blacklist always wins over a whitelist. With no matching rules, protection
+runs the existing vision pipeline unchanged.
+
+- `FORCE_BLOCK` immediately covers the display that contains the foreground
+  window. NudeNet, tile rescue, and temporal confirmation are skipped.
+- `FULL_BYPASS` skips the entire vision pipeline while that context is active,
+  then resumes from a fresh state when it leaves.
+- `NORMAL` runs capture, detection, and 2-of-3 confirmation as before.
+
+Live diagnostics show only coarse availability: whether an application was
+identified, whether it is a browser, whether the website is known, and the
+resulting rule actions. They do not include the application identifier,
+hostname, window title, or URL.
 
 ## Optional AI support message
 
@@ -59,9 +109,11 @@ labels, confidence values, monitor numbers, URLs, and window titles are never
 included. API response storage is disabled for this request. Set
 `LAVOCADO_OPENAI_MODEL` to override the default model.
 
-## Foreground-window blocklist
+## Legacy foreground-window blocklist
 
-Add case-insensitive application or title terms in `app/config.py`:
+Prefer the dashboard rules above. `BLOCKED_APPS` in `app/config.py` remains
+only for ambiguous name or title terms that cannot be stored as a stable
+application identifier:
 
 ```python
 BLOCKED_APPS = ["Steam", "reddit.com"]
@@ -69,10 +121,10 @@ BLOCKED_APPS = ["Steam", "reddit.com"]
 
 When a term matches, LAVOCADO uses the foreground window's center to cover only
 the display containing that window. Window metadata is checked in memory and is
-not stored or sent to the AI service. An empty list disables window inspection.
-Stable legacy identifiers such as `chrome.exe` are migrated once to structured
-application block rules. Ambiguous name/title terms such as `Steam` remain in
-the legacy watcher so their existing behaviour is preserved.
+not stored or sent to the AI service. An empty list disables this legacy
+watcher. Stable identifiers such as `chrome.exe` are migrated once to
+structured application block rules. Ambiguous terms such as `Steam` stay in the
+legacy watcher so their existing behaviour is preserved.
 
 On macOS, foreground-window details require Accessibility permission for the
 terminal or packaged application. On X11 Linux, install `xprop` and `xwininfo`
@@ -97,6 +149,11 @@ Runtime platform integration is isolated under `app/platforms/`:
   and permission guidance.
 - `linux.py` contains X11 foreground-window access, XDG data paths, and the Qt
   WebView setup used by Linux and WSLg.
+
+Website discovery is also platform-specific and lives under
+`app/platforms/website/`: Windows UI Automation, macOS `AXUIElement`, and
+Linux AT-SPI. A failed or unavailable reader never stops visual protection;
+the website side stays UNKNOWN.
 
 Each process creates one `PlatformAdapter` and passes it to capture, blocklist,
 overlay, storage, and dashboard composition. Business modules therefore do not
@@ -244,12 +301,12 @@ is disabled automatically when only the NudeNet 320n fallback is available.
 
 Protection diagnostics are kept in a thread-safe in-memory snapshot. They
 include model availability, latest scan latency, monitor number, top detector
-metadata, context result, decision source, temporal history, and rescue
-schedule. Capture health reports the preferred and active backend, fallback
-state and reason, frame age, and detected display count. The snapshot uses an
-explicit safe schema and never contains image pixels, screenshots, crops,
-URLs, window titles, or image paths. It is not written to SQLite or sent to
-OpenAI.
+metadata, context result, decision source, temporal history, rescue schedule,
+and coarse foreground-policy state. Capture health reports the preferred and
+active backend, fallback state and reason, frame age, and detected display
+count. The snapshot uses an explicit safe schema and never contains image
+pixels, screenshots, crops, URLs, window titles, application identifiers,
+hostnames, or image paths. It is not written to SQLite or sent to OpenAI.
 
 Every fresh frame also passes through a per-monitor change scheduler before
 NudeNet inference. Native changed-region metadata is preferred when the active
@@ -270,10 +327,10 @@ checks are tracked in the
 
 When protection is dashboard-owned, a fixed stdin/stdout message protocol
 copies that safe snapshot from the protection child into dashboard memory.
-Only start, stop, diagnostic-read, and test-intervention operations are
-supported; the bridge cannot execute commands or access arbitrary files. A
-manual test intervention is shown by the protection process on its GUI main
-thread and does not create a SQLite protection event.
+Only start, stop, diagnostic-read, test-intervention, and local rule-edit
+operations are supported; the bridge cannot execute commands or access
+arbitrary files. A manual test intervention is shown by the protection process
+on its GUI main thread and does not create a SQLite protection event.
 
 ## Use LAVOCADO
 
@@ -283,8 +340,9 @@ Start protection directly (the existing default):
 python main.py
 ```
 
-Or open the WebView dashboard to start and stop protection, inspect live
-diagnostics, test the intervention, and view recent privacy-safe events:
+Or open the WebView dashboard to start and stop protection, edit application
+and website rules, inspect live diagnostics, test the intervention, and view
+recent privacy-safe events:
 
 ```bash
 python main.py dashboard
