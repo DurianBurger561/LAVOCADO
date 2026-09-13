@@ -321,7 +321,13 @@ benchmark ranking latency with:
 ```bash
 python -m pip install -r requirements-context.txt
 python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+python scripts/benchmark_ranking.py --tiles '[{"index":0,"scores":{"porn":0.99},"primary_hit":false},{"index":1,"scores":{"porn":0.2},"primary_hit":true}]' --baseline-hits 6 --with-tile-hits 8 --positives 10
 ```
+
+Viddexa Benchmark reports tile-ranking quality, candidate prioritization,
+recall gain, and latency. It does not treat Viddexa porn accuracy as product
+Block accuracy. NudeNet/YOLO Detector Benchmark remains recall, precision,
+small-target recall, ROI rescue gain, tile recall, and latency.
 
 The pinned model files are downloaded from Hugging Face, then inference runs
 locally. Benchmark images are not uploaded or saved, and the command prints

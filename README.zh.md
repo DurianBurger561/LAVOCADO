@@ -219,7 +219,10 @@ Viddexa 五分类模型目前是一个可选的开发依赖,尚未包含在发�
 ```bash
 python -m pip install -r requirements-context.txt
 python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+python scripts/benchmark_ranking.py --tiles '[{"index":0,"scores":{"porn":0.99},"primary_hit":false},{"index":1,"scores":{"porn":0.2},"primary_hit":true}]' --baseline-hits 6 --with-tile-hits 8 --positives 10
 ```
+
+Viddexa Benchmark 只报告 tile 排序质量、候选优先级、召回增益和延迟。它不会把 Viddexa 的 porn 准确率当成产品 Block 准确率。NudeNet/YOLO 的 Detector Benchmark 仍然是召回、精确率、小目标召回、ROI 救援增益、tile 召回和延迟。
 
 固定版本的模型文件从 Hugging Face 下载,推理则在本地运行。基准测试用的图片不会被上传或保存,该命令只打印编号结果,而非输入路径。若依赖或模型不可用,LAVOCADO 仍能以纯 NudeNet 模式运行。确认后的视觉违规仍需在 3 个新帧中命中 2 次才会保护。
 
