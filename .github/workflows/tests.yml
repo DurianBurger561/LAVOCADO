@@ -41,7 +41,7 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q app scripts tests main.py
+        run: python -m compileall -q app developer packaging scripts tests main.py developer_main.py
 
       - name: Validate Linux capture routing
         if: runner.os == 'Linux'

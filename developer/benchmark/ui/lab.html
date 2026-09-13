@@ -1,0 +1,225 @@
+        <section id="benchmark-lab" class="panel lab-panel" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="section-label">DEVELOPER</p>
+              <h2>Benchmark Lab</h2>
+            </div>
+            <p class="muted lab-privacy">
+              Uses the real Vision / Decision core. Does not trigger overlay, write Protection history, or upload images.
+            </p>
+          </div>
+
+          <div class="lab-tabs" role="tablist">
+            <button type="button" class="lab-tab is-active" data-lab-tab="dataset">Dataset</button>
+            <button type="button" class="lab-tab" data-lab-tab="annotate">Annotate</button>
+            <button type="button" class="lab-tab" data-lab-tab="configure">Configure</button>
+            <button type="button" class="lab-tab" data-lab-tab="run">Run</button>
+            <button type="button" class="lab-tab" data-lab-tab="results">Results</button>
+          </div>
+
+          <p id="lab-message" class="rules-message" role="status" aria-live="polite"></p>
+
+          <div class="lab-pane is-active" data-lab-pane="dataset">
+            <div class="lab-toolbar">
+              <label>
+                Dataset name
+                <input id="lab-dataset-name" type="text" maxlength="80" placeholder="desktop_test_v1">
+              </label>
+              <button id="lab-create-dataset" class="button primary" type="button">Create dataset</button>
+              <button id="lab-refresh-datasets" class="button ghost" type="button">Refresh</button>
+            </div>
+            <div class="lab-split">
+              <div>
+                <h3>Saved datasets</h3>
+                <ul id="lab-dataset-list" class="rule-list"></ul>
+              </div>
+              <div>
+                <h3>Import</h3>
+                <p class="muted">Images stay on this machine. Copy into Dataset is the only mode that stores files under the dataset folder.</p>
+                <div class="lab-toolbar">
+                  <label>
+                    Import mode
+                    <select id="lab-import-mode">
+                      <option value="reference">Reference files</option>
+                      <option value="copy">Copy into dataset</option>
+                    </select>
+                  </label>
+                  <button id="lab-import-images" class="button secondary" type="button">Select images</button>
+                  <button id="lab-import-folder" class="button secondary" type="button">Select folder</button>
+                </div>
+                <dl id="lab-dataset-counts" class="capture-list"></dl>
+              </div>
+            </div>
+          </div>
+
+          <div class="lab-pane" data-lab-pane="annotate">
+            <div class="lab-toolbar">
+              <label>
+                Filter
+                <select id="lab-filter-status">
+                  <option value="all">All</option>
+                  <option value="unlabelled">Unlabelled</option>
+                  <option value="block">Block</option>
+                  <option value="allow">Allow</option>
+                  <option value="excluded">Excluded</option>
+                </select>
+              </label>
+              <label>
+                Tag filter
+                <select id="lab-filter-tag">
+                  <option value="">Any tag</option>
+                </select>
+              </label>
+              <button id="lab-grid-toggle" class="button ghost" type="button">Thumbnail grid</button>
+            </div>
+            <div id="lab-single-annotate" class="lab-annotate">
+              <div class="lab-preview-wrap">
+                <p id="lab-annotate-index" class="muted">No samples</p>
+                <img id="lab-preview" alt="Sample preview" hidden>
+                <p id="lab-unlabelled-hint" class="muted">Unlabelled · Not included in metrics</p>
+              </div>
+              <div class="lab-annotate-controls">
+                <p class="signal-name">Expected Protection</p>
+                <div class="lab-choice">
+                  <button id="lab-mark-block" class="button danger" type="button">Block (B)</button>
+                  <button id="lab-mark-allow" class="button primary" type="button">Allow (A)</button>
+                </div>
+                <label class="lab-check">
+                  <input id="lab-exclude" type="checkbox">
+                  Exclude from Benchmark (E)
+                </label>
+                <p class="signal-name">Tags</p>
+                <div id="lab-tag-boxes" class="lab-tags"></div>
+                <p class="muted">Non-pornographic Purpose is a grouping tag, not a separate ground truth. Medical / Education / Art are tags on Expected = Allow.</p>
+                <div class="lab-toolbar">
+                  <button id="lab-prev" class="button ghost" type="button">Previous</button>
+                  <button id="lab-next" class="button ghost" type="button">Next</button>
+                </div>
+              </div>
+            </div>
+            <div id="lab-grid-annotate" hidden>
+              <div class="lab-toolbar">
+                <button id="lab-grid-block" class="button danger" type="button">Mark selected Block</button>
+                <button id="lab-grid-allow" class="button primary" type="button">Mark selected Allow</button>
+                <button id="lab-grid-exclude" class="button ghost" type="button">Exclude selected</button>
+              </div>
+              <div id="lab-grid" class="lab-grid"></div>
+            </div>
+          </div>
+
+          <div class="lab-pane" data-lab-pane="configure">
+            <fieldset class="lab-fieldset">
+              <legend>Benchmark Target</legend>
+              <label class="lab-check"><input type="radio" name="lab-target" value="detector_only"> Detector Only</label>
+              <label class="lab-check"><input type="radio" name="lab-target" value="full_protection_pipeline" checked> Full Protection Pipeline</label>
+            </fieldset>
+            <div class="lab-config-grid">
+              <fieldset class="lab-fieldset">
+                <legend>Primary</legend>
+                <label class="lab-check"><input type="checkbox" name="lab-detector" value="nudenet_640m" checked> NudeNet 640m</label>
+                <label class="lab-check"><input type="checkbox" name="lab-detector" value="yolo11_nsfw_small"> YOLO11 NSFW Small</label>
+              </fieldset>
+              <fieldset class="lab-fieldset">
+                <legend>Context</legend>
+                <label class="lab-check"><input type="checkbox" name="lab-context" value="off" checked> Off</label>
+                <label class="lab-check"><input type="checkbox" name="lab-context" value="viddexa_nano"> Viddexa Nano</label>
+                <label class="lab-check"><input type="checkbox" name="lab-context" value="viddexa_mini"> Viddexa Mini</label>
+              </fieldset>
+              <fieldset class="lab-fieldset">
+                <legend>Full input</legend>
+                <label class="lab-check"><input type="checkbox" name="lab-full-size" value="640" checked> 640</label>
+                <label class="lab-check"><input type="checkbox" name="lab-full-size" value="960"> 960</label>
+                <label class="lab-check"><input type="checkbox" name="lab-full-size" value="1280"> 1280</label>
+              </fieldset>
+              <fieldset class="lab-fieldset">
+                <legend>Tile mode</legend>
+                <label class="lab-check"><input type="checkbox" name="lab-tile-mode" value="full_only" checked> Full Only</label>
+                <label class="lab-check"><input type="checkbox" name="lab-tile-mode" value="2x2"> 2×2</label>
+                <label class="lab-check"><input type="checkbox" name="lab-tile-mode" value="3x3"> 3×3</label>
+              </fieldset>
+              <fieldset class="lab-fieldset">
+                <legend>Overlap</legend>
+                <label class="lab-check"><input type="checkbox" name="lab-overlap" value="0" checked> 0%</label>
+                <label class="lab-check"><input type="checkbox" name="lab-overlap" value="10" checked> 10%</label>
+                <label class="lab-check"><input type="checkbox" name="lab-overlap" value="15" checked> 15%</label>
+                <label class="lab-check"><input type="checkbox" name="lab-overlap" value="20"> 20%</label>
+              </fieldset>
+              <fieldset class="lab-fieldset">
+                <legend>Tile input</legend>
+                <label class="lab-check"><input type="checkbox" name="lab-tile-size" value="640" checked> 640</label>
+                <label class="lab-check"><input type="checkbox" name="lab-tile-size" value="960"> 960</label>
+              </fieldset>
+            </div>
+            <p id="lab-config-count" class="muted">0 configurations</p>
+            <button id="lab-apply-config" class="button ghost" type="button">Apply this config to Developer Protection</button>
+          </div>
+
+          <div class="lab-pane" data-lab-pane="run">
+            <p id="lab-run-status" class="muted">Idle</p>
+            <div class="lab-toolbar">
+              <button id="lab-start-run" class="button primary" type="button">Start benchmark</button>
+              <button id="lab-cancel-run" class="button secondary" type="button">Cancel</button>
+            </div>
+            <p class="muted">Cancel keeps already completed results. Benchmark never opens overlay or writes Protection events.</p>
+          </div>
+
+          <div class="lab-pane" data-lab-pane="results">
+            <div id="lab-summary" class="lab-summary"></div>
+            <table class="lab-matrix" aria-label="Confusion matrix">
+              <thead>
+                <tr><th></th><th>Predicted Block</th><th>Predicted Allow</th></tr>
+              </thead>
+              <tbody>
+                <tr><th>Actual Block</th><td id="lab-tp">—</td><td id="lab-fn">—</td></tr>
+                <tr><th>Actual Allow</th><td id="lab-fp">—</td><td id="lab-tn">—</td></tr>
+              </tbody>
+            </table>
+            <h3>Tag metrics</h3>
+            <div id="lab-tag-metrics"></div>
+            <h3>Failure explorer</h3>
+            <div class="lab-toolbar">
+              <select id="lab-fail-kind">
+                <option value="all">All</option>
+                <option value="correct">Correct</option>
+                <option value="false_negative">False Negative</option>
+                <option value="false_positive">False Positive</option>
+              </select>
+              <select id="lab-fail-tag">
+                <option value="">Any tag</option>
+              </select>
+              <button id="lab-refresh-failures" class="button ghost" type="button">Refresh</button>
+            </div>
+            <div id="lab-failures" class="lab-failures"></div>
+            <div id="lab-failure-detail" class="capture-card"></div>
+            <h3>Multi-config comparison</h3>
+            <div class="lab-toolbar">
+              <select id="lab-sort-key">
+                <option value="recall">Sort by recall</option>
+                <option value="fnr">Sort by FNR</option>
+                <option value="fpr">Sort by FPR</option>
+                <option value="p95_latency_ms">Sort by latency</option>
+              </select>
+              <button id="lab-refresh-compare" class="button ghost" type="button">Refresh comparison</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Config</th><th>Recall</th><th>FNR</th><th>FPR</th><th>Precision</th><th>Accuracy</th><th>p95</th>
+                  </tr>
+                </thead>
+                <tbody id="lab-compare-body"></tbody>
+              </table>
+            </div>
+            <p class="muted">Highlights mark highest recall / lowest FNR / lowest FPR / lowest latency. There is no automatic Best Overall.</p>
+            <h3>Threshold sweep</h3>
+            <button id="lab-run-sweep" class="button secondary" type="button">Sweep strong threshold</button>
+            <div id="lab-sweep"></div>
+            <div class="lab-toolbar">
+              <button id="lab-export-json" class="button secondary" type="button">Export JSON</button>
+              <button id="lab-export-csv" class="button secondary" type="button">Export CSV</button>
+              <button id="lab-annotated-preview" class="button ghost" type="button">Annotated preview</button>
+            </div>
+            <img id="lab-annotated-image" alt="Annotated preview" hidden>
+          </div>
+        </section>

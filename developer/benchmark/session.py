@@ -1,0 +1,289 @@
+"""Isolated Benchmark session. Reuses product Vision/Decision; never Overlay."""
+
+from __future__ import annotations
+
+import time
+from contextlib import contextmanager
+from threading import Lock
+from typing import Any, Callable, Iterator
+
+import numpy as np
+from PIL import Image
+
+from app.settings.schema import VisionSettings
+from app.vision.capture import CapturedFrame
+from app.vision.context.factory import load_context_ranker
+from app.vision.decision import DecisionEngine
+from app.vision.detectors.base import DetectionEvidence
+from app.vision.detectors.factory import load_primary_bundle
+from app.vision.model_assets import (
+    NUDENET_640M_SHA256,
+    YOLO11_NSFW_SMALL_REVISION,
+)
+from app.vision.pipeline import VisionPipeline
+from app.vision.violation_policy import (
+    ThresholdPolicy,
+    activate_threshold_policy,
+    active_threshold_policy,
+)
+from developer.benchmark.configs import TARGET_DETECTOR, BenchmarkConfig
+from developer.benchmark.dataset import BenchmarkSample, hash_file
+from developer.benchmark.inference_cache import (
+    InferenceCache,
+    RawInferenceResult,
+    cache_key,
+)
+from developer.benchmark.dataset import EXPECTED_ALLOW, EXPECTED_BLOCK
+from developer.benchmark.metrics import outcome_for
+
+_POLICY_LOCK = Lock()
+
+
+@contextmanager
+def isolated_threshold_policy(policy: ThresholdPolicy) -> Iterator[None]:
+    """Apply a session-local threshold table without leaking to other users."""
+
+    with _POLICY_LOCK:
+        previous = active_threshold_policy()
+        activate_threshold_policy(policy)
+        try:
+            yield
+        finally:
+            activate_threshold_policy(previous)
+
+
+def load_bgr_image(path) -> np.ndarray:
+    with Image.open(path) as image:
+        rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
+    return np.ascontiguousarray(rgb[:, :, ::-1])
+
+
+def captured_frame_from_bgr(bgr: np.ndarray, *, max_edge: int, sequence: int = 1) -> CapturedFrame:
+    rgb = np.ascontiguousarray(bgr[:, :, ::-1])
+    model_image = Image.fromarray(rgb, mode="RGB")
+    model_image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+    model_rgb = np.asarray(model_image, dtype=np.uint8)
+    model_frame = np.ascontiguousarray(model_rgb[:, :, ::-1])
+    return CapturedFrame(
+        original_frame=np.ascontiguousarray(bgr),
+        model_frame=model_frame,
+        monitor_id="benchmark",
+        sequence=sequence,
+        backend="local_image",
+    )
+
+
+def model_revision_for(detector_name: str) -> str:
+    if str(detector_name).startswith("yolo"):
+        return YOLO11_NSFW_SMALL_REVISION
+    return NUDENET_640M_SHA256
+
+
+def detections_payload(evidence: list[DetectionEvidence]) -> list[dict[str, Any]]:
+    payload = []
+    for item in evidence:
+        payload.append(
+            {
+                "class": item.label,
+                "score": float(item.confidence),
+                "box": None if item.box is None else list(item.box),
+                "model": item.model,
+            }
+        )
+    return payload
+
+
+class BenchmarkSession:
+    """One independent Vision/Decision stack. Does not touch Protection runtime."""
+
+    def __init__(
+        self,
+        config: BenchmarkConfig,
+        *,
+        detector: Any | None = None,
+        context_ranker: Any | None = None,
+        pipeline: VisionPipeline | None = None,
+        cache: InferenceCache | None = None,
+        detector_factory: Callable[..., Any] = load_primary_bundle,
+        context_factory: Callable[..., Any] = load_context_ranker,
+        data_dir: Any | None = None,
+    ) -> None:
+        self.config = config
+        self.settings: VisionSettings = config.vision_settings()
+        self.cache = cache
+        self._threshold_policy = ThresholdPolicy.from_settings(self.settings)
+        if pipeline is not None:
+            self.pipeline = pipeline
+            self.detector = pipeline.detector
+            self.decision_engine = pipeline.decision_engine
+        else:
+            if detector is None:
+                bundle = detector_factory(
+                    self.settings.detector.primary,
+                    full_input_size=self.settings.detector.full_input_size,
+                    data_dir=data_dir,
+                )
+                detector = bundle.checker
+            self.detector = detector
+            if context_ranker is None:
+                context_ranker = context_factory(
+                    self.settings.context.model,
+                    enabled=self.settings.context.model != "off",
+                )
+            context_sensor = None
+            if context_ranker is not None and getattr(context_ranker, "name", None) != "off":
+                context_sensor = context_ranker
+            self.decision_engine = DecisionEngine(
+                context_sensor,
+                detector,
+                settings=self.settings,
+                rescue_enabled=self.settings.tiles.enabled,
+                rescue_rows=self.settings.tiles.rows,
+                rescue_columns=self.settings.tiles.columns,
+                crop_expansion=self.settings.recheck.crop_expansion,
+                tile_overlap=self.settings.tiles.overlap,
+                max_tile_skip=self.settings.tiles.max_skip,
+                checks_per_scan=self.settings.tiles.checks_per_scan,
+                borderline_margin=self.settings.recheck.proposal_margin,
+            )
+            self.pipeline = VisionPipeline(
+                detector,
+                self.decision_engine,
+                full_input_size=self.settings.detector.full_input_size,
+            )
+
+    def reset(self) -> None:
+        reset = getattr(self.pipeline, "reset", None)
+        if callable(reset):
+            reset()
+
+    def run_detector_only(
+        self,
+        sample: BenchmarkSample,
+        image: np.ndarray,
+        *,
+        sample_hash: str,
+    ) -> RawInferenceResult:
+        key = cache_key(
+            sample_hash=sample_hash,
+            model_id=self.config.detector,
+            model_revision=model_revision_for(self.config.detector),
+            input_size=self.config.full_input_size,
+            region_id="full",
+            tile_geometry=self.config.cache_geometry(),
+        )
+        if self.cache is not None:
+            cached = self.cache.get(key)
+            if cached is not None:
+                return cached
+        started = time.perf_counter()
+        detect = getattr(self.detector, "detect", None)
+        preprocess_ms = 0.0
+        if callable(detect):
+            evidence = detect(image, input_size=self.config.full_input_size)
+            detections = detections_payload(list(evidence or []))
+        else:
+            result = dict(self.detector.check(image))
+            detections = list(result.get("check_points") or [])
+        inference_ms = (time.perf_counter() - started) * 1000
+        raw = RawInferenceResult(
+            sample_id=sample.id,
+            model_id=self.config.detector,
+            model_revision=model_revision_for(self.config.detector),
+            input_size=self.config.full_input_size,
+            region_id="full",
+            detections=detections,
+            preprocess_ms=preprocess_ms,
+            inference_ms=inference_ms,
+            postprocess_ms=0.0,
+        )
+        if self.cache is not None:
+            self.cache.put(key, raw)
+        return raw
+
+    def run_full_pipeline(
+        self,
+        sample: BenchmarkSample,
+        image: np.ndarray,
+        *,
+        sample_hash: str,
+    ) -> dict[str, Any]:
+        raw = self.run_detector_only(sample, image, sample_hash=sample_hash)
+        return self.evaluate_policy(sample, image, raw)
+
+    def evaluate_policy(
+        self,
+        sample: BenchmarkSample,
+        image: np.ndarray,
+        raw: RawInferenceResult,
+    ) -> dict[str, Any]:
+        self.reset()
+        repeats = max(1, int(self.settings.temporal.window_size))
+        decided: dict[str, Any] = {}
+        started = time.perf_counter()
+        with isolated_threshold_policy(self._threshold_policy):
+            for index in range(repeats):
+                frame = captured_frame_from_bgr(
+                    image,
+                    max_edge=self.settings.detector.full_input_size,
+                    sequence=index + 1,
+                )
+                decided = self.pipeline.evaluate(frame, monitor_index=1)
+        total_ms = (time.perf_counter() - started) * 1000
+        predicted = (
+            EXPECTED_BLOCK if bool(decided.get("blocked")) else EXPECTED_ALLOW
+        )
+        outcome = outcome_for(sample.expected, predicted, excluded=sample.excluded)
+        strongest = _strongest_detection(raw.detections)
+        return {
+            "sample_id": sample.id,
+            "config_id": self.config.id,
+            "expected": sample.expected,
+            "predicted": predicted,
+            "excluded": sample.excluded,
+            "tags": sorted(sample.tags),
+            "outcome": outcome,
+            "correct": outcome in {"tp", "tn"},
+            "total_ms": total_ms,
+            "detector_summary": {
+                "model": self.config.detector,
+                "detections": raw.detections,
+                "best_label": None if strongest is None else strongest.get("class"),
+                "best_confidence": None if strongest is None else strongest.get("score"),
+                "inference_ms": raw.inference_ms,
+            },
+            "context_summary": {
+                "model": self.config.context_model,
+                "label": decided.get("context_label"),
+                "score": decided.get("context_score"),
+                "scores": decided.get("context_scores"),
+                "rescue_tile_index": decided.get("rescue_tile_index"),
+            },
+            "decision_summary": {
+                "blocked": bool(decided.get("blocked")),
+                "classification": decided.get("classification"),
+                "source": decided.get("source"),
+                "label": decided.get("label"),
+                "confidence": decided.get("confidence"),
+                "threshold": decided.get("threshold"),
+                "evidence": decided.get("evidence"),
+            },
+        }
+
+
+def _strongest_detection(detections: list[dict[str, Any]]) -> dict[str, Any] | None:
+    scored = []
+    for item in detections:
+        try:
+            scored.append((float(item.get("score") or 0.0), item))
+        except (TypeError, ValueError):
+            continue
+    if not scored:
+        return None
+    return max(scored, key=lambda pair: pair[0])[1]
+
+
+def sample_hash_for(path, sample: BenchmarkSample) -> str:
+    if sample.content_hash:
+        return sample.content_hash
+    return hash_file(path)

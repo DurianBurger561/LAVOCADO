@@ -1,0 +1,551 @@
+"use strict";
+
+const lab = {
+  view: "protection",
+  tab: "dataset",
+  samples: [],
+  index: 0,
+  tags: [],
+  selected: new Set(),
+  grid: false,
+  configs: [],
+  progressTimer: null,
+};
+
+const labEl = (id) => document.getElementById(id);
+
+function labText(id, value) {
+  const node = labEl(id);
+  if (node) node.textContent = value;
+}
+
+function labMessage(message, isError = false) {
+  const target = labEl("lab-message");
+  if (!target) return;
+  target.textContent = message || "";
+  target.classList.toggle("error", isError);
+}
+
+async function labInvoke(method, ...args) {
+  if (!window.pywebview || !window.pywebview.api) {
+    throw new Error("The local dashboard bridge is not ready.");
+  }
+  return window.pywebview.api[method](...args);
+}
+
+function labAssert(response) {
+  if (!response || response.ok !== true) {
+    throw new Error(response && response.message ? response.message : "Lab request failed.");
+  }
+  return response;
+}
+
+function percent(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+  return `${(Number(value) * 100).toFixed(1)}%`;
+}
+
+function setView(view) {
+  lab.view = view;
+  document.querySelectorAll("#edition-nav .nav-button").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.view === view);
+  });
+  const labPanel = labEl("benchmark-lab");
+  const showLab = view === "developer";
+  if (labPanel) labPanel.hidden = !showLab;
+  document.querySelectorAll(".hero, .dashboard-grid, .rules, .vision-settings, .history").forEach((node) => {
+    const settings = node.classList.contains("rules") || node.classList.contains("vision-settings");
+    const history = node.classList.contains("history");
+    const protection = node.classList.contains("hero") || node.classList.contains("dashboard-grid");
+    if (showLab) {
+      node.hidden = true;
+      return;
+    }
+    if (view === "settings") node.hidden = !settings;
+    else if (view === "history") node.hidden = !history;
+    else node.hidden = !(protection || (!settings && !history && node.classList.contains("hero")));
+    if (view === "protection") {
+      node.hidden = !(protection || node.classList.contains("hero") || node.classList.contains("dashboard-grid"));
+    }
+  });
+}
+
+function setLabTab(tab) {
+  lab.tab = tab;
+  document.querySelectorAll(".lab-tab").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.labTab === tab);
+  });
+  document.querySelectorAll(".lab-pane").forEach((pane) => {
+    pane.classList.toggle("is-active", pane.dataset.labPane === tab);
+  });
+}
+
+function checkedValues(name) {
+  return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((node) => node.value);
+}
+
+function configPayload() {
+  const target = document.querySelector('input[name="lab-target"]:checked');
+  return {
+    benchmark_target: target ? target.value : "full_protection_pipeline",
+    detectors: checkedValues("lab-detector"),
+    context_models: checkedValues("lab-context"),
+    full_input_sizes: checkedValues("lab-full-size").map(Number),
+    tile_modes: checkedValues("lab-tile-mode"),
+    overlaps: checkedValues("lab-overlap").map(Number),
+    tile_input_sizes: checkedValues("lab-tile-size").map(Number),
+  };
+}
+
+function renderCounts(counts) {
+  const target = labEl("lab-dataset-counts");
+  if (!target || !counts) return;
+  target.innerHTML = [
+    ["Total", counts.total],
+    ["Labelled", counts.labelled],
+    ["Unlabelled", counts.unlabelled],
+    ["Block", counts.block],
+    ["Allow", counts.allow],
+    ["Excluded", counts.excluded],
+  ].map(([label, value]) => `<div><dt>${label}</dt><dd>${value ?? 0}</dd></div>`).join("");
+}
+
+function renderDatasets(datasets) {
+  const list = labEl("lab-dataset-list");
+  if (!list) return;
+  list.innerHTML = "";
+  (datasets || []).forEach((item) => {
+    const row = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "text-button";
+    button.textContent = `${item.name} · ${item.total || 0} samples`;
+    button.addEventListener("click", () => openDataset(item.path));
+    row.appendChild(button);
+    list.appendChild(row);
+  });
+}
+
+function renderTagFilters() {
+  const filter = labEl("lab-filter-tag");
+  const fail = labEl("lab-fail-tag");
+  const boxes = labEl("lab-tag-boxes");
+  if (filter) {
+    filter.innerHTML = '<option value="">Any tag</option>';
+    lab.tags.forEach((tag) => {
+      const option = document.createElement("option");
+      option.value = tag.id;
+      option.textContent = tag.label;
+      filter.appendChild(option);
+    });
+  }
+  if (fail) {
+    fail.innerHTML = '<option value="">Any tag</option>';
+    lab.tags.forEach((tag) => {
+      const option = document.createElement("option");
+      option.value = tag.id;
+      option.textContent = tag.label;
+      fail.appendChild(option);
+    });
+  }
+  if (boxes) {
+    boxes.innerHTML = "";
+    lab.tags.forEach((tag) => {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = tag.id;
+      input.dataset.tag = tag.id;
+      label.appendChild(input);
+      label.append(` ${tag.label}`);
+      boxes.appendChild(label);
+    });
+  }
+}
+
+function currentSample() {
+  return lab.samples[lab.index] || null;
+}
+
+async function showCurrentSample() {
+  const sample = currentSample();
+  labText("lab-annotate-index", sample ? `Image ${lab.index + 1} / ${lab.samples.length}` : "No samples");
+  const image = labEl("lab-preview");
+  const hint = labEl("lab-unlabelled-hint");
+  if (!sample) {
+    if (image) image.hidden = true;
+    return;
+  }
+  const response = labAssert(await labInvoke("lab_preview", sample.id));
+  if (image) {
+    image.src = response.preview || "";
+    image.hidden = !response.preview;
+  }
+  if (hint) {
+    hint.hidden = !(response.sample && response.sample.expected == null);
+  }
+  const exclude = labEl("lab-exclude");
+  if (exclude) exclude.checked = Boolean(response.sample && response.sample.excluded);
+  document.querySelectorAll("#lab-tag-boxes input").forEach((input) => {
+    input.checked = Boolean(response.sample && (response.sample.tags || []).includes(input.value));
+  });
+}
+
+async function refreshSamples() {
+  const status = labEl("lab-filter-status").value;
+  const tag = labEl("lab-filter-tag").value;
+  const tags = tag ? [tag] : [];
+  const response = labAssert(await labInvoke("lab_samples", status, tags));
+  lab.samples = response.samples || [];
+  lab.index = Math.min(lab.index, Math.max(0, lab.samples.length - 1));
+  renderCounts(response.counts);
+  if (lab.grid) await renderGrid();
+  else await showCurrentSample();
+}
+
+async function renderGrid() {
+  const grid = labEl("lab-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  for (const sample of lab.samples.slice(0, 60)) {
+    const item = document.createElement("div");
+    item.className = "lab-grid-item";
+    if (lab.selected.has(sample.id)) item.classList.add("is-selected");
+    item.dataset.id = sample.id;
+    const caption = document.createElement("p");
+    caption.className = "muted";
+    caption.textContent = sample.expected || "Unlabelled";
+    item.appendChild(caption);
+    item.addEventListener("click", () => {
+      if (lab.selected.has(sample.id)) lab.selected.delete(sample.id);
+      else lab.selected.add(sample.id);
+      item.classList.toggle("is-selected");
+    });
+    grid.appendChild(item);
+    labInvoke("lab_preview", sample.id).then((response) => {
+      if (!response || !response.preview) return;
+      const img = document.createElement("img");
+      img.alt = sample.id;
+      img.src = response.preview;
+      item.prepend(img);
+    }).catch(() => {});
+  }
+}
+
+async function annotateCurrent(payload) {
+  const sample = currentSample();
+  if (!sample) return;
+  const tags = Array.from(document.querySelectorAll("#lab-tag-boxes input:checked")).map((node) => node.value);
+  labAssert(await labInvoke("lab_annotate", sample.id, payload.expected ?? sample.expected, payload.excluded ?? sample.excluded, payload.tags || tags));
+  await refreshSamples();
+}
+
+async function refreshDatasets() {
+  const response = labAssert(await labInvoke("lab_list_datasets"));
+  renderDatasets(response.datasets);
+}
+
+async function openDataset(path) {
+  const response = labAssert(await labInvoke("lab_open_dataset", path));
+  labMessage(`Opened ${response.dataset.name}`);
+  renderCounts(response.dataset);
+  lab.samples = response.dataset.samples || [];
+  lab.index = 0;
+  await showCurrentSample();
+}
+
+async function refreshConfigs() {
+  const response = labAssert(await labInvoke("lab_expand_configs", configPayload()));
+  lab.configs = response.configs || [];
+  labText("lab-config-count", `${response.count} configurations`);
+}
+
+function renderSummary(run) {
+  const box = labEl("lab-summary");
+  if (!box) return;
+  const summaries = Object.values((run && run.summaries) || {});
+  const summary = summaries[0] || {};
+  const items = [
+    ["Accuracy", percent(summary.accuracy)],
+    ["Failure rate", percent(summary.failure_rate)],
+    ["Recall", percent(summary.recall)],
+    ["Precision", percent(summary.precision)],
+    ["FNR", percent(summary.fnr)],
+    ["FPR", percent(summary.fpr)],
+    ["Mean latency", summary.mean_latency_ms == null ? "—" : `${Number(summary.mean_latency_ms).toFixed(0)} ms`],
+    ["p95 latency", summary.p95_latency_ms == null ? "—" : `${Number(summary.p95_latency_ms).toFixed(0)} ms`],
+  ];
+  box.innerHTML = items.map(([label, value]) => `<div><span class="muted">${label}</span><strong>${value}</strong></div>`).join("");
+  labText("lab-tp", summary.tp ?? "—");
+  labText("lab-tn", summary.tn ?? "—");
+  labText("lab-fp", summary.fp ?? "—");
+  labText("lab-fn", summary.fn ?? "—");
+  const tagBox = labEl("lab-tag-metrics");
+  if (tagBox) {
+    const tags = summary.tag_metrics || {};
+    tagBox.innerHTML = Object.entries(tags).filter(([key]) => key !== "non_pornographic_purpose_allow_rate").slice(0, 12).map(([key, value]) => {
+      const label = value.label || key;
+      const recall = percent(value.recall);
+      const allow = percent(value.allow_rate);
+      return `<p>${label}: recall ${recall} · allow rate ${allow}</p>`;
+    }).join("");
+    if (tags.non_pornographic_purpose_allow_rate != null) {
+      tagBox.innerHTML += `<p>Non-pornographic-purpose Allow Rate: ${percent(tags.non_pornographic_purpose_allow_rate)}</p>`;
+    }
+  }
+}
+
+async function refreshResults() {
+  const response = labAssert(await labInvoke("lab_results"));
+  renderSummary(response.run);
+}
+
+async function refreshFailures() {
+  const kind = labEl("lab-fail-kind").value;
+  const tag = labEl("lab-fail-tag").value || null;
+  const response = labAssert(await labInvoke("lab_failures", kind, tag, null));
+  const box = labEl("lab-failures");
+  box.innerHTML = "";
+  (response.rows || []).slice(0, 80).forEach((row) => {
+    const item = document.createElement("div");
+    item.className = "lab-fail-row";
+    item.textContent = `${row.sample_id} · expected ${row.expected || "unlabelled"} · predicted ${row.predicted || "—"} · ${row.outcome || ""}`;
+    item.addEventListener("click", () => {
+      document.querySelectorAll(".lab-fail-row").forEach((node) => node.classList.remove("is-active"));
+      item.classList.add("is-active");
+      const detail = labEl("lab-failure-detail");
+      const decision = row.decision_summary || {};
+      const detector = row.detector_summary || {};
+      detail.innerHTML = `
+        <p><strong>Sample ${row.sample_id}</strong></p>
+        <p>Expected ${row.expected || "Unlabelled"} · Predicted ${row.predicted || "—"}</p>
+        <p>Tags: ${(row.tags || []).join(", ") || "—"}</p>
+        <p>Detector: ${detector.best_label || "none"} ${detector.best_confidence == null ? "" : detector.best_confidence}</p>
+        <p>Decision: ${decision.source || "—"} · ${decision.classification || "—"} · ${decision.label || ""}</p>
+        <p>Latency: ${row.total_ms == null ? "—" : `${Number(row.total_ms).toFixed(1)} ms`}</p>
+      `;
+    });
+    box.appendChild(item);
+  });
+}
+
+async function refreshCompare() {
+  const key = labEl("lab-sort-key").value;
+  const response = labAssert(await labInvoke("lab_compare", key));
+  const body = labEl("lab-compare-body");
+  const highlights = (response.comparison && response.comparison.highlights) || {};
+  body.innerHTML = "";
+  (response.comparison.rows || []).forEach((row) => {
+    const tr = document.createElement("tr");
+    const marks = [];
+    if (highlights.highest_recall === row.config_id) marks.push("Highest Recall");
+    if (highlights.lowest_fnr === row.config_id) marks.push("Lowest FNR");
+    if (highlights.lowest_fpr === row.config_id) marks.push("Lowest FPR");
+    if (highlights.lowest_latency === row.config_id) marks.push("Lowest Latency");
+    tr.innerHTML = `
+      <td>${row.label || row.config_id}${marks.length ? `<br><span class="muted">${marks.join(" · ")}</span>` : ""}</td>
+      <td>${percent(row.recall)}</td>
+      <td>${percent(row.fnr)}</td>
+      <td>${percent(row.fpr)}</td>
+      <td>${percent(row.precision)}</td>
+      <td>${percent(row.accuracy)}</td>
+      <td>${row.p95_latency_ms == null ? "—" : `${Number(row.p95_latency_ms).toFixed(0)} ms`}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+async function pollProgress() {
+  const response = await labInvoke("lab_progress");
+  if (!response || !response.ok) return;
+  const progress = response.progress || {};
+  labText(
+    "lab-run-status",
+    `${progress.status || "idle"} · config ${progress.config_index || 0} / ${progress.config_count || 0} · sample ${progress.sample_index || 0} / ${progress.sample_count || 0} · ${progress.current || ""}`,
+  );
+  if (progress.status === "completed" || progress.status === "cancelled") {
+    await refreshResults();
+    await refreshFailures();
+    await refreshCompare();
+  }
+}
+
+function initializeLab() {
+  const nav = document.getElementById("edition-nav");
+  if (!nav) return;
+  nav.querySelectorAll(".nav-button").forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.view));
+  });
+  document.querySelectorAll(".lab-tab").forEach((button) => {
+    button.addEventListener("click", () => setLabTab(button.dataset.labTab));
+  });
+  labEl("lab-create-dataset").addEventListener("click", async () => {
+    try {
+      const name = labEl("lab-dataset-name").value;
+      const response = labAssert(await labInvoke("lab_create_dataset", name));
+      labMessage(`Created ${response.dataset.name}`);
+      await refreshDatasets();
+      renderCounts(response.dataset);
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-refresh-datasets").addEventListener("click", () => refreshDatasets().catch((error) => labMessage(error.message, true)));
+  labEl("lab-import-images").addEventListener("click", async () => {
+    try {
+      const mode = labEl("lab-import-mode").value;
+      const response = labAssert(await labInvoke("lab_import_images", null, mode, null));
+      labMessage(`Imported ${response.import.added} images`);
+      renderCounts(response.dataset);
+      await refreshSamples();
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-import-folder").addEventListener("click", async () => {
+    try {
+      const mode = labEl("lab-import-mode").value;
+      const response = labAssert(await labInvoke("lab_import_folder", null, mode));
+      labMessage(`Imported ${response.import.added} images`);
+      renderCounts(response.dataset);
+      await refreshSamples();
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-filter-status").addEventListener("change", () => refreshSamples().catch((error) => labMessage(error.message, true)));
+  labEl("lab-filter-tag").addEventListener("change", () => refreshSamples().catch((error) => labMessage(error.message, true)));
+  labEl("lab-mark-block").addEventListener("click", () => annotateCurrent({ expected: "block" }).catch((error) => labMessage(error.message, true)));
+  labEl("lab-mark-allow").addEventListener("click", () => annotateCurrent({ expected: "allow" }).catch((error) => labMessage(error.message, true)));
+  labEl("lab-exclude").addEventListener("change", (event) => annotateCurrent({ excluded: event.target.checked }).catch((error) => labMessage(error.message, true)));
+  labEl("lab-prev").addEventListener("click", async () => {
+    lab.index = Math.max(0, lab.index - 1);
+    await showCurrentSample();
+  });
+  labEl("lab-next").addEventListener("click", async () => {
+    lab.index = Math.min(lab.samples.length - 1, lab.index + 1);
+    await showCurrentSample();
+  });
+  labEl("lab-grid-toggle").addEventListener("click", async () => {
+    lab.grid = !lab.grid;
+    labEl("lab-single-annotate").hidden = lab.grid;
+    labEl("lab-grid-annotate").hidden = !lab.grid;
+    if (lab.grid) await renderGrid();
+    else await showCurrentSample();
+  });
+  labEl("lab-grid-block").addEventListener("click", async () => {
+    labAssert(await labInvoke("lab_annotate_selected", Array.from(lab.selected), "block", null));
+    await refreshSamples();
+  });
+  labEl("lab-grid-allow").addEventListener("click", async () => {
+    labAssert(await labInvoke("lab_annotate_selected", Array.from(lab.selected), "allow", null));
+    await refreshSamples();
+  });
+  labEl("lab-grid-exclude").addEventListener("click", async () => {
+    labAssert(await labInvoke("lab_annotate_selected", Array.from(lab.selected), null, true));
+    await refreshSamples();
+  });
+  document.querySelectorAll("#benchmark-lab input[type=checkbox], #benchmark-lab input[type=radio]").forEach((input) => {
+    if (input.name && input.name.startsWith("lab-")) {
+      input.addEventListener("change", () => refreshConfigs().catch(() => {}));
+    }
+  });
+  labEl("lab-apply-config").addEventListener("click", async () => {
+    try {
+      const config = lab.configs[0];
+      const response = labAssert(await labInvoke("lab_apply_config_to_protection", config || null));
+      labMessage(response.message);
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-start-run").addEventListener("click", async () => {
+    try {
+      await refreshConfigs();
+      const response = labAssert(await labInvoke("lab_start_run", configPayload()));
+      labMessage(response.message);
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-cancel-run").addEventListener("click", async () => {
+    try {
+      const response = labAssert(await labInvoke("lab_cancel_run"));
+      labMessage(response.message);
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-refresh-failures").addEventListener("click", () => refreshFailures().catch((error) => labMessage(error.message, true)));
+  labEl("lab-refresh-compare").addEventListener("click", () => refreshCompare().catch((error) => labMessage(error.message, true)));
+  labEl("lab-sort-key").addEventListener("change", () => refreshCompare().catch((error) => labMessage(error.message, true)));
+  labEl("lab-run-sweep").addEventListener("click", async () => {
+    try {
+      const response = labAssert(await labInvoke("lab_sweep", configPayload()));
+      labEl("lab-sweep").innerHTML = (response.rows || []).map((row) => (
+        `<p>strong ${row.strong} · proposal ${row.proposal ?? "default"} · recall ${percent(row.recall)} · FNR ${percent(row.fnr)} · FPR ${percent(row.fpr)}</p>`
+      )).join("");
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-export-json").addEventListener("click", async () => {
+    try {
+      const response = labAssert(await labInvoke("lab_export", "json", null));
+      labMessage(`Exported ${response.path}`);
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-export-csv").addEventListener("click", async () => {
+    try {
+      const response = labAssert(await labInvoke("lab_export", "csv", null));
+      labMessage(`Exported ${response.path}`);
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-annotated-preview").addEventListener("click", async () => {
+    try {
+      const sample = currentSample();
+      if (!sample) return;
+      const response = labAssert(await labInvoke("lab_annotated_preview", sample.id, null));
+      const image = labEl("lab-annotated-image");
+      image.src = response.preview;
+      image.hidden = false;
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (lab.view !== "developer" || lab.tab !== "annotate" || lab.grid) return;
+    if (event.target && event.target.matches && event.target.matches("input, textarea, select")) return;
+    if (event.key === "b" || event.key === "B") annotateCurrent({ expected: "block" });
+    if (event.key === "a" || event.key === "A") annotateCurrent({ expected: "allow" });
+    if (event.key === "e" || event.key === "E") {
+      const exclude = labEl("lab-exclude");
+      annotateCurrent({ excluded: !exclude.checked });
+    }
+    if (event.key === "ArrowLeft") {
+      lab.index = Math.max(0, lab.index - 1);
+      showCurrentSample();
+    }
+    if (event.key === "ArrowRight") {
+      lab.index = Math.min(lab.samples.length - 1, lab.index + 1);
+      showCurrentSample();
+    }
+  });
+  labInvoke("lab_tag_catalog").then((response) => {
+    lab.tags = (response && response.tags) || [];
+    renderTagFilters();
+  }).catch(() => {});
+  refreshDatasets().catch(() => {});
+  refreshConfigs().catch(() => {});
+  lab.progressTimer = window.setInterval(() => pollProgress().catch(() => {}), 1000);
+  setView("protection");
+}
+
+window.addEventListener("pywebviewready", initializeLab, { once: true });
+window.addEventListener("beforeunload", () => {
+  if (lab.progressTimer) window.clearInterval(lab.progressTimer);
+});
