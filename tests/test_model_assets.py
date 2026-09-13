@@ -8,6 +8,7 @@ from unittest.mock import patch
 from app.vision.model_assets import (
     bundled_nudenet_model_path,
     is_expected_nudenet_model,
+    is_expected_yolo_model,
     resolve_nudenet_model_path,
     resolve_yolo_model_path,
 )
@@ -69,6 +70,7 @@ class ModelAssetTests(unittest.TestCase):
                 model_path.stat().st_size,
             ):
                 self.assertFalse(is_expected_nudenet_model(model_path))
+            self.assertFalse(is_expected_yolo_model(model_path))
 
 
 if __name__ == "__main__":

@@ -245,7 +245,9 @@ class WebDashboardTests(unittest.TestCase):
                 self.assertIn(f'id="{field}"', html)
                 self.assertIn(f'"{field}"', script)
         self.assertIn('"get_model_status"', script)
-        self.assertIn('"download_optional_model"', script)
+        self.assertIn('"download_model"', script)
+        self.assertIn('"download_all_models"', script)
+        self.assertIn('id="vision-download-all"', html)
 
     def test_dashboard_names_native_and_mss_capture_modes(self) -> None:
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")

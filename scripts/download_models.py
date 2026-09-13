@@ -1,4 +1,4 @@
-"""Download and verify LAVOCADO's pinned local model assets."""
+"""Download and verify LAVOCADO's pinned required model assets."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from app.vision.model_assets import (
     is_expected_nudenet_model,
 )
 from app.vision.model_lifecycle import (
+    REQUIRED_MODEL_IDS,
     build_nudenet_request,
     download_nudenet,
 )
@@ -52,9 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",
-        choices=("nudenet_640m", "viddexa_nano", "viddexa_mini"),
-        default="nudenet_640m",
-        help="catalog model to download (default: nudenet_640m)",
+        choices=(*REQUIRED_MODEL_IDS, "all"),
+        default="all",
+        help="catalog model to download (default: all required models)",
     )
     parser.add_argument(
         "--destination",
@@ -65,19 +66,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="replace an existing unverified NudeNet model",
+        help="replace an existing unverified NudeNet or YOLO model",
     )
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    if args.model == "nudenet_640m":
-        download_model(args.destination, force=args.force)
-        return 0
-    download_catalog_model(args.model, root=PROJECT_ROOT, force=args.force)
-    print(f"Verified {args.model}")
-    return 0
+    model_ids = REQUIRED_MODEL_IDS if args.model == "all" else (args.model,)
+    failed = 0
+    for model_id in model_ids:
+        try:
+            if model_id == "nudenet_640m" and args.model == "nudenet_640m":
+                download_model(args.destination, force=args.force)
+            else:
+                download_catalog_model(
+                    model_id, root=PROJECT_ROOT, force=args.force
+                )
+            print(f"Verified {model_id}")
+        except Exception as error:  # noqa: BLE001 - CLI reports and continues
+            failed += 1
+            print(f"Failed {model_id}: {error.__class__.__name__}", file=sys.stderr)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

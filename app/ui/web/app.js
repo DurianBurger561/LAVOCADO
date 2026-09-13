@@ -314,13 +314,13 @@ function renderModelStatus(models) {
     }
     textWrap.append(title, document.createElement("br"), detail);
     item.append(textWrap);
-    if (model.downloadable && model.status !== "available" && model.status !== "downloading") {
+    if (model.status !== "available" && model.status !== "downloading") {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "button ghost";
       button.textContent = "Download";
       button.dataset.modelId = model.id;
-      button.addEventListener("click", () => downloadOptionalModel(model.id));
+      button.addEventListener("click", () => downloadRequiredModel(model.id));
       item.append(button);
     }
     list.append(item);
@@ -340,18 +340,31 @@ async function refreshModelStatus() {
   }
 }
 
-async function downloadOptionalModel(modelId) {
+async function downloadRequiredModel(modelId) {
   if (ui.inFlight.has("model-download")) return;
   ui.inFlight.add("model-download");
   try {
-    const result = assertResponse(await invoke("download_optional_model", modelId));
+    const result = assertResponse(await invoke("download_model", modelId));
     showVisionMessage(result.message || "Download started.");
-    renderModelStatus([result.model].filter(Boolean));
     await refreshModelStatus();
   } catch (error) {
     showVisionMessage(error instanceof Error ? error.message : "Download failed.", true);
   } finally {
     ui.inFlight.delete("model-download");
+  }
+}
+
+async function downloadAllRequiredModels() {
+  if (ui.inFlight.has("model-download-all")) return;
+  ui.inFlight.add("model-download-all");
+  try {
+    const result = assertResponse(await invoke("download_all_models"));
+    renderModelStatus(result.models || []);
+    showVisionMessage(result.message || "Required model downloads started.");
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Download failed.", true);
+  } finally {
+    ui.inFlight.delete("model-download-all");
   }
 }
 
@@ -646,8 +659,8 @@ function renderVisionSettings(settings) {
   text(
     "vision-yolo",
     settings.primary_detector === "yolo11_nsfw_small" || yolo.requested
-      ? "Primary detector when selected · independent thresholds"
-      : "Optional. Falls back to NudeNet if weights are missing",
+      ? "Required download · primary when selected"
+      : "Required download · independent thresholds, NudeNet fallback if missing",
   );
   const contextModel = settings.context_model || {};
   const contextName = contextModel.name || (settings.context && settings.context.model) || "Viddexa";
@@ -831,6 +844,8 @@ async function initializeDashboard() {
   if (visionForm) visionForm.addEventListener("submit", saveVisionSettings);
   const resetButton = element("vision-reset-button");
   if (resetButton) resetButton.addEventListener("click", resetVisionSettings);
+  const downloadAll = element("vision-download-all");
+  if (downloadAll) downloadAll.addEventListener("click", downloadAllRequiredModels);
   const presetSelect = element("vision-preset-select");
   if (presetSelect) presetSelect.addEventListener("change", applyVisionPreset);
   document.querySelectorAll(".rule-form").forEach((form) => {

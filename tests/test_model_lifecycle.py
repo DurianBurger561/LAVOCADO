@@ -37,8 +37,14 @@ class ModelLifecycleTests(unittest.TestCase):
         nudenet = next(row for row in rows if row["id"] == "nudenet_640m")
         self.assertEqual(nudenet["status"], "missing")
         self.assertEqual(nudenet["fallback"], "nudenet_320n")
+        self.assertTrue(nudenet["required"])
         yolo = next(row for row in rows if row["id"] == "yolo11_nsfw_small")
-        self.assertFalse(yolo["downloadable"])
+        self.assertTrue(yolo["downloadable"])
+        self.assertTrue(yolo["required"])
+        self.assertEqual(yolo["source"], "huggingface:erax-ai/EraX-NSFW-V1.0")
+        for row in rows:
+            self.assertTrue(row["required"])
+            self.assertTrue(row["downloadable"])
 
     def test_resolves_user_data_dir_nudenet(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -53,9 +59,36 @@ class ModelLifecycleTests(unittest.TestCase):
             )
         self.assertEqual(resolved, target)
 
-    def test_yolo_download_is_rejected(self) -> None:
-        with self.assertRaises(RuntimeError):
-            download_model("yolo11_nsfw_small")
+    def test_yolo_download_uses_pinned_huggingface_file(self) -> None:
+        requests: list[str] = []
+
+        class FakeResponse:
+            def read(self, _size: int = -1) -> bytes:
+                return b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_: object) -> None:
+                return None
+
+        def opener(request: object, timeout: int = 120) -> FakeResponse:
+            del timeout
+            requests.append(str(getattr(request, "full_url", "")))
+            return FakeResponse()
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "app.vision.model_lifecycle.is_expected_yolo_model",
+            return_value=True,
+        ):
+            row = download_model(
+                "yolo11_nsfw_small",
+                data_dir=Path(temp_dir),
+                opener=opener,
+            )
+        self.assertIn("erax-ai/EraX-NSFW-V1.0", requests[0])
+        self.assertEqual(row["status"], "available")
+        self.assertNotIn("yolo11.pt", json.dumps(row))
 
     def test_viddexa_download_uses_pinned_revision(self) -> None:
         calls: list[tuple[str, str]] = []

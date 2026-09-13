@@ -1,4 +1,4 @@
-"""Locate and validate optional local vision-model assets."""
+"""Locate and validate pinned local vision-model assets."""
 
 from __future__ import annotations
 
@@ -15,6 +15,19 @@ NUDENET_640M_SHA256 = (
 )
 NUDENET_640M_DOWNLOAD_URL = (
     "https://api.github.com/repos/notAI-tech/NudeNet/releases/assets/176832019"
+)
+
+YOLO11_NSFW_SMALL_FILENAME = "yolo11.pt"
+YOLO11_NSFW_SMALL_SIZE = 19_159_379
+YOLO11_NSFW_SMALL_SHA256 = (
+    "cd268d5ac84058fc9f3681bcc5446775e7ca1fdcf53948277a8b7ba12055eb10"
+)
+YOLO11_NSFW_SMALL_REPO = "erax-ai/EraX-NSFW-V1.0"
+YOLO11_NSFW_SMALL_REVISION = "aea60ac8d2ebcbe0fcbb29e623eba99945b988a6"
+YOLO11_NSFW_SMALL_REMOTE_NAME = "erax_nsfw_yolo11s.pt"
+YOLO11_NSFW_SMALL_DOWNLOAD_URL = (
+    "https://huggingface.co/erax-ai/EraX-NSFW-V1.0/resolve/"
+    f"{YOLO11_NSFW_SMALL_REVISION}/{YOLO11_NSFW_SMALL_REMOTE_NAME}"
 )
 
 
@@ -34,9 +47,13 @@ def bundled_nudenet_model_path(root: Path | None = None) -> Path:
 
 
 def bundled_yolo_model_path(root: Path | None = None) -> Path:
-    """Return the conventional location of an optional local YOLO11 model."""
+    """Return the conventional location of the pinned YOLO11 NSFW Small file."""
 
-    return (resource_root() if root is None else root) / "models" / "yolo11.pt"
+    return (
+        (resource_root() if root is None else root)
+        / "models"
+        / YOLO11_NSFW_SMALL_FILENAME
+    )
 
 
 def _user_model_path(filename: str, data_dir: Path | None) -> Path | None:
@@ -58,7 +75,7 @@ def resolve_yolo_model_path(
     candidates = []
     if override:
         candidates.append(Path(override).expanduser())
-    user_path = _user_model_path("yolo11.pt", data_dir)
+    user_path = _user_model_path(YOLO11_NSFW_SMALL_FILENAME, data_dir)
     if user_path is not None:
         candidates.append(user_path)
     candidates.append(bundled_yolo_model_path(root))
@@ -104,8 +121,20 @@ def model_file_sha256(path: Path) -> str:
 def is_expected_nudenet_model(path: Path) -> bool:
     """Return whether a file matches the pinned official 640m asset."""
 
+    return _matches_pinned_file(path, NUDENET_640M_SIZE, NUDENET_640M_SHA256)
+
+
+def is_expected_yolo_model(path: Path) -> bool:
+    """Return whether a file matches the pinned YOLO11 NSFW Small asset."""
+
+    return _matches_pinned_file(
+        path, YOLO11_NSFW_SMALL_SIZE, YOLO11_NSFW_SMALL_SHA256
+    )
+
+
+def _matches_pinned_file(path: Path, size: int, digest: str) -> bool:
     return (
         path.is_file()
-        and path.stat().st_size == NUDENET_640M_SIZE
-        and model_file_sha256(path) == NUDENET_640M_SHA256
+        and path.stat().st_size == size
+        and model_file_sha256(path) == digest
     )

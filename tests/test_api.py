@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from unittest.mock import patch
 
 from app.intervention.recorder import RecordedEvent
 from app.ui.api import DashboardAPI
@@ -112,10 +113,28 @@ class DashboardAPITests(unittest.TestCase):
         self.assertIn("viddexa_mini", ids)
 
     def test_unknown_model_download_is_rejected(self) -> None:
-        result = self.api.download_optional_model("not-a-model")
+        result = self.api.download_model("not-a-model")
 
         self.assertFalse(result["ok"])
         self.assertIn("Unknown", result["message"])
+
+    def test_download_all_models_returns_required_catalog(self) -> None:
+        fake_rows = [
+            {"id": "nudenet_640m", "status": "downloading", "required": True},
+            {"id": "yolo11_nsfw_small", "status": "downloading", "required": True},
+            {"id": "viddexa_nano", "status": "downloading", "required": True},
+            {"id": "viddexa_mini", "status": "downloading", "required": True},
+        ]
+        with patch("app.ui.api.start_download_all", return_value=fake_rows):
+            payload = self.api.download_all_models()
+
+        json.dumps(payload)
+        self.assertTrue(payload["ok"])
+        ids = {row["id"] for row in payload["models"]}
+        self.assertEqual(
+            ids,
+            {"nudenet_640m", "yolo11_nsfw_small", "viddexa_nano", "viddexa_mini"},
+        )
 
     def test_vision_settings_exclude_intent_modes(self) -> None:
         payload = self.api.get_vision_settings()

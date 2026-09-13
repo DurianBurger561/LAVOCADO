@@ -32,7 +32,7 @@ def yolo_is_requested(
     enabled: bool | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> bool:
-    """Return whether the operator asked for the optional YOLO primary detector."""
+    """Return whether YOLO11 NSFW Small should load as the primary detector."""
 
     if enabled is None:
         enabled = config.YOLO_ENABLED
@@ -210,7 +210,7 @@ def load_yolo_adapter(
     environ: Mapping[str, str] | None = None,
     data_dir: str | Path | None = None,
 ) -> Yolo11Adapter | None:
-    """Load an optional local YOLO model. Missing deps never crash protection."""
+    """Load the pinned YOLO11 NSFW Small model. Missing deps never crash protection."""
 
     environ = os.environ if environ is None else environ
     if not yolo_is_requested(enabled=enabled, environ=environ):
