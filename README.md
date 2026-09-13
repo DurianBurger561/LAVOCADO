@@ -6,9 +6,13 @@
 
 <p align="center"><a href="README.md"><b>🇬🇧🇺🇸🇨🇦🇦🇺🇳🇿English<b></a> | <a href="README.zh.md"><b>🇨🇳中文<b></a></p>
 
-LAVOCADO is a local-first desktop protection tool. It monitors each connected
-display independently, confirms visual risk across multiple frames, and covers
+LAVOCADO is a local-first desktop protection tool. It detects visually explicit
+content in protected contexts, confirms it across multiple frames, and covers
 only the display that triggered protection.
+
+LAVOCADO does not determine viewing intent. Trusted applications or websites
+can be whitelisted to bypass visual protection for medical, educational,
+artistic, news, or other user-approved purposes.
 
 Screenshots are processed locally and are not stored or sent to an LLM.
 The primary whole-screen detector uses NudeNet 640m at 640-pixel inference.
@@ -60,7 +64,10 @@ subdomains.
 
 Adding a whitelist asks you to confirm that visual protection will be skipped
 while that app or site is active, unless a higher-priority blacklist also
-matches. You are responsible for content shown in a whitelisted context.
+matches. Use the whitelist for trusted medical, educational, artistic, news,
+or other non-pornographic sources that may still contain explicit anatomy.
+You are responsible for content shown in a whitelisted context. LAVOCADO does
+not treat a whitelist as a safety certification.
 
 LAVOCADO first identifies the foreground application. If it is a supported
 browser, it also reads the active-tab hostname through the platform
@@ -77,16 +84,29 @@ FORCE_BLOCK > FULL_BYPASS > NORMAL
 A blacklist always wins over a whitelist. With no matching rules, protection
 runs the existing vision pipeline unchanged.
 
+Layer ownership is fixed: ForegroundContextService discovers context,
+ContextPolicyService evaluates rules, VisionPipeline/VisualDecisionEngine
+judge visual evidence only, TemporalEngine confirms fresh frames, and the
+protection runtime owns overlay/intervention. Detectors never trigger
+protection directly, and the decision engine never receives a hostname,
+application name, or medical/art/education flag.
+
 - `FORCE_BLOCK` immediately covers the display that contains the foreground
-  window. NudeNet, tile rescue, and temporal confirmation are skipped.
+  window. NudeNet, YOLO, tile ranking, and temporal confirmation are skipped.
 - `FULL_BYPASS` skips the entire vision pipeline while that context is active,
   then resumes from a fresh state when it leaves.
-- `NORMAL` runs capture, detection, and 2-of-3 confirmation as before.
+- `NORMAL` runs capture and visual-violation detection. Vision only asks
+  whether the frame violates LAVOCADO's visual content rules; it does not
+  classify medical, art, education, or news purpose. Confirmed violations
+  still require 2-of-3 fresh frames before protection.
 
 Live diagnostics show only coarse availability: whether an application was
 identified, whether it is a browser, whether the website is known, and the
 resulting rule actions. They do not include the application identifier,
 hostname, window title, or URL.
+
+The durable product rules are in
+[context-first visual protection](docs/context-first-vision.md).
 
 ## Optional AI support message
 
@@ -242,10 +262,39 @@ If it is absent during a source run, LAVOCADO logs a warning and falls back to
 NudeNet 320n; packaged builds require the verified 640m file.
 Set `LAVOCADO_NUDENET_MODEL` to use a local 640m file at another path.
 
-To compare 320n and 640m locally without saving any analysis output:
+An existing local YOLO11 NSFW model can run as a second primary detector. It
+maps sexual-act and anatomy labels onto the same visual-violation policy.
+LAVOCADO does not train or download this model, and it stays off unless you
+point at weights you already have. Missing ultralytics or weights never stop
+NudeNet-only protection:
+
+```bash
+python -m pip install -r requirements-yolo.txt
+export LAVOCADO_YOLO_MODEL=/path/to/existing-yolo11.pt
+```
+
+To compare 320n and 640m latency locally without saving any analysis output:
 
 ```bash
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+```
+
+Developer Benchmark Lab keeps two scoreboards separate. Vision Benchmark
+asks only whether the pixels violate LAVOCADO's visual content rules
+(Violation / Clear — Visual Policy Ground Truth). Scenario tags such as
+medical, education, art, or news are metadata; they never force Allow.
+Full Pipeline Benchmark adds application/website fixtures and reports
+FORCE_BLOCK, FULL_BYPASS, or NORMAL plus the Failure Explorer
+(context policy, rules, whether Vision ran, detector evidence, temporal
+state, final action). Full Product Benchmark runs Context + Vision +
+Temporal: one visual violation is not enough; protection needs 2 of 3
+fresh frames. UNCERTAIN does not count as a temporal hit:
+
+```bash
+python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
+python scripts/benchmark_pipeline.py --website-action full_bypass --tag medical
+python scripts/benchmark_pipeline.py --website-unknown --vision-classification violation --temporal-confirmed
+python scripts/benchmark_pipeline.py --vision-frames violation,violation,clear --tag medical
 ```
 
 To compare the native capture path with MSS in isolated developer processes:
@@ -273,30 +322,36 @@ fallback transitions, and incomplete cleanup without retaining frames. See the
 [capture soak-testing guide](docs/capture-soak-testing.md) for the eight-hour
 command, failure thresholds, and platform matrix.
 
-### Optional context-model benchmark
+### Optional tile-ranking benchmark
 
-The Viddexa five-class context model is currently an optional development
-dependency and is not yet included in release packages. When installed, it is
-used only to confirm a borderline NudeNet detection on an expanded local crop.
-A Viddexa result by itself can never trigger protection, and `sexy` or `hentai`
-does not promote a borderline result. Install and benchmark it with:
+The Viddexa five-class model is currently an optional development dependency
+and is not yet included in release packages. When installed, it only ranks
+tiles so the primary detector can recheck the highest porn/hentai-risk region
+first. Viddexa never confirms viewing purpose, never blocks on its own, and
+never promotes a borderline NudeNet result to a violation. Install and
+benchmark ranking latency with:
 
 ```bash
 python -m pip install -r requirements-context.txt
 python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+python scripts/benchmark_ranking.py --tiles '[{"index":0,"scores":{"porn":0.99},"primary_hit":false},{"index":1,"scores":{"porn":0.2},"primary_hit":true}]' --baseline-hits 6 --with-tile-hits 8 --positives 10
 ```
+
+Viddexa Benchmark reports tile-ranking quality, candidate prioritization,
+recall gain, and latency. It does not treat Viddexa porn accuracy as product
+Block accuracy. NudeNet/YOLO Detector Benchmark remains recall, precision,
+small-target recall, ROI rescue gain, tile recall, and latency.
 
 The pinned model files are downloaded from Hugging Face, then inference runs
 locally. Benchmark images are not uploaded or saved, and the command prints
 only numbered results rather than input paths. If the dependencies or model are
-unavailable, LAVOCADO remains able to run in NudeNet-only mode. The existing
-2-of-3 temporal confirmation still applies after the fused candidate decision.
+unavailable, LAVOCADO remains able to run in NudeNet-only mode. Confirmed
+visual violations still require 2-of-3 fresh frames before protection.
 
-For small-content rescue, each monitor is divided into four tiles and only one
-tile is context-classified per scan. A very high local `porn` score merely asks
-the same NudeNet 640m instance to recheck that tile; Viddexa never creates a
-candidate by itself. A rescued tile is pinned for the next two checks so the
-existing 2-of-3 temporal verifier can confirm or reject the same region. Rescue
+For small-content rescue, each monitor is divided into four tiles. Viddexa
+ranks those tiles by porn/hentai risk; a high rank only asks the same NudeNet
+640m instance to recheck that tile. A rescued tile is pinned for the next two
+checks so the temporal verifier can confirm or reject the same region. Rescue
 is disabled automatically when only the NudeNet 320n fallback is available.
 
 Protection diagnostics are kept in a thread-safe in-memory snapshot. They

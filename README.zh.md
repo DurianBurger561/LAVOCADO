@@ -6,7 +6,9 @@
 
 <p align="center"><a href="README.md"><b>🇬🇧🇺🇸🇨🇦🇦🇺🇳🇿English<b></a> | <a href="README.zh.md"><b>🇨🇳中文<b></a></p>
 
-LAVOCADO 是一款本地优先的桌面守护工具。它独立监控每一块相连的显示器,通过连续多帧确认视觉风险,并且只遮挡触发保护的那一块屏幕。
+LAVOCADO 是一款本地优先的桌面守护工具。它在需要保护的上下文中检测视觉违规内容,通过连续多帧确认后,只遮挡触发保护的那一块屏幕。
+
+LAVOCADO 不会判断观看目的。受信任的应用或网站可以加入白名单,以便在医学、教育、艺术、新闻或其他用户认可的用途下跳过视觉保护。
 
 截图全部在本地处理,不会被存储,也不会发送给 LLM。主检测器对整屏使用 NudeNet 640m 模型,以 640 像素进行推理。原始分辨率的截图仅保留在内存中,供后续本地复检使用。
 
@@ -38,7 +40,7 @@ SQLite 事件数据库存放在当前用户的应用数据目录下:
 
 使用 **Pick current app** 可从前台窗口填入稳定的可执行文件名、桌面应用 ID 或 bundle ID。网站输入接受域名或 HTTPS URL,只保存域名。匹配方式可以是精确主机名,也可以包含子域名。
 
-加入白名单时会弹出确认:在该应用或网站处于活动状态期间,视觉保护会被完全跳过,除非同时命中更高优先级的黑名单。白名单上下文中显示的内容由用户自行负责。
+加入白名单时会弹出确认:白名单中的应用和网站将完全跳过 LAVOCADO 的视觉保护。如果你需要查看医学、教育、艺术、新闻或其他非色情目的但可能包含裸露或明确人体内容的来源,可以将可靠来源加入白名单。你将自行负责白名单环境中显示的内容。白名单不是 LAVOCADO 对来源安全性的认证。
 
 LAVOCADO 会先识别前台应用。如果它是受支持的浏览器,再通过平台辅助功能 API 读取活动标签页的域名(Windows UI Automation、macOS Accessibility、Linux AT-SPI)。它不会根据窗口标题猜测网站。若无法读取地址栏,网站上下文保持 UNKNOWN,只应用应用规则。
 
@@ -50,11 +52,18 @@ FORCE_BLOCK > FULL_BYPASS > NORMAL
 
 黑名单始终优先于白名单。没有任何匹配规则时,保护行为与现有视觉检测路径完全一致。
 
-- `FORCE_BLOCK` 立即遮挡前台窗口所在的显示器,跳过 NudeNet、区域救援和时序确认。
+分层固定: ForegroundContextService 负责发现上下文, ContextPolicyService 负责规则,
+VisionPipeline / VisualDecisionEngine 只判断视觉证据, TemporalEngine 确认新帧,
+保护运行时负责遮挡与干预。检测器不能直接触发保护;决策引擎不会收到主机名、
+应用名,或医学/艺术/教育标记。
+
+- `FORCE_BLOCK` 立即遮挡前台窗口所在的显示器,跳过 NudeNet、YOLO、区域排序和时序确认。
 - `FULL_BYPASS` 在该上下文活动期间跳过整个视觉流水线,离开后再从干净状态恢复。
-- `NORMAL` 按原有方式运行截图、检测和"三帧中两帧"确认。
+- `NORMAL` 运行截图和视觉违规检测。Vision 只判断画面是否违反 LAVOCADO 的视觉内容规则,不负责医学、艺术、教育或新闻等观看目的。确认后的违规仍需在 3 个新帧中命中 2 次才会保护。
 
 实时诊断只显示粗粒度状态:是否识别到应用、是否为浏览器、网站是否已知,以及规则动作。不会包含应用标识、域名、窗口标题或 URL。
+
+正式产品规则见 [上下文优先的视觉保护](docs/context-first-vision.zh.md)。
 
 ## 可选的 AI 支持消息
 
@@ -167,10 +176,32 @@ python scripts/validate_linux_capture.py
 
 固定版本的 640m 模型约 99 MiB,从 NudeNet 官方 GitHub release 下载,并做字节大小和 SHA-256 校验。该模型不纳入 Git。源码运行时若缺少它,LAVOCADO 会记录一条警告并降级到 NudeNet 320n;而打包构建版本则要求必须有经校验的 640m 文件。设置 `LAVOCADO_NUDENET_MODEL` 可指定使用位于其他路径的本地 640m 文件。
 
-若想在本地对比 320n 和 640m,且不保存任何分析结果:
+也可以把本地已有的 YOLO11 NSFW 模型作为第二个主检测器。它把性行为和解剖标签映射到同一套视觉违规策略。LAVOCADO 不会训练或下载该模型；未设置权重时保持关闭。缺少 ultralytics 或权重时，仍以纯 NudeNet 模式运行:
+
+```bash
+python -m pip install -r requirements-yolo.txt
+export LAVOCADO_YOLO_MODEL=/path/to/existing-yolo11.pt
+```
+
+若想在本地对比 320n 和 640m 的延迟,且不保存任何分析结果:
 
 ```bash
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+```
+
+开发者 Benchmark Lab 把两套计分板分开。Vision Benchmark 只问像素是否违反
+LAVOCADO 的视觉内容规则(Violation / Clear,标注为 Visual Policy Ground Truth)。
+medical、education、art、news 只是场景元数据,不会把 Vision 结果改成 Allow。
+Full Pipeline Benchmark 再加上应用/网站规则夹具,输出 FORCE_BLOCK、FULL_BYPASS
+或 NORMAL,以及 Failure Explorer(上下文策略、规则、是否调用 Vision、检测证据、
+时序状态、最终动作)。Full Product Benchmark 会跑 Context + Vision + Temporal:
+一次视觉违规不够,保护需要 3 个新帧中的 2 次确认。UNCERTAIN 不计为时序命中:
+
+```bash
+python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
+python scripts/benchmark_pipeline.py --website-action full_bypass --tag medical
+python scripts/benchmark_pipeline.py --website-unknown --vision-classification violation --temporal-confirmed
+python scripts/benchmark_pipeline.py --vision-frames violation,violation,clear --tag medical
 ```
 
 若要在隔离的开发进程中对比原生捕获路径和 MSS:
@@ -190,18 +221,21 @@ python scripts/soak_capture.py --backend auto --duration-seconds 3600
 
 它会检测停滞序号、不健康后端、内存/资源增长、降级切换和未完成清理,且不保留帧。八小时命令、失败阈值和平台矩阵见 [捕获浸泡测试指南](docs/capture-soak-testing.md)。
 
-### 可选的上下文模型基准测试
+### 可选的区域排序基准测试
 
-Viddexa 五分类上下文模型目前是一个可选的开发依赖,尚未包含在发布包中。安装后,它仅用于在放大的本地裁剪图上,对 NudeNet 的边界检测结果做二次确认。Viddexa 的结果本身绝不会单独触发保护,且 `sexy` 或 `hentai` 分类不会提升一个边界结果的判定。安装并测试它:
+Viddexa 五分类模型目前是一个可选的开发依赖,尚未包含在发布包中。安装后,它只给 tile 排序,让主检测器优先复检 porn/hentai 风险最高的区域。Viddexa 不判断观看目的,不能单独触发保护,也不会把 NudeNet 的边界结果提升为违规。安装并测试排序延迟:
 
 ```bash
 python -m pip install -r requirements-context.txt
 python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+python scripts/benchmark_ranking.py --tiles '[{"index":0,"scores":{"porn":0.99},"primary_hit":false},{"index":1,"scores":{"porn":0.2},"primary_hit":true}]' --baseline-hits 6 --with-tile-hits 8 --positives 10
 ```
 
-固定版本的模型文件从 Hugging Face 下载,推理则在本地运行。基准测试用的图片不会被上传或保存,该命令只打印编号结果,而非输入路径。若依赖或模型不可用,LAVOCADO 仍能以纯 NudeNet 模式运行。在融合候选决策之后,原有的"三帧中两帧"时序确认依然生效。
+Viddexa Benchmark 只报告 tile 排序质量、候选优先级、召回增益和延迟。它不会把 Viddexa 的 porn 准确率当成产品 Block 准确率。NudeNet/YOLO 的 Detector Benchmark 仍然是召回、精确率、小目标召回、ROI 救援增益、tile 召回和延迟。
 
-对于小面积内容的救援机制,每块显示器被分为四块区域,每次扫描只对其中一块做上下文分类。当某块区域的本地 `porn` 分数非常高时,只是让同一个 NudeNet 640m 实例重新检查该区域;Viddexa 绝不会单独生成候选。被救援的区域会在接下来的两次检查中被锁定,以便原有的"三帧中两帧"时序验证器对同一区域做确认或排除。当只有 NudeNet 320n 降级方案可用时,救援机制会自动禁用。
+固定版本的模型文件从 Hugging Face 下载,推理则在本地运行。基准测试用的图片不会被上传或保存,该命令只打印编号结果,而非输入路径。若依赖或模型不可用,LAVOCADO 仍能以纯 NudeNet 模式运行。确认后的视觉违规仍需在 3 个新帧中命中 2 次才会保护。
+
+对于小面积内容的救援机制,每块显示器被分为四块区域。Viddexa 按 porn/hentai 风险排序这些区域;高分只是让同一个 NudeNet 640m 实例复检该区域。被救援的区域会在接下来的两次检查中被锁定,以便时序验证器对同一区域做确认或排除。当只有 NudeNet 320n 降级方案可用时,救援机制会自动禁用。
 
 保护诊断信息保存在一个线程安全的内存快照中。它包含模型可用性、最近一次扫描延迟、显示器编号、置信度最高的检测器元数据、上下文结果、决策来源、时序历史、救援计划,以及粗粒度的前台策略状态。捕获健康信息报告首选与当前后端、是否降级及原因、帧龄和检测到的显示器数量。该快照采用明确的安全数据结构,绝不包含图像像素、截图、裁剪图、URL、窗口标题、应用标识、域名或图片路径。它不会被写入 SQLite,也不会发送给 OpenAI。
 

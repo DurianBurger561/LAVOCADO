@@ -153,6 +153,7 @@ function renderDiagnostics(data) {
   text("diag-model", data.model || "NudeNet");
   const contextStatus = humanize(data.context_status, "Unknown");
   text("diag-context-model", `${data.context_model || "Context model"} · ${contextStatus}`);
+  text("diag-yolo", humanize(data.yolo_status, "Disabled"));
   text("diag-scan", data.last_scan_ms === null ? "—" : `${formatNumber(data.last_scan_ms, 0)} ms`);
   text("diag-monitor", data.monitor_index === null ? "—" : `Display ${data.monitor_index}`);
 
@@ -204,6 +205,7 @@ function renderDiagnostics(data) {
   text("foreground-effective", humanize(effectivePolicy, "Normal"));
   text("foreground-policy", humanize(effectivePolicy, "Normal"));
   element("foreground-policy").className = `signal-tag context-policy ${effectivePolicy}`;
+  text("foreground-vision-called", foreground.vision_called === false ? "No" : "Yes");
 
   const nude = data.nudenet || {};
   text("nude-label", humanize(nude.label, "No detection"));
@@ -218,12 +220,42 @@ function renderDiagnostics(data) {
   text("context-label", humanize(context.label, "No result"));
   text("context-score", context.score === null || context.score === undefined ? "—" : formatNumber(context.score));
   text("decision-source", humanize(data.decision_source));
+  text(
+    "decision-classification",
+    data.classification
+      ? humanize(data.classification, "Clear")
+      : "Visual violation only; tile rank cannot block",
+  );
   renderTemporal(data.temporal);
 
   const rescue = data.rescue || {};
   const tile = rescue.tile_index === null || rescue.tile_index === undefined ? "—" : Number(rescue.tile_index) + 1;
   text("rescue-tile", tile);
   text("rescue-pin", String(rescue.pinned_checks_remaining || 0));
+  renderFailureExplorer(data);
+}
+
+function renderFailureExplorer(data) {
+  const foreground = data.foreground_context || {};
+  const effectivePolicy = foreground.effective_policy || "normal";
+  const protectionState = String(data.protection_state || "").toUpperCase();
+  const protect = effectivePolicy === "force_block"
+    || protectionState === "BLOCKED"
+    || protectionState === "COOLDOWN";
+  const nude = data.nudenet || {};
+  const evidence = nude.label
+    ? `${humanize(nude.label)} ${formatNumber(nude.score)}`
+    : humanize(data.classification, "None");
+  const temporal = Array.isArray(data.temporal) ? data.temporal : [];
+  text("explorer-policy", humanize(effectivePolicy, "Normal"));
+  text("explorer-app-rule", ruleLabel(foreground.application_rule));
+  text("explorer-website-rule", ruleLabel(foreground.website_rule));
+  text("explorer-vision-called", foreground.vision_called === false ? "No" : "Yes");
+  text("explorer-evidence", evidence);
+  text("explorer-temporal", temporal.length ? temporal.join(" ") : "—");
+  text("explorer-final", protect ? "Protect" : "Allow");
+  text("explorer-action", protect ? "Protect" : "Allow");
+  element("explorer-action").className = `signal-tag context-policy ${protect ? "force_block" : "normal"}`;
 }
 
 async function refreshDiagnostics() {
@@ -292,11 +324,11 @@ const ruleGroups = [
 const whitelistWarnings = {
   whitelisted_applications: [
     "Add application to whitelist?",
-    "Visual protection will be completely disabled while this application is active, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed by this application.",
+    "Whitelisted applications and websites completely bypass visual protection.\n\nUse the whitelist for trusted contexts such as medical, educational, artistic, news, or other non-pornographic use cases that may contain visually explicit content.\n\nVisual protection will be completely disabled while this application is active, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed in whitelisted contexts.\n\n白名单中的应用和网站将完全跳过 LAVOCADO 的视觉保护。\n\n如果你需要查看医学、教育、艺术、新闻或其他非色情目的但可能包含裸露或明确人体内容的来源，可以将可靠来源加入白名单。\n\n你将自行负责白名单环境中显示的内容。",
   ],
   whitelisted_websites: [
     "Add website to whitelist?",
-    "Visual protection will be completely disabled while this website is the active tab, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content shown on this website.",
+    "Whitelisted applications and websites completely bypass visual protection.\n\nUse the whitelist for trusted contexts such as medical, educational, artistic, news, or other non-pornographic use cases that may contain visually explicit content.\n\nVisual protection will be completely disabled while this website is the active tab, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed in whitelisted contexts.\n\n白名单中的应用和网站将完全跳过 LAVOCADO 的视觉保护。\n\n如果你需要查看医学、教育、艺术、新闻或其他非色情目的但可能包含裸露或明确人体内容的来源，可以将可靠来源加入白名单。\n\n你将自行负责白名单环境中显示的内容。",
   ],
 };
 
@@ -336,7 +368,7 @@ function renderRules(response) {
   text(
     "rules-hint",
     ui.canEditRules
-      ? "Changes are stored locally and apply the next time protection starts."
+      ? "Changes are stored locally and apply the next time protection starts. Whitelist trusted medical, educational, artistic, or news sources; LAVOCADO does not determine viewing intent."
       : "Stop protection before editing rules. Current rules remain active until it stops.",
   );
   document.querySelectorAll(".rule-form input, .rule-form select, .rule-form button")
@@ -479,6 +511,62 @@ async function beginAppPick(form) {
   }
 }
 
+function renderVisionSettings(settings) {
+  const detectors = Array.isArray(settings.primary_detectors)
+    ? settings.primary_detectors.join(" + ")
+    : settings.primary_detector;
+  text("vision-primary-detector", humanize(detectors, "Nudenet"));
+  const yolo = settings.yolo || {};
+  text(
+    "vision-yolo",
+    yolo.requested
+      ? "Optional primary detector · sexual-act + anatomy"
+      : "Off unless an existing local YOLO11 model is configured",
+  );
+  const contextModel = settings.context_model || {};
+  text(
+    "vision-context-model",
+    `${contextModel.name || "Viddexa"} · ranks tiles, cannot block`,
+  );
+  const mode = settings.detection_mode || {};
+  text("vision-detection-mode", mode.label || "Visual violation only");
+  const thresholds = settings.thresholds && typeof settings.thresholds === "object"
+    ? Object.entries(settings.thresholds)
+      .map(([label, score]) => `${humanize(label)} ${formatNumber(score)}`)
+      .join(" · ")
+    : "";
+  text("vision-thresholds", thresholds || "—");
+  const tile = settings.tile || {};
+  text(
+    "vision-tile",
+    tile.enabled === false
+      ? "Off"
+      : `${tile.rows || 2} × ${tile.columns || 2} ranking`,
+  );
+  const roi = settings.roi || {};
+  text(
+    "vision-roi",
+    `Expand ${formatNumber(roi.expansion, 2)} · margin ${formatNumber(roi.borderline_margin, 2)}`,
+  );
+  const temporal = settings.temporal || {};
+  text(
+    "vision-temporal",
+    `${temporal.required_hits || 2} / ${temporal.window_size || 3} fresh frames`,
+  );
+}
+
+async function refreshVisionSettings() {
+  if (ui.inFlight.has("vision-settings")) return;
+  ui.inFlight.add("vision-settings");
+  try {
+    renderVisionSettings(assertResponse(await invoke("get_vision_settings")).settings || {});
+  } catch (_error) {
+    renderVisionSettings({});
+  } finally {
+    ui.inFlight.delete("vision-settings");
+  }
+}
+
 async function initializeDashboard() {
   element("start-button").addEventListener("click", () => runAction("start_protection"));
   element("stop-button").addEventListener("click", () => runAction("stop_protection"));
@@ -493,7 +581,13 @@ async function initializeDashboard() {
     if (picker) picker.addEventListener("click", () => beginAppPick(form));
   });
 
-  await Promise.all([refreshStatus(), refreshDiagnostics(), refreshEvents(), refreshRules()]);
+  await Promise.all([
+    refreshStatus(),
+    refreshDiagnostics(),
+    refreshEvents(),
+    refreshRules(),
+    refreshVisionSettings(),
+  ]);
   ui.timers.push(window.setInterval(refreshDiagnostics, 500));
   ui.timers.push(window.setInterval(refreshStatus, 1000));
   ui.timers.push(window.setInterval(refreshEvents, 2000));

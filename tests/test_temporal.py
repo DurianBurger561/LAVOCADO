@@ -39,6 +39,36 @@ class TemporalVerifierTests(unittest.TestCase):
 
         self.assertEqual(verifier.history, (True, False))
 
+    def test_same_frame_sequence_is_not_double_counted(self) -> None:
+        verifier = TemporalVerifier(window_size=3, required_hits=2)
+
+        self.assertFalse(verifier.update(True, frame_sequence=7))
+        self.assertFalse(verifier.update(True, frame_sequence=7))
+        self.assertEqual(verifier.hits, 1)
+        self.assertFalse(verifier.update(True, frame_sequence=8))
+        self.assertTrue(verifier.update(True, frame_sequence=9))
+
+    def test_non_overlapping_regions_do_not_confirm_each_other(self) -> None:
+        verifier = TemporalVerifier(window_size=3, required_hits=2)
+
+        self.assertFalse(
+            verifier.update(True, frame_sequence=1, region=(0, 0, 10, 10))
+        )
+        self.assertFalse(
+            verifier.update(True, frame_sequence=2, region=(50, 50, 60, 60))
+        )
+        self.assertEqual(verifier.hits, 1)
+
+    def test_visual_evidence_decays_when_fresh_frames_do_not_confirm(self) -> None:
+        verifier = TemporalVerifier(window_size=3, required_hits=2)
+
+        verifier.update(True, frame_sequence=1, evidence_type="sexual_act")
+        verifier.update(False, frame_sequence=2, evidence_type="sexual_act")
+
+        self.assertEqual(verifier.evidence_history, ("sexual_act", None))
+        verifier.update(False, frame_sequence=3)
+        self.assertEqual(verifier.evidence_history, ("sexual_act", None, None))
+
 
 if __name__ == "__main__":
     unittest.main()

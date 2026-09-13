@@ -1,4 +1,9 @@
-"""Optional local Viddexa context-classification adapter."""
+"""Optional local Viddexa tile-ranking adapter.
+
+Viddexa scores tiles so the primary detector can check the highest-risk
+region first. Its porn/hentai scores never trigger protection on their own
+and are not a viewing-purpose (medical/art/education) classifier.
+"""
 
 from __future__ import annotations
 

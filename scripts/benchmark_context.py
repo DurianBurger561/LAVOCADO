@@ -1,4 +1,8 @@
-"""Benchmark the optional local Viddexa classifier without saving images."""
+"""Benchmark optional Viddexa tile-ranking latency without saving images.
+
+Viddexa scores are ranking signals only. They are not viewing-purpose labels
+and cannot be used as a final Block decision.
+"""
 
 from __future__ import annotations
 
@@ -55,12 +59,19 @@ def main() -> int:
             print(f"image_{index}: inference failed")
             continue
         top_label, top_score = max(scores.items(), key=lambda item: item[1])
-        print(f"image_{index}: top={top_label}, score={top_score:.4f}")
+        porn = float(scores.get("porn", 0.0))
+        hentai = float(scores.get("hentai", 0.0))
+        print(
+            f"image_{index}: rank_risk={max(porn, hentai):.4f} "
+            f"top={top_label}, score={top_score:.4f} "
+            f"product_block=None"
+        )
 
     print(
-        f"images={len(durations)}, "
+        f"lab=viddexa_ranking_latency images={len(durations)}, "
         f"mean_ms={statistics.mean(durations) * 1000:.1f}, "
-        f"median_ms={statistics.median(durations) * 1000:.1f}"
+        f"median_ms={statistics.median(durations) * 1000:.1f} "
+        f"product_block=None"
     )
     return 0
 

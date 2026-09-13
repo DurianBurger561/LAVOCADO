@@ -24,6 +24,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.CONTEXT_PORN_RESCUE_THRESHOLD, 0.97)
         self.assertFalse(config.CONTEXT_SEXY_CAN_BLOCK)
         self.assertFalse(config.CONTEXT_HENTAI_CAN_BLOCK)
+        self.assertFalse(config.YOLO_ENABLED)
         self.assertEqual(
             config.RESCUE_TILE_ROWS * config.RESCUE_TILE_COLUMNS,
             4,

@@ -23,10 +23,14 @@ CONTEXT_MODEL_REVISION = "15f61cddc0a1a2a9176f018fb6838ef92c8163cc"
 # validated optimal thresholds.
 NUDENET_BORDERLINE_MARGIN = 0.10
 CONTEXT_CROP_EXPANSION = 1.75
+# Viddexa ranks tiles by porn/hentai risk. It cannot confirm or block.
 CONTEXT_PORN_CONFIRM_THRESHOLD = 0.90
 CONTEXT_PORN_RESCUE_THRESHOLD = 0.97
 CONTEXT_SEXY_CAN_BLOCK = False
 CONTEXT_HENTAI_CAN_BLOCK = False
+YOLO_ENABLED = False
+# Optional existing YOLO11 NSFW weights. Set LAVOCADO_YOLO_MODEL to a local
+# .pt or .onnx file; LAVOCADO never trains or downloads this model.
 RESCUE_ENABLED = True
 RESCUE_TILE_ROWS = 2
 RESCUE_TILE_COLUMNS = 2
@@ -41,8 +45,9 @@ CHANGE_PERIODIC_SCAN_INTERVAL = 8
 # None selects the primary monitor automatically. Set an integer to override it.
 MONITOR_INDEX: int | None = None
 
-# Starting thresholds for the MVP.
+# Starting thresholds for NudeNet visual-violation labels.
 # These are product defaults, not scientifically validated values.
+# Mapping onto ViolationEvidenceType lives in app.vision.violation_policy.
 BLOCK_THRESHOLDS = {
     "FEMALE_GENITALIA_EXPOSED": 0.45,
     "MALE_GENITALIA_EXPOSED": 0.45,

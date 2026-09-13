@@ -33,6 +33,7 @@ class ContextPolicyService:
         self.website = website or WebsitePolicy()
 
     def evaluate(self, context: ForegroundContext) -> ContextPolicyResult:
+        """Evaluate application and website rules. Never inspects pixels."""
         app_rule = self.application.match(context.application)
         app_action = ContextPolicyAction.NORMAL if app_rule is None else app_rule.action
 

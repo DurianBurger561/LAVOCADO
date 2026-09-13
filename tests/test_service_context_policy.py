@@ -185,6 +185,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
             "application_rule": "full_bypass",
             "website_rule": "force_block",
             "effective_policy": "force_block",
+            "vision_called": False,
         })
 
     def test_application_blacklist_blocks_without_a_known_website(self) -> None:
@@ -351,6 +352,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
             "application_rule": "normal",
             "website_rule": "normal",
             "effective_policy": "normal",
+            "vision_called": True,
         }
 
         for name, store, availability in cases:
@@ -399,6 +401,51 @@ class ServiceContextPolicyTests(unittest.TestCase):
                     service.diagnostics.snapshot()["foreground_context"],
                     {**availability, **expected_foreground},
                 )
+
+    def test_whitelisted_medical_site_skips_vision_despite_explicit_image(self) -> None:
+        detector = FakeDetector({1: [True, True, True]})
+        overlay = FakeOverlay()
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(),
+            detector=detector,
+            overlay=overlay,
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            context_store=store_for(application(), "medical.example"),
+            context_policy=policy(website_rules=[WebsiteRule(
+                "medical.example", ContextPolicyAction.FULL_BYPASS,
+                WebsiteMatchMode.EXACT_HOST,
+            )]),
+        )
+
+        self.assertEqual(service.check_once(), [])
+
+        self.assertEqual(detector.checked_indexes, [])
+        self.assertEqual(service.vision_pipeline.evaluate_calls, 0)
+        self.assertEqual(overlay.shown_on, [])
+        self.assertEqual(service.state, State.BYPASSED)
+
+    def test_website_blacklist_does_not_call_vision_pipeline(self) -> None:
+        detector = FakeDetector({1: [True]})
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(),
+            detector=detector,
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            context_store=store_for(application(), "blocked.example"),
+            context_policy=policy(website_rules=[WebsiteRule(
+                "blocked.example", ContextPolicyAction.FORCE_BLOCK,
+                WebsiteMatchMode.EXACT_HOST,
+            )]),
+        )
+
+        service.check_once()
+
+        self.assertEqual(service.vision_pipeline.evaluate_calls, 0)
+        self.assertEqual(detector.checked_indexes, [])
 
     def test_context_worker_starts_and_stops_with_protection_process(self) -> None:
         worker = FakeContextWorker()

@@ -9,6 +9,7 @@ system accessibility services or unrelated model libraries never log data.
 | Native website reader → Context | Normalized hostname in memory | Address-bar value is reduced before `WebsiteContext` is published; reader exceptions are discarded. |
 | Context → SQLite rules | User-configured application identifiers and website hostnames | `RuleSettingsStore` normalizes before saving. A URL path, query, or fragment is not stored. |
 | Context → diagnostics | Availability, browser/website state, rule actions, effective policy | No application identifier, hostname, window title, or URL in the ordinary diagnostics snapshot or Dashboard IPC. |
+| Context Policy → Vision | Rule actions only | `VisualDecisionEngine` never receives hostname, application name, URL, or medical/art/education flags. Missing context still runs Vision. |
 | Rule or legacy-window trigger → SQLite history | Trigger type, time, monitor, intervention flag | New `application_rule`, `website_rule`, and `blocklist` records always have a null label. |
 | SQLite history → Dashboard/CLI | Event metadata | Labels on these trigger types are masked on read, including for records written by older versions. |
 | Legacy window reader → log | Fixed failure message | Native exception text and traceback are not logged; they may contain a title or address. |

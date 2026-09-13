@@ -23,6 +23,14 @@ def frame(
 
 
 class ChangeSchedulerTests(unittest.TestCase):
+    def test_policy_skip_does_not_scan(self) -> None:
+        scheduler = ChangeScheduler()
+
+        decision = scheduler.should_scan(frame(0), 1, vision_allowed=False)
+
+        self.assertFalse(decision.scan)
+        self.assertEqual(decision.source, "policy_skip")
+
     def test_first_frame_is_always_scanned(self) -> None:
         scheduler = ChangeScheduler()
 

@@ -60,8 +60,13 @@ class ChangeScheduler:
         self,
         captured: CapturedFrame,
         monitor_index: int,
+        *,
+        vision_allowed: bool = True,
     ) -> ChangeDecision:
         """Return whether this fresh frame should enter the detection pipeline."""
+
+        if not vision_allowed:
+            return ChangeDecision(False, "policy_skip", 0.0)
 
         current_gray = self._grayscale_map(captured.original_frame)
         if current_gray is None:
@@ -110,6 +115,11 @@ class ChangeScheduler:
 
         if not is_candidate:
             return
+        self.request_focused_verification(monitor_index)
+
+    def request_focused_verification(self, monitor_index: int) -> None:
+        """Force follow-up scans after UNCERTAIN or VIOLATION evidence."""
+
         schedule = self._schedules.get(monitor_index)
         if schedule is not None:
             schedule.forced_checks_remaining = max(

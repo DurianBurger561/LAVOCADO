@@ -44,6 +44,7 @@ class DiagnosticsStore:
         inference_resolution: int | None,
         context_model: str,
         context_status: str,
+        yolo_status: str = "disabled",
     ) -> None:
         self._lock = Lock()
         self._snapshot: dict[str, Any] = {
@@ -53,6 +54,7 @@ class DiagnosticsStore:
             "inference_resolution": inference_resolution,
             "context_model": context_model,
             "context_status": context_status,
+            "yolo_status": yolo_status,
             "foreground_context": {
                 "application_available": False,
                 "is_browser": None,
@@ -60,6 +62,7 @@ class DiagnosticsStore:
                 "application_rule": "normal",
                 "website_rule": "normal",
                 "effective_policy": "normal",
+                "vision_called": True,
             },
             "capture": {
                 "preferred_backend": None,
@@ -83,6 +86,7 @@ class DiagnosticsStore:
             },
             "context": {"label": None, "score": None},
             "decision_source": None,
+            "classification": None,
             "temporal": [],
             "rescue": {
                 "tile_index": None,
@@ -159,6 +163,7 @@ class DiagnosticsStore:
                 else policy.action.value if policy is not None else "normal"
             ),
         }
+        foreground["vision_called"] = foreground["effective_policy"] == "normal"
         with self._lock:
             self._snapshot["foreground_context"] = foreground
 
@@ -186,6 +191,7 @@ class DiagnosticsStore:
                 "score": self._optional_float(decision.get("context_score")),
             },
             "decision_source": self._optional_string(decision.get("source")),
+            "classification": self._optional_string(decision.get("classification")),
             "temporal": [int(value) for value in temporal],
             "rescue": self._rescue_summary(decision, rescue_status or {}),
         }
@@ -248,10 +254,18 @@ class DiagnosticsStore:
             status = "none"
         elif source == "nudenet_borderline":
             status = "borderline"
+        elif source in {"nudenet_roi", "anatomy_roi"}:
+            status = "roi_confirmed"
+        elif source == "anatomy_candidate":
+            status = "borderline"
         elif source == "nudenet_borderline_context":
             status = "context_confirmed"
         elif source == "rescue_tile":
             status = "rescued"
+        elif source in {"yolo_sexual_act", "yolo_sexual_act_roi"}:
+            status = "strong"
+        elif source == "sexual_act_candidate":
+            status = "borderline"
         elif threshold is None:
             status = "observed"
         elif score >= threshold:

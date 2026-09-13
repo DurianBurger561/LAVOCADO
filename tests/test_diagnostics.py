@@ -52,6 +52,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             "application_rule": "full_bypass",
             "website_rule": "force_block",
             "effective_policy": "force_block",
+            "vision_called": False,
         })
         serialized = json.dumps(store.snapshot())
         for forbidden in ("Private", "private.example", "secret", "chrome.exe"):
@@ -65,6 +66,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             "application_rule": "normal",
             "website_rule": "normal",
             "effective_policy": "normal",
+            "vision_called": True,
         })
 
     def test_nonbrowser_and_legacy_blocklist_override(self) -> None:
@@ -87,6 +89,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
         self.assertFalse(foreground["is_browser"])
         self.assertEqual(foreground["website_state"], "not_browser")
         self.assertEqual(foreground["effective_policy"], "force_block")
+        self.assertFalse(foreground["vision_called"])
 
     def test_records_privacy_safe_capture_status(self) -> None:
         store = make_store()
@@ -130,9 +133,10 @@ class DiagnosticsStoreTests(unittest.TestCase):
             elapsed_ms=183.26,
             scanned_at="2026-09-12T01:02:03.456+00:00",
             decision={
-                "source": "nudenet_borderline_context",
+                "source": "nudenet_roi",
+                "classification": "violation",
                 "nudenet_label": "FEMALE_BREAST_EXPOSED",
-                "nudenet_score": 0.58,
+                "nudenet_score": 0.80,
                 "threshold": 0.65,
                 "context_label": "porn",
                 "context_score": 0.91,
@@ -152,9 +156,10 @@ class DiagnosticsStoreTests(unittest.TestCase):
         self.assertEqual(snapshot["model"], "NudeNet 640m")
         self.assertEqual(snapshot["last_scan_ms"], 183.3)
         self.assertEqual(snapshot["monitor_index"], 2)
-        self.assertEqual(snapshot["nudenet"]["status"], "context_confirmed")
+        self.assertEqual(snapshot["nudenet"]["status"], "roi_confirmed")
         self.assertEqual(snapshot["context"], {"label": "porn", "score": 0.91})
-        self.assertEqual(snapshot["decision_source"], "nudenet_borderline_context")
+        self.assertEqual(snapshot["decision_source"], "nudenet_roi")
+        self.assertEqual(snapshot["classification"], "violation")
         self.assertEqual(snapshot["temporal"], [0, 1, 1])
         self.assertEqual(snapshot["rescue"]["pinned_tile_index"], 1)
         self.assertEqual(snapshot["monitors"]["2"]["last_scan_ms"], 183.3)

@@ -1,4 +1,4 @@
-"""Convert NudeNet detections into a LAVOCADO blocking decision."""
+"""Run NudeNet and emit thresholded detections. Product block is not decided here."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from nudenet import NudeDetector
 
 from app import config
 from app.vision.model_assets import resolve_nudenet_model_path
+from app.vision.nudenet_adapter import detections_to_evidence
+from app.vision.violation_policy import evidence_to_dict, threshold_for_label
 
 LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ class DetectionModel(Protocol):
 
 
 class Detector:
-    """Run NudeNet and apply LAVOCADO's configurable thresholds."""
+    """Run NudeNet and apply visual-violation thresholds to its labels."""
 
     def __init__(
         self,
@@ -70,15 +72,22 @@ class Detector:
         self.inference_resolution = config.NUDENET_FALLBACK_INFERENCE_RESOLUTION
 
     def check(self, image: np.ndarray) -> dict[str, Any]:
-        """Return a consistent decision for one image."""
+        """Return NudeNet detections plus which ones meet violation thresholds.
+
+        ``blocked`` here means “primary detector found thresholded evidence”,
+        not a protection decision. The decision engine still has to classify
+        the frame as VIOLATION / UNCERTAIN / CLEAR.
+        """
 
         detections = list(self.model.detect(image))
+        evidence = detections_to_evidence(detections, model="nudenet")
+        evidence_payload = [evidence_to_dict(item) for item in evidence]
         blocking_matches: list[dict[str, Any]] = []
 
         for detection in detections:
             label = str(detection.get("class", ""))
             score = float(detection.get("score", 0.0))
-            threshold = config.BLOCK_THRESHOLDS.get(label)
+            threshold = threshold_for_label(label)
 
             if threshold is not None and score >= threshold:
                 blocking_matches.append(
@@ -98,6 +107,7 @@ class Detector:
                 "confidence": 0.0,
                 "box": None,
                 "check_points": detections,
+                "evidence": evidence_payload,
             }
 
         strongest = max(
@@ -119,4 +129,5 @@ class Detector:
             "confidence": score,
             "box": strongest.get("box"),
             "check_points": detections,
+            "evidence": evidence_payload,
         }

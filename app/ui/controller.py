@@ -244,4 +244,5 @@ class ProtectionController:
             inference_resolution=config.NUDENET_INFERENCE_RESOLUTION,
             context_model=config.CONTEXT_MODEL_NAME,
             context_status="not_started",
+            yolo_status="not_started",
         ).snapshot()

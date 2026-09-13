@@ -32,7 +32,11 @@ from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.overlay import Overlay
+from app.vision.pipeline import VisionPipeline
+from app.vision.runtime import VisionSession, allows_vision
 from app.vision.temporal import TemporalVerifier
+from app.vision.violation_policy import VisualViolationClassification
+from app.vision.yolo_adapter import load_yolo_adapter, yolo_is_requested
 
 LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +99,13 @@ class LavocadoService:
                 context_classifier,
                 local_rescue_detector,
             )
+        yolo_adapter = load_yolo_adapter() if uses_default_detector else None
+        self.vision_pipeline = VisionPipeline(
+            self.detector,
+            self.decision_engine,
+            yolo_adapter=yolo_adapter,
+        )
+        self.vision_session = VisionSession(self.vision_pipeline)
         context_sensor = getattr(self.decision_engine, "context_classifier", None)
         if not config.CONTEXT_MODEL_ENABLED:
             context_status = "disabled"
@@ -102,6 +113,12 @@ class LavocadoService:
             context_status = "unavailable"
         else:
             context_status = "available"
+        if yolo_adapter is not None:
+            yolo_status = "available"
+        elif uses_default_detector and yolo_is_requested():
+            yolo_status = "unavailable"
+        else:
+            yolo_status = "disabled"
         self.diagnostics = diagnostics or DiagnosticsStore(
             model_variant=str(getattr(self.detector, "model_variant", "custom")),
             inference_resolution=getattr(
@@ -111,6 +128,7 @@ class LavocadoService:
             ),
             context_model=config.CONTEXT_MODEL_NAME,
             context_status=context_status,
+            yolo_status=yolo_status,
         )
         self.overlay = (
             overlay if overlay is not None else Overlay(platform_adapter)
@@ -254,14 +272,14 @@ class LavocadoService:
         )
         self.diagnostics.record_foreground_context(context, policy_result)
         if policy_result is not None:
-            if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
-                self._leave_bypass()
-                result, monitor_index, trigger_type = self._context_rule_detection(
-                    context, policy_result
-                )
-                self._show_intervention(result, monitor_index, trigger_type)
-                return [result]
-            if policy_result.action is ContextPolicyAction.FULL_BYPASS:
+            if not allows_vision(policy_result.action):
+                if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
+                    self._leave_bypass()
+                    result, monitor_index, trigger_type = self._context_rule_detection(
+                        context, policy_result
+                    )
+                    self._show_intervention(result, monitor_index, trigger_type)
+                    return [result]
                 self._enter_bypass()
                 return []
 
@@ -281,27 +299,46 @@ class LavocadoService:
             schedule = self.change_scheduler.should_scan(
                 captured_frame,
                 monitor_index,
+                vision_allowed=True,
             )
             if not schedule.scan:
                 continue
-            nudenet_result = dict(self.detector.check(captured_frame.model_frame))
-            result = self.decision_engine.evaluate(
-                nudenet_result,
+            result = self.vision_session.evaluate(
                 captured_frame,
                 monitor_index=monitor_index,
             )
             result["monitor_index"] = monitor_index
             results.append(result)
 
-            is_candidate = bool(result["blocked"])
-            self.change_scheduler.record_candidate(monitor_index, is_candidate)
-            has_candidate = has_candidate or is_candidate
+            classification = str(result.get("classification") or "")
+            is_violation = (
+                classification == VisualViolationClassification.VIOLATION.value
+                or (not classification and bool(result.get("blocked")))
+            )
+            is_uncertain = (
+                classification == VisualViolationClassification.UNCERTAIN.value
+            )
+            self.change_scheduler.record_candidate(monitor_index, is_violation)
+            if is_uncertain:
+                request_focus = getattr(
+                    self.change_scheduler,
+                    "request_focused_verification",
+                    None,
+                )
+                if callable(request_focus):
+                    request_focus(monitor_index)
+            has_candidate = has_candidate or is_violation
             verifier = self._verifiers.get(monitor_index)
             if verifier is None:
                 verifier = self._verifier_factory()
                 self._verifiers[monitor_index] = verifier
 
-            confirmed = verifier.update(is_candidate)
+            confirmed = verifier.update(
+                is_violation,
+                frame_sequence=getattr(captured_frame, "sequence", None),
+                region=result.get("region"),
+                evidence_type=_visual_evidence_type(result),
+            )
             rescue_status = self._decision_rescue_status(monitor_index)
             self.diagnostics.record_scan(
                 monitor_index=monitor_index,
@@ -354,9 +391,13 @@ class LavocadoService:
         reset_decisions = getattr(self.decision_engine, "reset", None)
         if callable(reset_decisions):
             reset_decisions()
+        reset_pipeline = getattr(self.vision_pipeline, "reset", None)
+        if callable(reset_pipeline):
+            reset_pipeline()
         self.change_scheduler.reset()
 
     def _enter_bypass(self) -> None:
+        self.vision_session.enter_bypass()
         if self._bypass_active:
             self._transition(State.BYPASSED)
             return
@@ -366,6 +407,7 @@ class LavocadoService:
         self._transition(State.BYPASSED)
 
     def _leave_bypass(self) -> None:
+        self.vision_session.exit_bypass_if_needed()
         if not self._bypass_active:
             return
         self._reset_verifiers()
@@ -520,3 +562,19 @@ class LavocadoService:
             future.result()
         except Exception:
             LOGGER.exception("Could not finish recording protection event")
+
+
+def _visual_evidence_type(result: dict[str, object]) -> str | None:
+    """Return a visual-violation type only; never a viewing-purpose label."""
+
+    payload = result.get("evidence")
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict) and item.get("evidence_type"):
+                return str(item["evidence_type"])
+    source = result.get("source")
+    if source in {"yolo_sexual_act", "yolo_sexual_act_roi", "sexual_act_candidate"}:
+        return "sexual_act"
+    if source in {"anatomy_roi", "anatomy_candidate", "nudenet_roi", "nudenet_full"}:
+        return "explicit_anatomy"
+    return None
