@@ -1,0 +1,3 @@
+# Optional development dependency for a local YOLO11 primary detector.
+# Not part of release packaging. LAVOCADO never trains or downloads weights.
+ultralytics>=8.3,<9

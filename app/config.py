@@ -29,6 +29,8 @@ CONTEXT_PORN_RESCUE_THRESHOLD = 0.97
 CONTEXT_SEXY_CAN_BLOCK = False
 CONTEXT_HENTAI_CAN_BLOCK = False
 YOLO_ENABLED = False
+# Optional existing YOLO11 NSFW weights. Set LAVOCADO_YOLO_MODEL to a local
+# .pt or .onnx file; LAVOCADO never trains or downloads this model.
 RESCUE_ENABLED = True
 RESCUE_TILE_ROWS = 2
 RESCUE_TILE_COLUMNS = 2

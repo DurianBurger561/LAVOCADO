@@ -5,18 +5,23 @@ from __future__ import annotations
 from typing import Any
 
 from app import config
+from app.vision.yolo_adapter import yolo_is_requested
 
 
 def vision_settings_snapshot() -> dict[str, Any]:
     """Return the Vision Settings group, never medical/art/education modes."""
 
-    yolo_enabled = bool(config.YOLO_ENABLED)
+    yolo_requested = yolo_is_requested()
     tile_ranking = bool(config.RESCUE_ENABLED and config.CONTEXT_MODEL_ENABLED)
     return {
-        "primary_detector": "nudenet+yolo11" if yolo_enabled else "nudenet",
+        "primary_detector": "nudenet+yolo11" if yolo_requested else "nudenet",
         "primary_detectors": (
-            ["nudenet", "yolo11"] if yolo_enabled else ["nudenet"]
+            ["nudenet", "yolo11"] if yolo_requested else ["nudenet"]
         ),
+        "yolo": {
+            "requested": yolo_requested,
+            "maps_sexual_act": True,
+        },
         "context_model": {
             "name": str(config.CONTEXT_MODEL_NAME),
             "enabled": bool(config.CONTEXT_MODEL_ENABLED),

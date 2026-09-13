@@ -192,6 +192,7 @@ class WebDashboardTests(unittest.TestCase):
 
         for field in (
             "vision-primary-detector",
+            "vision-yolo",
             "vision-context-model",
             "vision-detection-mode",
             "vision-thresholds",
@@ -204,6 +205,8 @@ class WebDashboardTests(unittest.TestCase):
                 self.assertIn(f'"{field}"', script)
         self.assertIn('"get_vision_settings"', script)
         self.assertIn("decision-classification", script)
+        self.assertIn('id="diag-yolo"', html)
+        self.assertIn('"diag-yolo"', script)
 
     def test_dashboard_names_native_and_mss_capture_modes(self) -> None:
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")

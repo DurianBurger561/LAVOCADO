@@ -35,7 +35,7 @@ from app.vision.overlay import Overlay
 from app.vision.pipeline import VisionPipeline
 from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import VisualViolationClassification
-from app.vision.yolo_adapter import load_yolo_adapter
+from app.vision.yolo_adapter import load_yolo_adapter, yolo_is_requested
 
 LOGGER = logging.getLogger(__name__)
 
@@ -111,6 +111,12 @@ class LavocadoService:
             context_status = "unavailable"
         else:
             context_status = "available"
+        if yolo_adapter is not None:
+            yolo_status = "available"
+        elif uses_default_detector and yolo_is_requested():
+            yolo_status = "unavailable"
+        else:
+            yolo_status = "disabled"
         self.diagnostics = diagnostics or DiagnosticsStore(
             model_variant=str(getattr(self.detector, "model_variant", "custom")),
             inference_resolution=getattr(
@@ -120,6 +126,7 @@ class LavocadoService:
             ),
             context_model=config.CONTEXT_MODEL_NAME,
             context_status=context_status,
+            yolo_status=yolo_status,
         )
         self.overlay = (
             overlay if overlay is not None else Overlay(platform_adapter)

@@ -169,6 +169,13 @@ python scripts/validate_linux_capture.py
 
 固定版本的 640m 模型约 99 MiB,从 NudeNet 官方 GitHub release 下载,并做字节大小和 SHA-256 校验。该模型不纳入 Git。源码运行时若缺少它,LAVOCADO 会记录一条警告并降级到 NudeNet 320n;而打包构建版本则要求必须有经校验的 640m 文件。设置 `LAVOCADO_NUDENET_MODEL` 可指定使用位于其他路径的本地 640m 文件。
 
+也可以把本地已有的 YOLO11 NSFW 模型作为第二个主检测器。它把性行为和解剖标签映射到同一套视觉违规策略。LAVOCADO 不会训练或下载该模型；未设置权重时保持关闭。缺少 ultralytics 或权重时，仍以纯 NudeNet 模式运行:
+
+```bash
+python -m pip install -r requirements-yolo.txt
+export LAVOCADO_YOLO_MODEL=/path/to/existing-yolo11.pt
+```
+
 若想在本地对比 320n 和 640m 的延迟,且不保存任何分析结果:
 
 ```bash

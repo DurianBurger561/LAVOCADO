@@ -12,6 +12,8 @@ class VisionSettingsTests(unittest.TestCase):
 
         self.assertEqual(snapshot["primary_detector"], "nudenet")
         self.assertEqual(snapshot["primary_detectors"], ["nudenet"])
+        self.assertFalse(snapshot["yolo"]["requested"])
+        self.assertTrue(snapshot["yolo"]["maps_sexual_act"])
         self.assertEqual(snapshot["context_model"]["role"], "tile_ranking")
         self.assertFalse(snapshot["context_model"]["can_block"])
         self.assertEqual(snapshot["detection_mode"]["id"], "visual_violation")

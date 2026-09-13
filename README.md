@@ -252,6 +252,17 @@ If it is absent during a source run, LAVOCADO logs a warning and falls back to
 NudeNet 320n; packaged builds require the verified 640m file.
 Set `LAVOCADO_NUDENET_MODEL` to use a local 640m file at another path.
 
+An existing local YOLO11 NSFW model can run as a second primary detector. It
+maps sexual-act and anatomy labels onto the same visual-violation policy.
+LAVOCADO does not train or download this model, and it stays off unless you
+point at weights you already have. Missing ultralytics or weights never stop
+NudeNet-only protection:
+
+```bash
+python -m pip install -r requirements-yolo.txt
+export LAVOCADO_YOLO_MODEL=/path/to/existing-yolo11.pt
+```
+
 To compare 320n and 640m latency locally without saving any analysis output:
 
 ```bash

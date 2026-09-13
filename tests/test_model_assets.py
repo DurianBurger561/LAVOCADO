@@ -9,6 +9,7 @@ from app.vision.model_assets import (
     bundled_nudenet_model_path,
     is_expected_nudenet_model,
     resolve_nudenet_model_path,
+    resolve_yolo_model_path,
 )
 
 
@@ -35,6 +36,19 @@ class ModelAssetTests(unittest.TestCase):
             )
 
         self.assertEqual(resolved, model_path)
+
+    def test_resolves_yolo_override_and_missing_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = Path(temp_dir) / "nsfw.pt"
+            model_path.touch()
+            resolved = resolve_yolo_model_path(
+                environ={"LAVOCADO_YOLO_MODEL": str(model_path)},
+                root=Path("unused"),
+            )
+            missing = resolve_yolo_model_path(environ={}, root=Path(temp_dir))
+
+        self.assertEqual(resolved, model_path)
+        self.assertIsNone(missing)
 
     def test_missing_model_returns_none(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

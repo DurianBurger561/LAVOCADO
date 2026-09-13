@@ -44,6 +44,7 @@ class DiagnosticsStore:
         inference_resolution: int | None,
         context_model: str,
         context_status: str,
+        yolo_status: str = "disabled",
     ) -> None:
         self._lock = Lock()
         self._snapshot: dict[str, Any] = {
@@ -53,6 +54,7 @@ class DiagnosticsStore:
             "inference_resolution": inference_resolution,
             "context_model": context_model,
             "context_status": context_status,
+            "yolo_status": yolo_status,
             "foreground_context": {
                 "application_available": False,
                 "is_browser": None,

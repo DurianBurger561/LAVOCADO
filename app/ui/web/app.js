@@ -153,6 +153,7 @@ function renderDiagnostics(data) {
   text("diag-model", data.model || "NudeNet");
   const contextStatus = humanize(data.context_status, "Unknown");
   text("diag-context-model", `${data.context_model || "Context model"} · ${contextStatus}`);
+  text("diag-yolo", humanize(data.yolo_status, "Disabled"));
   text("diag-scan", data.last_scan_ms === null ? "—" : `${formatNumber(data.last_scan_ms, 0)} ms`);
   text("diag-monitor", data.monitor_index === null ? "—" : `Display ${data.monitor_index}`);
 
@@ -491,6 +492,13 @@ function renderVisionSettings(settings) {
     ? settings.primary_detectors.join(" + ")
     : settings.primary_detector;
   text("vision-primary-detector", humanize(detectors, "Nudenet"));
+  const yolo = settings.yolo || {};
+  text(
+    "vision-yolo",
+    yolo.requested
+      ? "Optional primary detector · sexual-act + anatomy"
+      : "Off unless an existing local YOLO11 model is configured",
+  );
   const contextModel = settings.context_model || {};
   text(
     "vision-context-model",

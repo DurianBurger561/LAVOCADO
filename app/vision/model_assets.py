@@ -33,6 +33,29 @@ def bundled_nudenet_model_path(root: Path | None = None) -> Path:
     return (resource_root() if root is None else root) / "models" / NUDENET_640M_FILENAME
 
 
+def bundled_yolo_model_path(root: Path | None = None) -> Path:
+    """Return the conventional location of an optional local YOLO11 model."""
+
+    return (resource_root() if root is None else root) / "models" / "yolo11.pt"
+
+
+def resolve_yolo_model_path(
+    *,
+    environ: Mapping[str, str] | None = None,
+    root: Path | None = None,
+) -> Path | None:
+    """Resolve an explicit YOLO override or a local models/yolo11.pt file."""
+
+    environ = os.environ if environ is None else environ
+    override = str(environ.get("LAVOCADO_YOLO_MODEL", "")).strip()
+    candidate = (
+        Path(override).expanduser()
+        if override
+        else bundled_yolo_model_path(root)
+    )
+    return candidate if candidate.is_file() else None
+
+
 def resolve_nudenet_model_path(
     *,
     environ: Mapping[str, str] | None = None,
