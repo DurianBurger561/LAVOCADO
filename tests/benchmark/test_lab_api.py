@@ -71,3 +71,29 @@ class LabAPITests(unittest.TestCase):
             self.assertIn("proposal_margins", configs["options"])
             edition = api.get_build_edition()
             self.assertEqual(edition["edition"], "developer")
+
+    def test_open_dataset_from_json_or_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            api = DeveloperDashboardAPI(
+                FakeController(),
+                FakeRecorder(),
+                FakeController(),
+                data_dir=root,
+            )
+            created = api.lab_create_dataset("listed")
+            self.assertTrue(created["ok"])
+            outside = root / "other" / "copied"
+            outside.mkdir(parents=True)
+            document = outside / "dataset.json"
+            document.write_text(
+                (root / "benchmark_data" / "listed" / "dataset.json").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            from_file = api.lab_open_dataset(str(document))
+            self.assertTrue(from_file["ok"])
+            self.assertEqual(from_file["dataset"]["path"], str(outside.resolve()))
+            from_folder = api.lab_open_dataset_folder(str(outside))
+            self.assertTrue(from_folder["ok"])
+            cancelled = api.lab_open_dataset(None)
+            self.assertFalse(cancelled["ok"])

@@ -10,6 +10,7 @@ const lab = {
   grid: false,
   configs: [],
   progressTimer: null,
+  datasetPath: "",
 };
 
 const labEl = (id) => document.getElementById(id);
@@ -131,13 +132,15 @@ function renderCounts(counts) {
 function renderDatasets(datasets) {
   const list = labEl("lab-dataset-list");
   if (!list) return;
+  const currentPath = lab.datasetPath || "";
   list.innerHTML = "";
   (datasets || []).forEach((item) => {
     const row = document.createElement("li");
     const button = document.createElement("button");
     button.type = "button";
     button.className = "text-button";
-    button.textContent = `${item.name} · ${item.total || 0} samples`;
+    const active = currentPath && item.path === currentPath;
+    button.textContent = `${item.name} · ${item.total || 0} samples${active ? " · open" : ""}`;
     button.addEventListener("click", () => openDataset(item.path));
     row.appendChild(button);
     list.appendChild(row);
@@ -263,13 +266,20 @@ async function refreshDatasets() {
   renderDatasets(response.datasets);
 }
 
-async function openDataset(path) {
-  const response = labAssert(await labInvoke("lab_open_dataset", path));
-  labMessage(`Opened ${response.dataset.name}`);
-  renderCounts(response.dataset);
-  lab.samples = response.dataset.samples || [];
+async function applyOpenedDataset(response, action = "Opened") {
+  const dataset = response.dataset;
+  lab.datasetPath = dataset.path;
+  labMessage(`${action} ${dataset.name}`);
+  renderCounts(dataset);
+  lab.samples = dataset.samples || [];
   lab.index = 0;
   await showCurrentSample();
+  await refreshDatasets();
+}
+
+async function openDataset(path) {
+  const response = labAssert(await labInvoke("lab_open_dataset", path));
+  await applyOpenedDataset(response);
 }
 
 async function refreshConfigs() {
@@ -436,9 +446,23 @@ function initializeLab() {
     try {
       const name = labEl("lab-dataset-name").value;
       const response = labAssert(await labInvoke("lab_create_dataset", name));
-      labMessage(`Created ${response.dataset.name}`);
-      await refreshDatasets();
-      renderCounts(response.dataset);
+      await applyOpenedDataset(response, "Created");
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-open-dataset").addEventListener("click", async () => {
+    try {
+      const response = labAssert(await labInvoke("lab_open_dataset", null));
+      await applyOpenedDataset(response);
+    } catch (error) {
+      labMessage(error.message, true);
+    }
+  });
+  labEl("lab-open-dataset-folder").addEventListener("click", async () => {
+    try {
+      const response = labAssert(await labInvoke("lab_open_dataset_folder", null));
+      await applyOpenedDataset(response);
     } catch (error) {
       labMessage(error.message, true);
     }

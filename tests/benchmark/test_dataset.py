@@ -11,6 +11,7 @@ from developer.benchmark.dataset import (
     create_dataset,
     import_paths,
     open_dataset,
+    resolve_dataset_path,
     save_dataset,
     update_sample,
 )
@@ -37,6 +38,24 @@ class DatasetTests(unittest.TestCase):
         save_dataset(loaded)
         again = open_dataset(loaded.document_path)
         self.assertEqual(again.schema_version, 1)
+
+    def test_open_accepts_json_file_or_folder_outside_data_dir(self) -> None:
+        created = create_dataset(self.root, "portable")
+        outside = self.root / "elsewhere" / "my_set"
+        outside.mkdir(parents=True)
+        document = outside / "dataset.json"
+        document.write_text(created.document_path.read_text(encoding="utf-8"), encoding="utf-8")
+        from_file = open_dataset(document)
+        from_folder = open_dataset(outside)
+        self.assertEqual(from_file.root, outside.resolve())
+        self.assertEqual(from_folder.root, outside.resolve())
+        self.assertEqual(resolve_dataset_path(outside), document.resolve())
+        with self.assertRaises(DatasetError):
+            open_dataset(self.root / "missing")
+        not_json = self.root / "notes.txt"
+        not_json.write_text("nope", encoding="utf-8")
+        with self.assertRaises(DatasetError):
+            resolve_dataset_path(not_json)
 
     def test_import_reference_and_copy(self) -> None:
         dataset = create_dataset(self.root, "import_test")

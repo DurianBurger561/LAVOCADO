@@ -35,6 +35,8 @@ class DeveloperDashboardTests(unittest.TestCase):
         composed = compose_developer_html(user_html, lab_html)
         self.assertIn("LAVOCADO Developer", composed)
         self.assertIn("Benchmark Lab", composed)
+        self.assertIn("Open dataset.json", composed)
+        self.assertIn("Open dataset folder", composed)
         self.assertIn("Threshold profile", composed)
         self.assertIn("Proposal margin", composed)
         self.assertIn("Sweep proposal and strong", composed)

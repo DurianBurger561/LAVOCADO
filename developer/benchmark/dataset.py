@@ -212,12 +212,25 @@ def create_dataset(data_dir: Path, name: str) -> BenchmarkDataset:
     return dataset
 
 
-def open_dataset(path: Path) -> BenchmarkDataset:
-    document = Path(path)
-    if document.is_dir():
-        document = document / DATASET_FILENAME
+def resolve_dataset_path(path: Path) -> Path:
+    """Accept a dataset.json file or a folder that contains one."""
+
+    candidate = Path(path).expanduser()
+    if candidate.is_dir():
+        document = candidate / DATASET_FILENAME
+    elif candidate.is_file():
+        document = candidate
+    else:
+        raise DatasetError(f"Dataset not found: {candidate}")
     if not document.is_file():
         raise DatasetError(f"Dataset not found: {document}")
+    if document.suffix.lower() != ".json":
+        raise DatasetError("Open a dataset.json file or a dataset folder")
+    return document.resolve()
+
+
+def open_dataset(path: Path) -> BenchmarkDataset:
+    document = resolve_dataset_path(path)
     try:
         with document.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)

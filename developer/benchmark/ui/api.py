@@ -70,13 +70,25 @@ class DeveloperDashboardAPI(DashboardAPI):
         except Exception as error:  # noqa: BLE001
             return self._error_result("Could not create dataset", error)
 
-    def lab_open_dataset(self, path: str) -> dict[str, Any]:
+    def lab_open_dataset(self, path: str | None = None) -> dict[str, Any]:
         try:
-            dataset = open_dataset(Path(path))
+            selected = path or self._pick_dataset_file()
+            if not selected:
+                return {"ok": False, "message": "No dataset selected."}
+            dataset = open_dataset(Path(selected))
             self._dataset = dataset
             return {"ok": True, "dataset": self._dataset_payload()}
         except Exception as error:  # noqa: BLE001
             return self._error_result("Could not open dataset", error)
+
+    def lab_open_dataset_folder(self, folder: str | None = None) -> dict[str, Any]:
+        try:
+            selected = folder or self._pick_folder()
+            if not selected:
+                return {"ok": False, "message": "No dataset folder selected."}
+            return self.lab_open_dataset(selected)
+        except Exception as error:  # noqa: BLE001
+            return self._error_result("Could not open dataset folder", error)
 
     def lab_current_dataset(self) -> dict[str, Any]:
         if self._dataset is None:
@@ -403,6 +415,26 @@ class DeveloperDashboardAPI(DashboardAPI):
         if self._run is None:
             return None
         return self._run.to_dict()
+
+    def _pick_dataset_file(self) -> str | None:
+        window = self.window
+        if window is None:
+            return None
+        try:
+            import webview
+
+            result = window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=("Dataset JSON (dataset.json;*.json)",),
+            )
+        except Exception:
+            return None
+        if not result:
+            return None
+        if isinstance(result, (list, tuple)):
+            return str(result[0])
+        return str(result)
 
     def _pick_files(self, allow_directory: bool = False) -> list[str]:
         window = self.window
