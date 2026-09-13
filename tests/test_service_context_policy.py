@@ -74,7 +74,79 @@ class FakeContextWorker:
         self.stops += 1
 
 
+class ContextPlatform(FakePlatform):
+    def __init__(self, website_value):
+        self.website_value = website_value
+        self.website_reads = 0
+
+    def get_foreground_application(self):
+        return application()
+
+    def create_website_reader(self):
+        platform = self
+
+        class Reader:
+            source = "test"
+
+            def read_active_hostname(self, _application, _browser):
+                platform.website_reads += 1
+                return platform.website_value
+
+        return Reader()
+
+
 class ServiceContextPolicyTests(unittest.TestCase):
+    def test_default_worker_skips_site_for_application_force_block(self) -> None:
+        platform = ContextPlatform("https://private.example/path")
+        recorder = FakeRecorder()
+        service = LavocadoService(
+            platform,
+            capturer=FakeCapturer(),
+            detector=FakeDetector({1: []}),
+            overlay=FakeOverlay(),
+            recorder=recorder,
+            intervention=FakeIntervention(),
+            context_policy=policy(application_rules=[
+                ApplicationRule("chrome.exe", ContextPolicyAction.FORCE_BLOCK)
+            ]),
+        )
+
+        service.context_worker.poll_once()
+        self.assertFalse(service.context_worker.read_pending_once())
+        service.check_once()
+
+        self.assertEqual(platform.website_reads, 0)
+        self.assertEqual(recorder.events[0].trigger_type, "application_rule")
+
+    def test_default_worker_reads_site_despite_browser_whitelist(self) -> None:
+        platform = ContextPlatform("https://blocked.example/private?q=secret")
+        recorder = FakeRecorder()
+        service = LavocadoService(
+            platform,
+            capturer=FakeCapturer(),
+            detector=FakeDetector({1: []}),
+            overlay=FakeOverlay(),
+            recorder=recorder,
+            intervention=FakeIntervention(),
+            context_policy=policy(
+                application_rules=[ApplicationRule(
+                    "chrome.exe", ContextPolicyAction.FULL_BYPASS
+                )],
+                website_rules=[WebsiteRule(
+                    "blocked.example", ContextPolicyAction.FORCE_BLOCK,
+                    WebsiteMatchMode.EXACT_HOST,
+                )],
+            ),
+        )
+
+        service.context_worker.poll_once()
+        self.assertTrue(service.context_worker.read_pending_once())
+        service.check_once()
+
+        self.assertEqual(platform.website_reads, 1)
+        self.assertEqual(recorder.events[0].trigger_type, "website_rule")
+        self.assertEqual(recorder.events[0].label, "blocked.example")
+
     def test_website_blacklist_overrides_browser_whitelist_before_vision(self) -> None:
         capturer = FakeCapturer(monitor_indexes=(1, 2), point_monitor_index=2)
         detector = FakeDetector({1: [], 2: []})

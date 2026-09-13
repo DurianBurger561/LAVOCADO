@@ -31,13 +31,17 @@ class ForegroundContextStore:
         self._clock = clock
         self._lock = Lock()
         self._context: ForegroundContext | None = None
-        self._foreground_key: tuple[str | None, int | None, str | None, str | None] | None = None
+        self._foreground_key: (
+            tuple[str | None, int | None, str | None, str | None, bool] | None
+        ) = None
         self._generation = 0
 
     def observe_application(
         self,
         application: ApplicationContext,
         browser: BrowserDefinition | None,
+        *,
+        suppress_website: bool = False,
     ) -> int:
         """Invalidate the old site immediately when foreground identity changes."""
 
@@ -47,6 +51,7 @@ class ForegroundContextStore:
             application.process_id,
             application.window_id,
             browser.family if browser else None,
+            suppress_website and browser is not None,
         )
         with self._lock:
             changed = key != self._foreground_key
@@ -57,7 +62,12 @@ class ForegroundContextStore:
             if browser is not None:
                 website = (
                     _unknown_website(browser.family, now)
-                    if changed or self._context is None or self._context.website is None
+                    if (
+                        changed
+                        or suppress_website
+                        or self._context is None
+                        or self._context.website is None
+                    )
                     else self._fresh_website(self._context.website, now)
                 )
             self._context = ForegroundContext(application, browser is not None, website, now)
@@ -74,6 +84,7 @@ class ForegroundContextStore:
                 or current is None
                 or not current.is_browser
                 or current.website is None
+                or (self._foreground_key is not None and self._foreground_key[4])
                 or now - current.captured_at >= self._application_ttl
             ):
                 return False

@@ -5,12 +5,14 @@ import unittest
 from app.context.models import (
     ApplicationContext,
     ApplicationRule,
-    ContextPolicyAction as Action,
     ForegroundContext,
     WebsiteContext,
     WebsiteContextState,
     WebsiteMatchMode,
     WebsiteRule,
+)
+from app.context.models import (
+    ContextPolicyAction as Action,
 )
 from app.context.policy.application import ApplicationPolicy
 from app.context.policy.resolver import ContextPolicyService, resolve_context_policy
@@ -76,14 +78,19 @@ class ContextPolicyTests(unittest.TestCase):
         self.assertIsNotNone(result.matched_application_rule)
         self.assertIsNotNone(result.matched_website_rule)
 
-    def test_app_blacklist_wins_over_website_whitelist(self) -> None:
+    def test_app_blacklist_short_circuits_website_evaluation(self) -> None:
+        class WebsiteMustNotBeRead(WebsitePolicy):
+            def match(self, _context):
+                raise AssertionError("website policy should be skipped")
+
         service = ContextPolicyService(
             ApplicationPolicy([app_rule("chrome.exe", Action.FORCE_BLOCK)]),
-            WebsitePolicy([site_rule("trusted.example", Action.FULL_BYPASS)]),
+            WebsiteMustNotBeRead([site_rule("trusted.example", Action.FULL_BYPASS)]),
         )
         result = service.evaluate(foreground(hostname="trusted.example"))
-        self.assertEqual(result.website_action, Action.FULL_BYPASS)
+        self.assertEqual(result.website_action, Action.NORMAL)
         self.assertEqual(result.action, Action.FORCE_BLOCK)
+        self.assertIsNone(result.matched_website_rule)
 
     def test_unknown_website_does_not_cancel_explicit_app_whitelist(self) -> None:
         service = ContextPolicyService(

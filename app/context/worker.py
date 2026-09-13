@@ -6,7 +6,13 @@ from threading import Condition, Event, Thread
 
 from app.context.browser_registry import BrowserDefinition
 from app.context.foreground_service import ForegroundContextService
-from app.context.models import ApplicationContext, WebsiteContext, WebsiteContextState
+from app.context.models import (
+    ApplicationContext,
+    ContextPolicyAction,
+    WebsiteContext,
+    WebsiteContextState,
+)
+from app.context.policy.application import ApplicationPolicy
 from app.context.store import ForegroundContextStore
 
 
@@ -16,12 +22,14 @@ class ForegroundContextWorker:
         service: ForegroundContextService,
         store: ForegroundContextStore,
         *,
+        application_policy: ApplicationPolicy | None = None,
         poll_interval: float = 0.75,
     ) -> None:
         if poll_interval <= 0:
             raise ValueError("poll_interval must be positive")
         self._service = service
         self._store = store
+        self._application_policy = application_policy or ApplicationPolicy()
         self._poll_interval = poll_interval
         self._stop = Event()
         self._condition = Condition()
@@ -57,12 +65,24 @@ class ForegroundContextWorker:
             return False
         application = self._service.read_application()
         browser = self._service.identify_browser(application)
+        app_force_blocked = (
+            self._application_policy.evaluate(application)
+            is ContextPolicyAction.FORCE_BLOCK
+        )
         if self._stop.is_set():
             return False
-        generation = self._store.observe_application(application, browser)
+        generation = self._store.observe_application(
+            application,
+            browser,
+            suppress_website=app_force_blocked,
+        )
         with self._condition:
-            self._pending = (generation, application, browser) if browser else None
-            if browser:
+            self._pending = (
+                (generation, application, browser)
+                if browser and not app_force_blocked
+                else None
+            )
+            if self._pending is not None:
                 self._condition.notify()
         return True
 

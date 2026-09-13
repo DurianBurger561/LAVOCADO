@@ -123,6 +123,23 @@ class ContextStoreTests(unittest.TestCase):
         self.assertTrue(store.publish_website(generation, known()))
         self.assertEqual(store.latest().website.state, WebsiteContextState.UNKNOWN)
 
+    def test_app_force_block_suppresses_website_and_rejects_old_read(self) -> None:
+        store = ForegroundContextStore(clock=Clock())
+        old_generation = store.observe_application(application(), BROWSER)
+        store.publish_website(old_generation, known())
+
+        blocked_generation = store.observe_application(
+            application(), BROWSER, suppress_website=True
+        )
+
+        self.assertNotEqual(old_generation, blocked_generation)
+        self.assertTrue(store.latest().is_browser)
+        self.assertEqual(store.latest().website.state, WebsiteContextState.UNKNOWN)
+        self.assertFalse(store.publish_website(old_generation, known("old.example")))
+        self.assertFalse(store.publish_website(blocked_generation, known("old.example")))
+        resumed_generation = store.observe_application(application(), BROWSER)
+        self.assertNotEqual(blocked_generation, resumed_generation)
+
 
 if __name__ == "__main__":
     unittest.main()

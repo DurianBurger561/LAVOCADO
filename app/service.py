@@ -411,7 +411,11 @@ class LavocadoService:
         if not callable(read_application) or not callable(create_reader):
             return None
         service = ForegroundContextService(read_application, create_reader())
-        return ForegroundContextWorker(service, self.context_store)
+        return ForegroundContextWorker(
+            service,
+            self.context_store,
+            application_policy=self.context_policy.application,
+        )
 
     def _record_trigger(
         self,

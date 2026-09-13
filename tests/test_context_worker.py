@@ -5,7 +5,17 @@ import time
 import unittest
 
 from app.context.foreground_service import ForegroundContextService
-from app.context.models import ApplicationContext, WebsiteContextState
+from app.context.models import (
+    ApplicationContext,
+    ApplicationRule,
+    ContextPolicyAction,
+    WebsiteContextState,
+    WebsiteMatchMode,
+    WebsiteRule,
+)
+from app.context.policy.application import ApplicationPolicy
+from app.context.policy.resolver import ContextPolicyService
+from app.context.policy.website import WebsitePolicy
 from app.context.store import ForegroundContextStore
 from app.context.worker import ForegroundContextWorker
 
@@ -64,6 +74,50 @@ class ContextWorkerTests(unittest.TestCase):
         self.assertFalse(worker.read_pending_once())
         self.assertEqual(reader.calls, 0)
         self.assertFalse(store.latest().is_browser)
+
+    def test_app_force_block_never_queues_website_read(self) -> None:
+        reader = Reader()
+        service = ForegroundContextService(lambda: application(), reader)
+        store = ForegroundContextStore()
+        app_policy = ApplicationPolicy([
+            ApplicationRule("chrome.exe", ContextPolicyAction.FORCE_BLOCK)
+        ])
+        worker = ForegroundContextWorker(
+            service, store, application_policy=app_policy
+        )
+
+        worker.poll_once()
+
+        self.assertFalse(worker.read_pending_once())
+        self.assertEqual(reader.calls, 0)
+        self.assertTrue(store.latest().is_browser)
+        self.assertEqual(store.latest().website.state, WebsiteContextState.UNKNOWN)
+        self.assertEqual(app_policy.evaluate(store.latest().application), ContextPolicyAction.FORCE_BLOCK)
+
+    def test_app_bypass_still_reads_website_blacklist(self) -> None:
+        reader = Reader("https://blocked.example/private?q=secret")
+        service = ForegroundContextService(lambda: application(), reader)
+        store = ForegroundContextStore()
+        app_policy = ApplicationPolicy([
+            ApplicationRule("chrome.exe", ContextPolicyAction.FULL_BYPASS)
+        ])
+        worker = ForegroundContextWorker(
+            service, store, application_policy=app_policy
+        )
+        context_policy = ContextPolicyService(
+            application=app_policy,
+            website=WebsitePolicy([WebsiteRule(
+                "blocked.example", ContextPolicyAction.FORCE_BLOCK,
+                WebsiteMatchMode.EXACT_HOST,
+            )]),
+        )
+
+        worker.poll_once()
+        self.assertTrue(worker.read_pending_once())
+
+        self.assertEqual(reader.calls, 1)
+        self.assertEqual(store.latest().website.hostname, "blocked.example")
+        self.assertEqual(context_policy.evaluate(store.latest()).action, ContextPolicyAction.FORCE_BLOCK)
 
     def test_native_error_is_unknown_without_retaining_private_url(self) -> None:
         reader = Reader(RuntimeError("https://private.example/secret"))

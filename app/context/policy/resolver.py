@@ -36,6 +36,14 @@ class ContextPolicyService:
         app_rule = self.application.match(context.application)
         app_action = ContextPolicyAction.NORMAL if app_rule is None else app_rule.action
 
+        if app_action is ContextPolicyAction.FORCE_BLOCK:
+            return ContextPolicyResult(
+                action=ContextPolicyAction.FORCE_BLOCK,
+                app_action=app_action,
+                website_action=ContextPolicyAction.NORMAL,
+                matched_application_rule=app_rule,
+            )
+
         website_rule = None
         website_action = ContextPolicyAction.NORMAL
         if context.is_browser and context.website is not None:
