@@ -105,6 +105,9 @@ identified, whether it is a browser, whether the website is known, and the
 resulting rule actions. They do not include the application identifier,
 hostname, window title, or URL.
 
+The durable product rules are in
+[context-first visual protection](docs/context-first-vision.md).
+
 ## Optional AI support message
 
 LAVOCADO works without an API key and uses a built-in local message by default.

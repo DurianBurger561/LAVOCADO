@@ -45,9 +45,11 @@ def benchmark(
 
 def print_result(name: str, durations: list[float], positives: int) -> None:
     print(
-        f"{name}: images={len(durations)}, positives={positives}, "
+        f"{name}: images={len(durations)}, "
+        f"visual_policy_violations={positives}, "
         f"mean_ms={statistics.mean(durations) * 1000:.1f}, "
-        f"median_ms={statistics.median(durations) * 1000:.1f}"
+        f"median_ms={statistics.median(durations) * 1000:.1f} "
+        f"(Visual Policy Ground Truth, not product Block)"
     )
 
 

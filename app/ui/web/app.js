@@ -324,11 +324,11 @@ const ruleGroups = [
 const whitelistWarnings = {
   whitelisted_applications: [
     "Add application to whitelist?",
-    "Whitelisted applications and websites completely bypass visual protection.\n\nUse the whitelist for trusted contexts such as medical, educational, artistic, news, or other non-pornographic use cases that may contain visually explicit content.\n\nVisual protection will be completely disabled while this application is active, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed in whitelisted contexts.",
+    "Whitelisted applications and websites completely bypass visual protection.\n\nUse the whitelist for trusted contexts such as medical, educational, artistic, news, or other non-pornographic use cases that may contain visually explicit content.\n\nVisual protection will be completely disabled while this application is active, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed in whitelisted contexts.\n\n白名单中的应用和网站将完全跳过 LAVOCADO 的视觉保护。\n\n如果你需要查看医学、教育、艺术、新闻或其他非色情目的但可能包含裸露或明确人体内容的来源，可以将可靠来源加入白名单。\n\n你将自行负责白名单环境中显示的内容。",
   ],
   whitelisted_websites: [
     "Add website to whitelist?",
-    "Whitelisted applications and websites completely bypass visual protection.\n\nUse the whitelist for trusted contexts such as medical, educational, artistic, news, or other non-pornographic use cases that may contain visually explicit content.\n\nVisual protection will be completely disabled while this website is the active tab, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed in whitelisted contexts.",
+    "Whitelisted applications and websites completely bypass visual protection.\n\nUse the whitelist for trusted contexts such as medical, educational, artistic, news, or other non-pornographic use cases that may contain visually explicit content.\n\nVisual protection will be completely disabled while this website is the active tab, unless a higher-priority blacklist rule is matched.\n\nYou are responsible for content displayed in whitelisted contexts.\n\n白名单中的应用和网站将完全跳过 LAVOCADO 的视觉保护。\n\n如果你需要查看医学、教育、艺术、新闻或其他非色情目的但可能包含裸露或明确人体内容的来源，可以将可靠来源加入白名单。\n\n你将自行负责白名单环境中显示的内容。",
   ],
 };
 

@@ -63,6 +63,8 @@ VisionPipeline / VisualDecisionEngine 只判断视觉证据, TemporalEngine 确�
 
 实时诊断只显示粗粒度状态:是否识别到应用、是否为浏览器、网站是否已知,以及规则动作。不会包含应用标识、域名、窗口标题或 URL。
 
+正式产品规则见 [上下文优先的视觉保护](docs/context-first-vision.zh.md)。
+
 ## 可选的 AI 支持消息
 
 LAVOCADO 无需 API key 即可运行,默认使用内置的本地消息。若想在干预的最后阶段启用一段 AI 生成的简短消息,请在启动应用前设置 OpenAI API key:

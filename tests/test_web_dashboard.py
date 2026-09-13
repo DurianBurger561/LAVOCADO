@@ -144,6 +144,7 @@ class WebDashboardTests(unittest.TestCase):
         self.assertIn("Visual protection will be completely disabled", script)
         self.assertIn("You are responsible for content", script)
         self.assertIn("medical, educational, artistic, news", script)
+        self.assertIn("白名单中的应用和网站将完全跳过", script)
         self.assertIn("LAVOCADO does not determine viewing intent", html)
         self.assertIn('id="vision-settings-heading"', html)
         self.assertIn("VISUAL DETECTION", html)
