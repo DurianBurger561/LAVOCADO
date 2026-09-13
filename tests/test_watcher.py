@@ -79,6 +79,19 @@ class FakeKernel32:
 
 
 class WindowWatcherTests(unittest.TestCase):
+    def test_native_error_does_not_log_window_title_or_address(self) -> None:
+        class BrokenPlatform:
+            def get_foreground_window(self):
+                raise RuntimeError("https://private.example/secret?q=confidential")
+
+        watcher = WindowWatcher(BrokenPlatform(), ["private.example"])
+        with self.assertLogs("app.blocklist.watcher", level="WARNING") as captured:
+            result = watcher.check()
+
+        self.assertFalse(result.blocked)
+        self.assertNotIn("private.example", str(captured.output))
+        self.assertNotIn("confidential", str(captured.output))
+
     def test_disabled_blocklist_does_not_read_window_metadata(self) -> None:
         platform = FakePlatform(WindowInfo("Private title"))
         watcher = WindowWatcher(platform, [])

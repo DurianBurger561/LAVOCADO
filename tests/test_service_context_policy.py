@@ -145,7 +145,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
 
         self.assertEqual(platform.website_reads, 1)
         self.assertEqual(recorder.events[0].trigger_type, "website_rule")
-        self.assertEqual(recorder.events[0].label, "blocked.example")
+        self.assertIsNone(recorder.events[0].label)
 
     def test_website_blacklist_overrides_browser_whitelist_before_vision(self) -> None:
         capturer = FakeCapturer(monitor_indexes=(1, 2), point_monitor_index=2)
@@ -176,7 +176,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
         self.assertEqual(detector.checked_indexes, [])
         self.assertEqual(overlay.shown_on, [2])
         self.assertEqual(recorder.events[0].trigger_type, "website_rule")
-        self.assertEqual(recorder.events[0].label, "blocked.example")
+        self.assertIsNone(recorder.events[0].label)
         self.assertEqual(results[0]["monitor_index"], 2)
         self.assertEqual(service.diagnostics.snapshot()["foreground_context"], {
             "application_available": True,
@@ -207,7 +207,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
 
         self.assertEqual(detector.checked_indexes, [])
         self.assertEqual(recorder.events[0].trigger_type, "application_rule")
-        self.assertEqual(recorder.events[0].label, "chrome.exe")
+        self.assertIsNone(recorder.events[0].label)
 
     def test_website_event_never_records_rule_url_path_or_query(self) -> None:
         recorder = FakeRecorder()
@@ -228,7 +228,8 @@ class ServiceContextPolicyTests(unittest.TestCase):
 
         service.check_once()
 
-        self.assertEqual(recorder.events[0].label, "blocked.example")
+        self.assertIsNone(recorder.events[0].label)
+        self.assertNotIn("blocked.example", repr(recorder.events[0]))
         self.assertNotIn("secret", repr(recorder.events[0]))
 
     def test_bypass_enter_stay_exit_resets_temporal_and_capture_baseline(self) -> None:

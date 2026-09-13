@@ -535,7 +535,9 @@ class ServiceTests(unittest.TestCase):
 
         self.assertEqual(capturer.grabbed_indexes, [])
         self.assertEqual(overlay.shown_on, [2])
-        self.assertEqual(result[0]["label"], "blocked.example")
+        self.assertIsNone(result[0]["label"])
+        self.assertIsNone(recorder.events[0].label)
+        self.assertNotIn("blocked.example", repr(result))
         self.assertEqual(recorder.events[0].trigger_type, "blocklist")
         self.assertIsNone(recorder.events[0].confidence)
         self.assertEqual(intervention.generate_count, 1)

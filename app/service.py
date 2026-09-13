@@ -392,16 +392,13 @@ class LavocadoService:
             else None
         )
         if website_rule is not None:
-            label = context.website.hostname if context.website is not None else None
             trigger_type = "website_rule"
         else:
-            app_rule = policy.matched_application_rule
-            label = app_rule.identifier if app_rule is not None else None
             trigger_type = "application_rule"
         result: dict[str, object] = {
             "blocked": True,
             "reason": f"Blocked by {trigger_type}",
-            "label": label,
+            "label": None,
             "confidence": None,
             "check_points": [],
             "monitor_index": monitor_index,
@@ -477,8 +474,8 @@ class LavocadoService:
             return None
         return {
             "blocked": True,
-            "reason": f"Blocked window term: {result.matched_term}",
-            "label": result.matched_term,
+            "reason": "Blocked by legacy window rule",
+            "label": None,
             "confidence": None,
             "check_points": [],
             "monitor_index": monitor_index,
