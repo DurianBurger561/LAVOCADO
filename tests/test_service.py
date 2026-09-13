@@ -14,6 +14,7 @@ from app.vision.detectors.base import DetectionEvidence
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.scheduler import ScanPlan
 from app.vision.temporal import TemporalVerifier
+from app.vision.viddexa_ranker import ViddexaRanker
 from app.vision.violation_policy import (
     VisualViolationClassification,
     VisualViolationDecision,
@@ -234,6 +235,7 @@ def _decision_from_detector_result(
 
 class FakeDecisionEngine:
     def __init__(self) -> None:
+        self.viddexa_ranker = ViddexaRanker(None)
         self.original_frames: list[int] = []
         self.prepared_for_scan: object | None = None
         self.prepared_for_evaluation: object | None = None
@@ -279,6 +281,7 @@ class FakeDecisionEngine:
 
 class SequenceDecisionEngine:
     def __init__(self, candidates: list[bool]) -> None:
+        self.viddexa_ranker = ViddexaRanker(None)
         self._candidates = iter(candidates)
 
     def evaluate(

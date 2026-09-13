@@ -20,7 +20,7 @@ from app.vision.detectors.factory import (
 from app.vision.detectors.nudenet import NudeNetPrimaryDetector
 from app.vision.detectors.yolo11_nsfw import Yolo11NsfwDetector
 from app.vision.evidence import decay_evidence, evidence_from_confidence, is_confirmed
-from app.vision.scheduler import VisionScheduler
+from app.vision.scheduler import TileScheduler
 from app.vision.tiles import TileState, mark_checked, rank_tiles
 from app.vision.tracking import CandidateTrack, CandidateTracker
 from app.vision.violation_policy import DetectionTier, tier_for_score
@@ -372,7 +372,7 @@ class ChangeMapAndSchedulerTests(unittest.TestCase):
 
     def test_scheduler_focused_and_starvation(self) -> None:
         settings = sanitize_vision_settings(None)
-        scheduler = VisionScheduler(settings)
+        scheduler = TileScheduler(settings)
         tiles = [
             TileState(0, (0, 0, 10, 10), context_score=0.1, skipped_scans=0),
             TileState(1, (10, 0, 20, 10), context_score=0.2, skipped_scans=3),
@@ -389,7 +389,7 @@ class ChangeMapAndSchedulerTests(unittest.TestCase):
 
     def test_scheduler_focused_skips_full_scan(self) -> None:
         settings = sanitize_vision_settings(None)
-        scheduler = VisionScheduler(settings)
+        scheduler = TileScheduler(settings)
         track = CandidateTrack(
             id=1,
             monitor_index=1,
@@ -409,7 +409,7 @@ class ChangeMapAndSchedulerTests(unittest.TestCase):
 
     def test_high_change_uses_aggressive_budget(self) -> None:
         settings = sanitize_vision_settings(None)
-        scheduler = VisionScheduler(settings)
+        scheduler = TileScheduler(settings)
         tiles = [
             TileState(0, (0, 0, 10, 10), context_score=0.1, skipped_scans=0),
             TileState(1, (10, 0, 20, 10), context_score=0.2, skipped_scans=0),
@@ -433,7 +433,7 @@ class ChangeMapAndSchedulerTests(unittest.TestCase):
         settings = sanitize_vision_settings(
             {"scan": {"vision_budget_ms": 50}}
         )
-        scheduler = VisionScheduler(settings)
+        scheduler = TileScheduler(settings)
         tiles = [TileState(0, (0, 0, 10, 10), skipped_scans=0)]
         plan = scheduler.plan(
             monitor_index=1,

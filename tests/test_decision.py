@@ -5,6 +5,7 @@ import unittest
 import numpy as np
 
 from app.platforms.capture.models import CaptureFrame
+from app.vision.context.base import ContextResult
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import DetectionEvidence
 from app.vision.violation_policy import (
@@ -32,6 +33,12 @@ class FakeContextClassifier:
         if self.scores_by_mean is not None:
             return self.scores_by_mean[image_mean]
         return self.scores
+
+    def classify_batch(self, frames: list[np.ndarray]) -> list[ContextResult]:
+        return [
+            ContextResult(scores=self.classify(frame) or {}, model="fake")
+            for frame in frames
+        ]
 
 
 class FakeLocalDetector:

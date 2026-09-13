@@ -4,11 +4,11 @@ import unittest
 
 from app.context.models import ContextPolicyAction
 from app.context.store import ForegroundContextStore
-from app.vision.decision import VisualDecisionEngine
+from app.service import LavocadoService, State
 from app.vision.nudenet_adapter import NudeNetAdapter
 from app.vision.runtime import VisionSession, allows_vision
 from app.vision.temporal import EvidenceAccumulator, TemporalEngine
-from app.service import LavocadoService, State
+from app.vision.visual_decision import VisualDecisionEngine
 from tests.test_service import (
     FakeCapturer,
     FakeDetector,
@@ -26,11 +26,11 @@ class VisionRuntimeTests(unittest.TestCase):
         self.assertFalse(allows_vision(ContextPolicyAction.FORCE_BLOCK))
         self.assertFalse(allows_vision(ContextPolicyAction.FULL_BYPASS))
 
-    def test_architecture_aliases_keep_layer_names(self) -> None:
+    def test_visual_decision_is_not_an_orchestration_alias(self) -> None:
         from app.vision.decision import DecisionEngine
         from app.vision.temporal import TemporalVerifier
 
-        self.assertIs(VisualDecisionEngine, DecisionEngine)
+        self.assertIsNot(VisualDecisionEngine, DecisionEngine)
         self.assertIs(TemporalEngine, TemporalVerifier)
 
     def test_nudenet_adapter_emits_shared_evidence(self) -> None:

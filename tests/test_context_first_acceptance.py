@@ -17,15 +17,15 @@ from app.context.policy.application import ApplicationPolicy
 from app.context.policy.resolver import ContextPolicyService
 from app.context.policy.website import WebsitePolicy
 from app.context.store import ForegroundContextStore
+from app.service import LavocadoService, State
 from app.vision.benchmarking import evaluate_product_pipeline, vision_ground_truth
-from app.vision.decision import DecisionEngine, VisualDecisionEngine
+from app.vision.decision import DecisionEngine
 from app.vision.ranking_benchmark import ranking_quality
 from app.vision.runtime import allows_vision
-from app.service import LavocadoService, State
+from app.vision.visual_decision import VisualDecisionEngine
 from tests.test_decision import (
     FakeContextClassifier,
     FakeLocalDetector,
-    captured_frame,
     empty_result,
     rescue_frame,
 )
@@ -42,7 +42,6 @@ from tests.test_service_context_policy import (
     policy,
     store_for,
 )
-
 
 MEDICAL_ANATOMY = [
     {
@@ -146,8 +145,8 @@ class ContextFirstAcceptanceTests(unittest.TestCase):
         parameters = inspect.signature(ContextPolicyService.evaluate).parameters
         self.assertEqual(tuple(parameters), ("self", "context"))
 
-    def test_visual_decision_engine_is_the_decision_engine(self) -> None:
-        self.assertIs(VisualDecisionEngine, DecisionEngine)
+    def test_visual_decision_engine_is_pure_and_separate(self) -> None:
+        self.assertIsNot(VisualDecisionEngine, DecisionEngine)
 
     def test_viddexa_cannot_block_without_primary_evidence(self) -> None:
         result = DecisionEngine(

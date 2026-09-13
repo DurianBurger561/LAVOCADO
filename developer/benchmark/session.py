@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from threading import Lock
-from typing import Any, Callable, Iterator
+from typing import Any
 
 import numpy as np
 from PIL import Image
 
-from app.settings.schema import VisionSettings
 from app.platforms.capture.models import CaptureFrame
+from app.settings.schema import VisionSettings
 from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import (
@@ -30,14 +31,18 @@ from app.vision.violation_policy import (
     activate_threshold_policy,
     active_threshold_policy,
 )
-from developer.benchmark.configs import TARGET_DETECTOR, BenchmarkConfig
-from developer.benchmark.dataset import BenchmarkSample, hash_file
+from developer.benchmark.configs import BenchmarkConfig
+from developer.benchmark.dataset import (
+    EXPECTED_ALLOW,
+    EXPECTED_BLOCK,
+    BenchmarkSample,
+    hash_file,
+)
 from developer.benchmark.inference_cache import (
     InferenceCache,
     RawInferenceResult,
     cache_key,
 )
-from developer.benchmark.dataset import EXPECTED_ALLOW, EXPECTED_BLOCK
 from developer.benchmark.metrics import outcome_for
 from developer.benchmark.ranking import measure_ranking
 
@@ -154,7 +159,7 @@ class BenchmarkSession:
         self._threshold_policy = ThresholdPolicy.from_settings(self.settings)
         if pipeline is not None:
             self.pipeline = pipeline
-            self.detector = pipeline.detector
+            self.detector = pipeline.primary_detectors.primary
             self.decision_engine = pipeline.decision_engine
         else:
             if detector is None:
@@ -256,10 +261,8 @@ class BenchmarkSession:
 
         self.reset()
         cached = CachedPrimaryDetector(raw.detections, self.config.detector)
-        previous_local = self.decision_engine.local_detector
-        previous_pipeline = self.pipeline.detector
-        self.decision_engine.local_detector = cached
-        self.pipeline.detector = cached
+        previous_local = self.decision_engine.candidate_verifier.detector
+        self.decision_engine.candidate_verifier.detector = cached
         repeats = max(1, int(self.settings.temporal.window_size))
         decided: dict[str, Any] = {}
         started = time.perf_counter()
@@ -281,10 +284,9 @@ class BenchmarkSession:
                         monitor_index=1,
                     )
         finally:
-            self.decision_engine.local_detector = previous_local
-            self.pipeline.detector = previous_pipeline
+            self.decision_engine.candidate_verifier.detector = previous_local
         ranking = measure_ranking(
-            self.decision_engine.context_classifier,
+            self.decision_engine.viddexa_ranker.classifier,
             image,
             raw.detections,
             rows=self.config.tile_rows,

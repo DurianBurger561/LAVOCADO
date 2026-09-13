@@ -9,6 +9,7 @@ from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
 from app.vision.preprocessor import FramePreprocessor
+from app.vision.primary_detector_set import PrimaryDetectorSet
 from app.vision.scheduler import ScanPlan
 from app.vision.violation_policy import VisualViolationDecision
 from app.vision.yolo_adapter import Yolo11Adapter
@@ -30,11 +31,13 @@ class VisionPipeline:
         shadow_adapter: Yolo11Adapter | None = None,
         full_input_size: int = 640,
     ) -> None:
-        self.detector = detector
         self.decision_engine = decision_engine
-        self.yolo_adapter = yolo_adapter
         self.shadow_adapter = shadow_adapter
-        self.full_input_size = full_input_size
+        self.primary_detectors = PrimaryDetectorSet(
+            detector,
+            supplementary=yolo_adapter,
+            full_input_size=full_input_size,
+        )
         self.evaluate_calls = 0
         self.last_shadow: dict[str, Any] | None = None
 
@@ -72,22 +75,15 @@ class VisionPipeline:
                 prepared_frame=prepared,
             )
         else:
-            image = prepared.original
             from app.vision.detectors.base import check_result_from_evidence
 
-            evidence = self.detector.detect(image, input_size=self.full_input_size)
-            nudenet_result = check_result_from_evidence(evidence)
-            extra_evidence = []
-            if self.yolo_adapter is not None:
-                extra_evidence = self.yolo_adapter.detect_evidence(
-                    image,
-                    frame_sequence=int(getattr(captured_frame, "sequence", 0) or 0),
-                )
+            detected = self.primary_detectors.detect(prepared)
+            nudenet_result = check_result_from_evidence(list(detected.primary))
             decided = self.decision_engine.evaluate(
                 nudenet_result,
                 captured_frame,
                 monitor_index=monitor_index,
-                extra_evidence=extra_evidence,
+                extra_evidence=list(detected.supplementary),
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
                 prepared_frame=prepared,

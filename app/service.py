@@ -146,7 +146,7 @@ class LavocadoService:
             full_input_size=self.vision_settings.detector.full_input_size,
         )
         self.vision_session = VisionSession(self.vision_pipeline)
-        context_sensor = getattr(self.decision_engine, "context_classifier", None)
+        context_sensor = self.decision_engine.viddexa_ranker.classifier
         if self.vision_settings.context.model == "off":
             context_status = "disabled"
         elif context_sensor is None:
