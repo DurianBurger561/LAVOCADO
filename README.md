@@ -276,12 +276,15 @@ medical, education, art, or news are metadata; they never force Allow.
 Full Pipeline Benchmark adds application/website fixtures and reports
 FORCE_BLOCK, FULL_BYPASS, or NORMAL plus the Failure Explorer
 (context policy, rules, whether Vision ran, detector evidence, temporal
-state, final action):
+state, final action). Full Product Benchmark runs Context + Vision +
+Temporal: one visual violation is not enough; protection needs 2 of 3
+fresh frames. UNCERTAIN does not count as a temporal hit:
 
 ```bash
 python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
 python scripts/benchmark_pipeline.py --website-action full_bypass --tag medical
 python scripts/benchmark_pipeline.py --website-unknown --vision-classification violation --temporal-confirmed
+python scripts/benchmark_pipeline.py --vision-frames violation,violation,clear --tag medical
 ```
 
 To compare the native capture path with MSS in isolated developer processes:

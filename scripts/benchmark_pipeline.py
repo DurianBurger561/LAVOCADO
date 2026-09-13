@@ -12,7 +12,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.context.models import ContextPolicyAction
-from app.vision.benchmarking import evaluate_full_pipeline, format_failure_explorer
+from app.vision.benchmarking import (
+    evaluate_full_pipeline,
+    evaluate_product_pipeline,
+    format_failure_explorer,
+)
 from app.vision.violation_policy import VisualViolationClassification
 
 
@@ -68,7 +72,12 @@ def main() -> int:
     parser.add_argument(
         "--temporal-confirmed",
         action="store_true",
-        help="Treat confirmed visual violation as 2/N fresh frames.",
+        help="Shortcut: treat temporal as already confirmed (fixture helper).",
+    )
+    parser.add_argument(
+        "--vision-frames",
+        default=None,
+        help="Comma-separated fresh-frame classifications: violation,uncertain,clear.",
     )
     parser.add_argument(
         "--tag",
@@ -82,15 +91,26 @@ def main() -> int:
         if args.vision_classification is None
         else {"classification": args.vision_classification}
     )
-    summary = evaluate_full_pipeline(
-        app_action=args.app_action,
-        website_action=website_action,
-        vision_result=vision_result,
-        temporal_confirmed=args.temporal_confirmed,
-        detections=args.detections,
-        scenario_tag=args.tag,
-    )
-    print("lab=full_pipeline_benchmark")
+    if args.vision_frames is not None:
+        frames = [part.strip() for part in args.vision_frames.split(",") if part.strip()]
+        summary = evaluate_product_pipeline(
+            app_action=args.app_action,
+            website_action=website_action,
+            vision_frames=frames,
+            detections=args.detections,
+            scenario_tag=args.tag,
+        )
+        print("lab=full_product_benchmark")
+    else:
+        summary = evaluate_full_pipeline(
+            app_action=args.app_action,
+            website_action=website_action,
+            vision_result=vision_result,
+            temporal_confirmed=args.temporal_confirmed,
+            detections=args.detections,
+            scenario_tag=args.tag,
+        )
+        print("lab=full_pipeline_benchmark")
     print(
         f"policy={summary['policy']} vision_called={summary['vision_called']} "
         f"classification={summary['classification']} "

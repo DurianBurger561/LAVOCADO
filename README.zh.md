@@ -187,12 +187,14 @@ LAVOCADO 的视觉内容规则(Violation / Clear,标注为 Visual Policy Ground 
 medical、education、art、news 只是场景元数据,不会把 Vision 结果改成 Allow。
 Full Pipeline Benchmark 再加上应用/网站规则夹具,输出 FORCE_BLOCK、FULL_BYPASS
 或 NORMAL,以及 Failure Explorer(上下文策略、规则、是否调用 Vision、检测证据、
-时序状态、最终动作):
+时序状态、最终动作)。Full Product Benchmark 会跑 Context + Vision + Temporal:
+一次视觉违规不够,保护需要 3 个新帧中的 2 次确认。UNCERTAIN 不计为时序命中:
 
 ```bash
 python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
 python scripts/benchmark_pipeline.py --website-action full_bypass --tag medical
 python scripts/benchmark_pipeline.py --website-unknown --vision-classification violation --temporal-confirmed
+python scripts/benchmark_pipeline.py --vision-frames violation,violation,clear --tag medical
 ```
 
 若要在隔离的开发进程中对比原生捕获路径和 MSS:

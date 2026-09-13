@@ -6,6 +6,7 @@ from app.context.models import ContextPolicyAction
 from app.vision.benchmarking import (
     VISION_GROUND_TRUTH_NOTE,
     evaluate_full_pipeline,
+    evaluate_product_pipeline,
     format_failure_explorer,
     score_scenario,
     vision_ground_truth,
@@ -142,6 +143,59 @@ class BenchmarkSplitTests(unittest.TestCase):
                     ),
                     "visual_true_positive",
                 )
+
+    def test_product_benchmark_requires_temporal_confirmation(self) -> None:
+        one = evaluate_product_pipeline(
+            app_action=ContextPolicyAction.NORMAL,
+            website_action=ContextPolicyAction.NORMAL,
+            vision_frames=["violation"],
+            detections=MEDICAL_ANATOMY,
+        )
+        confirmed = evaluate_product_pipeline(
+            app_action=ContextPolicyAction.NORMAL,
+            website_action=ContextPolicyAction.NORMAL,
+            vision_frames=["violation", "violation", "clear"],
+            detections=MEDICAL_ANATOMY,
+            scenario_tag="medical",
+        )
+
+        self.assertTrue(one["vision_called"])
+        self.assertFalse(one["protection"])
+        self.assertEqual(one["reason"], "normal_temporal")
+        self.assertTrue(confirmed["protection"])
+        self.assertEqual(confirmed["explorer"]["temporal_state"], [1, 1, 0])
+        self.assertEqual(confirmed["scenario_score"], "visual_true_positive")
+
+    def test_uncertain_frames_do_not_count_as_temporal_hits(self) -> None:
+        summary = evaluate_product_pipeline(
+            app_action=ContextPolicyAction.NORMAL,
+            website_action=None,
+            vision_frames=["uncertain", "uncertain", "uncertain"],
+        )
+
+        self.assertFalse(summary["protection"])
+        self.assertTrue(summary["focused_verification"])
+        self.assertEqual(summary["explorer"]["temporal_state"], [0, 0, 0])
+
+    def test_product_benchmark_skips_temporal_outside_normal(self) -> None:
+        blocked = evaluate_product_pipeline(
+            app_action=ContextPolicyAction.FORCE_BLOCK,
+            website_action=None,
+            vision_frames=["violation", "violation", "violation"],
+        )
+        bypassed = evaluate_product_pipeline(
+            app_action=ContextPolicyAction.NORMAL,
+            website_action=ContextPolicyAction.FULL_BYPASS,
+            vision_frames=["violation", "violation", "violation"],
+            scenario_tag="medical",
+        )
+
+        self.assertFalse(blocked["vision_called"])
+        self.assertTrue(blocked["protection"])
+        self.assertEqual(blocked["explorer"]["temporal_state"], [])
+        self.assertFalse(bypassed["vision_called"])
+        self.assertFalse(bypassed["protection"])
+        self.assertEqual(bypassed["scenario_score"], "whitelist_correct")
 
 
 if __name__ == "__main__":
