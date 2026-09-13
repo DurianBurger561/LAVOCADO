@@ -204,6 +204,7 @@ class LavocadoService:
                 self.vision_settings.temporal.min_fresh_hits,
                 evidence_threshold=self.vision_settings.temporal.evidence_threshold,
                 decay=self.vision_settings.temporal.decay,
+                confirmation=self.vision_settings.temporal.confirmation,
             )
         )
         self.change_scheduler = change_scheduler or ChangeScheduler(

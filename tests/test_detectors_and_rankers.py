@@ -166,6 +166,14 @@ class SettingsSchemaTests(unittest.TestCase):
             loaded = load_vision_settings(path)
         self.assertEqual(loaded.tiles.checks_per_scan, 2)
         self.assertEqual(load_vision_settings(Path("/missing/dir")).detector.primary, "nudenet_640m")
+        self.assertEqual(
+            sanitize_vision_settings({"temporal": {"confirmation": "nope"}}).temporal.confirmation,
+            "boolean",
+        )
+        self.assertEqual(
+            sanitize_vision_settings({"temporal": {"confirmation": "evidence"}}).temporal.confirmation,
+            "evidence",
+        )
 
 
 class TilePriorityTests(unittest.TestCase):
@@ -253,6 +261,7 @@ class TrackingAndEvidenceTests(unittest.TestCase):
                 evidence_threshold=2.5,
                 window_hits=2,
                 required_window_hits=2,
+                confirmation="both",
             )
         )
         self.assertFalse(
@@ -261,6 +270,7 @@ class TrackingAndEvidenceTests(unittest.TestCase):
                 evidence_score=3.0,
                 min_fresh_hits=2,
                 evidence_threshold=2.5,
+                confirmation="evidence",
             )
         )
         self.assertFalse(
@@ -271,6 +281,18 @@ class TrackingAndEvidenceTests(unittest.TestCase):
                 evidence_threshold=2.5,
                 window_hits=2,
                 required_window_hits=2,
+                confirmation="both",
+            )
+        )
+        self.assertTrue(
+            is_confirmed(
+                fresh_hits=2,
+                evidence_score=0.1,
+                min_fresh_hits=2,
+                evidence_threshold=2.5,
+                window_hits=2,
+                required_window_hits=2,
+                confirmation="boolean",
             )
         )
 

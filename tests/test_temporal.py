@@ -92,6 +92,7 @@ class TemporalVerifierTests(unittest.TestCase):
             required_hits=2,
             evidence_threshold=2.5,
             decay=0.5,
+            confirmation="both",
         )
 
         self.assertFalse(verifier.update(True, frame_sequence=1, evidence_delta=0.6))
@@ -104,6 +105,7 @@ class TemporalVerifierTests(unittest.TestCase):
             window_size=3,
             required_hits=2,
             evidence_threshold=2.5,
+            confirmation="both",
         )
 
         self.assertFalse(
@@ -140,6 +142,33 @@ class TemporalVerifierTests(unittest.TestCase):
         verifier.update(False, frame_sequence=2)
 
         self.assertAlmostEqual(verifier.evidence_score, 1.0)
+
+    def test_boolean_mode_ignores_weak_evidence_score(self) -> None:
+        verifier = TemporalVerifier(
+            window_size=3,
+            required_hits=2,
+            evidence_threshold=2.5,
+            confirmation="boolean",
+        )
+
+        self.assertFalse(verifier.update(False, frame_sequence=1, evidence_delta=0.1))
+        self.assertFalse(verifier.update(True, frame_sequence=2, evidence_delta=0.1))
+        self.assertTrue(verifier.update(True, frame_sequence=3, evidence_delta=0.1))
+
+    def test_evidence_mode_confirms_without_filling_the_boolean_window(self) -> None:
+        verifier = TemporalVerifier(
+            window_size=3,
+            required_hits=2,
+            evidence_threshold=2.5,
+            confirmation="evidence",
+        )
+
+        self.assertFalse(
+            verifier.update(True, frame_sequence=1, evidence_score=1.2)
+        )
+        self.assertTrue(
+            verifier.update(True, frame_sequence=2, evidence_score=2.6)
+        )
 
 
 if __name__ == "__main__":

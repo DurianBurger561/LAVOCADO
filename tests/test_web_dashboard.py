@@ -239,6 +239,7 @@ class WebDashboardTests(unittest.TestCase):
             "model-status-list",
             "vision-proposal-select",
             "vision-adaptive-select",
+            "vision-confirmation-select",
             "vision-fresh-hits-select",
             "vision-threshold-table",
         ):

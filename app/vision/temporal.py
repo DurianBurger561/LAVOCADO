@@ -49,6 +49,7 @@ class TemporalVerifier:
         *,
         evidence_threshold: float = 0.0,
         decay: float = 0.5,
+        confirmation: str = "boolean",
     ) -> None:
         if window_size < 1:
             raise ValueError("window_size must be at least 1")
@@ -59,6 +60,8 @@ class TemporalVerifier:
         self._required_hits = required_hits
         self._evidence_threshold = max(0.0, float(evidence_threshold))
         self._decay = min(0.9, max(0.1, float(decay)))
+        mode = str(confirmation or "boolean").strip().lower()
+        self._confirmation = mode if mode in {"boolean", "evidence", "both"} else "boolean"
         self._history: deque[bool] = deque(maxlen=window_size)
         self._evidence = EvidenceAccumulator(window_size)
         self._evidence_score = 0.0
@@ -178,6 +181,7 @@ class TemporalVerifier:
             window_hits=self.hits,
             required_window_hits=self._required_hits,
             window_full=len(self._history) == self._window_size,
+            confirmation=self._confirmation,
         )
 
 

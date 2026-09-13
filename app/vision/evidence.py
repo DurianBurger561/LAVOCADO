@@ -42,19 +42,24 @@ def is_confirmed(
     window_hits: int | None = None,
     required_window_hits: int | None = None,
     window_full: bool = True,
+    confirmation: str = "boolean",
 ) -> bool:
-    """Keep 2/3 boolean confirmation and require evidence when a threshold is set."""
+    """Boolean 2/3, evidence score, or both. Modes stay selectable."""
 
-    if fresh_hits < min_fresh_hits:
-        return False
+    mode = str(confirmation or "boolean").strip().lower()
+    if mode not in {"boolean", "evidence", "both"}:
+        mode = "boolean"
+    hits_ok = fresh_hits >= min_fresh_hits
     if (
         window_hits is not None
         and required_window_hits is not None
         and window_hits < required_window_hits
     ):
-        return False
-    if not window_full:
-        return False
-    if evidence_threshold <= 0:
-        return True
-    return float(evidence_score) >= float(evidence_threshold)
+        hits_ok = False
+    boolean_ok = hits_ok and window_full
+    evidence_ok = float(evidence_score) >= float(evidence_threshold)
+    if mode == "evidence":
+        return hits_ok and evidence_ok
+    if mode == "both":
+        return boolean_ok and evidence_ok
+    return boolean_ok

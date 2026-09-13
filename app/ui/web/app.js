@@ -728,6 +728,7 @@ function renderVisionSettings(settings) {
   setSelectValue("vision-change-select", scan.change_sensitivity || 0.01);
   setSelectValue("vision-active-monitor-select", scan.active_monitor_priority === false ? "false" : "true");
   const temporalSchema = schema.temporal || settings.temporal || {};
+  setSelectValue("vision-confirmation-select", temporalSchema.confirmation || "boolean");
   setSelectValue("vision-fresh-hits-select", temporalSchema.min_fresh_hits || temporalSchema.required_hits || 2);
   setSelectValue("vision-evidence-select", temporalSchema.evidence_threshold || 2.5);
   setSelectValue("vision-decay-select", temporalSchema.decay || 0.5);
@@ -768,6 +769,7 @@ function visionFormPayload() {
       active_monitor_priority: element("vision-active-monitor-select").value === "true",
     },
     temporal: {
+      confirmation: element("vision-confirmation-select").value,
       min_fresh_hits: Number(element("vision-fresh-hits-select").value),
       evidence_threshold: Number(element("vision-evidence-select").value),
       decay: Number(element("vision-decay-select").value),

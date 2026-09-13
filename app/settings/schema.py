@@ -21,6 +21,7 @@ PROPOSAL_MARGINS = (0.05, 0.10, 0.15, 0.20)
 CHANGE_SENSITIVITIES = (0.005, 0.01, 0.02, 0.05)
 EVIDENCE_DECAYS = (0.3, 0.5, 0.7)
 EVIDENCE_THRESHOLDS = (1.5, 2.0, 2.5, 3.0, 3.5)
+CONFIRMATION_MODES = ("boolean", "evidence", "both")
 THRESHOLD_STEPS = (0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75)
 
 YOLO_LABEL_DEFAULTS: dict[str, tuple[float, float]] = {
@@ -117,6 +118,7 @@ class TemporalSettings:
     window_size: int = 3
     evidence_threshold: float = 2.5
     decay: float = 0.5
+    confirmation: str = "boolean"
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,6 +386,11 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
             decay=_closest(
                 _clamp_float(temporal_raw.get("decay"), 0.1, 0.9, base.temporal.decay),
                 EVIDENCE_DECAYS,
+            ),
+            confirmation=_choice(
+                temporal_raw.get("confirmation", base.temporal.confirmation),
+                CONFIRMATION_MODES,
+                base.temporal.confirmation,
             ),
         ),
         shadow=ShadowSettings(

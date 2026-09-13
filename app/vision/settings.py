@@ -70,6 +70,7 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
             "required_hits": int(current.temporal.min_fresh_hits),
             "evidence_threshold": float(current.temporal.evidence_threshold),
             "decay": float(current.temporal.decay),
+            "confirmation": current.temporal.confirmation,
         },
         "scan": {
             "normal_interval_ms": int(current.scan.normal_interval_ms),
