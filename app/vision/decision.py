@@ -101,7 +101,14 @@ class DecisionEngine:
             payload.extend(evidence_to_dict(item) for item in extra)
             result["evidence"] = payload
         if bool(result.get("blocked")):
-            return self._strong_primary_result(result, captured_frame)
+            return self._confirm_primary_candidate(
+                result,
+                captured_frame,
+                None,
+                confirmed_source="nudenet_roi",
+                candidate_source="anatomy_candidate",
+                fallback=self._strong_primary_result(result, captured_frame),
+            )
 
         evidence = self._collect_evidence(result, extra_evidence, frame_sequence)
         strong = [
@@ -112,15 +119,23 @@ class DecisionEngine:
         ]
         if strong:
             chosen = strongest_evidence(strong)
-            if (
+            sexual_act = (
                 chosen is not None
                 and chosen.evidence_type is ViolationEvidenceType.SEXUAL_ACT
-            ):
-                return self._evaluate_sexual_act(
+            )
+            return self._confirm_primary_candidate(
+                result,
+                captured_frame,
+                chosen,
+                confirmed_source=(
+                    "yolo_sexual_act_roi" if sexual_act else "anatomy_roi"
+                ),
+                candidate_source=(
+                    "sexual_act_candidate" if sexual_act else "anatomy_candidate"
+                ),
+                fallback=self._violation_from_evidence(
                     result, captured_frame, chosen
-                )
-            return self._violation_from_evidence(
-                result, captured_frame, chosen
+                ),
             )
 
         borderline = self._strongest_borderline_evidence(evidence)
@@ -170,40 +185,51 @@ class DecisionEngine:
         extra = list(extra_evidence or [])
         return nudenet_evidence + extra
 
-    def _evaluate_sexual_act(
+    def _confirm_primary_candidate(
         self,
         result: dict[str, Any],
         captured_frame: CapturedFrame,
-        evidence: ViolationEvidence,
+        evidence: ViolationEvidence | None,
+        *,
+        confirmed_source: str,
+        candidate_source: str,
+        fallback: dict[str, Any],
     ) -> dict[str, Any]:
-        """Confirm a sexual-act candidate on an original-resolution ROI.
+        """Confirm primary visual evidence on an original-resolution ROI.
 
         Temporal confirmation still happens on a later fresh frame. Viddexa is
         not consulted: this is visual evidence, not viewing purpose.
         """
 
-        decided = self._violation_from_evidence(result, captured_frame, evidence)
-        if self.local_detector is None or evidence.bbox is None:
-            return decided
+        if evidence is not None:
+            label = evidence.label
+            score = evidence.confidence
+            box: object = evidence.bbox
+        else:
+            label = result.get("label")
+            score = float(result.get("confidence", 0.0) or 0.0)
+            box = result.get("box")
+        if self.local_detector is None or not isinstance(box, (list, tuple)):
+            return fallback
         detection = {
-            "class": evidence.label,
-            "score": evidence.confidence,
-            "box": list(evidence.bbox),
-            "threshold": threshold_for_label(evidence.label),
+            "class": str(label),
+            "score": score,
+            "box": list(box),
+            "threshold": threshold_for_label(str(label)),
         }
         roi = self._evaluate_borderline(result, captured_frame, detection)
         if bool(roi.get("blocked")):
-            roi["source"] = "yolo_sexual_act_roi"
+            roi["source"] = confirmed_source
             roi["reason"] = (
-                f"{evidence.label} original-resolution ROI recheck "
-                f"after sexual-act score {evidence.confidence:.2f}"
+                f"{label} original-resolution ROI recheck "
+                f"after score {score:.2f}"
             )
             return roi
         if roi.get("local_check_points") is None:
-            return decided
-        roi["source"] = "sexual_act_candidate"
-        roi["label"] = evidence.label
-        roi["confidence"] = evidence.confidence
+            return fallback
+        roi["source"] = candidate_source
+        roi["label"] = label
+        roi["confidence"] = score
         return roi
 
     def _evaluate_borderline(

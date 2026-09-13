@@ -231,6 +231,31 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertEqual(result["region"], (300, 150, 900, 450))
         self.assertEqual(context.received_shapes, [])
 
+    def test_strong_anatomy_roi_recheck_confirms_violation(self) -> None:
+        local_detector = FakeLocalDetector([True])
+
+        result = DecisionEngine(None, local_detector).evaluate(
+            result_with_detection(0.80),
+            captured_frame(),
+        )
+
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["classification"], "violation")
+        self.assertEqual(result["source"], "nudenet_roi")
+        self.assertEqual(local_detector.received_means, [0])
+
+    def test_strong_anatomy_without_roi_confirmation_stays_uncertain(self) -> None:
+        local_detector = FakeLocalDetector([False])
+
+        result = DecisionEngine(None, local_detector).evaluate(
+            result_with_detection(0.80),
+            captured_frame(),
+        )
+
+        self.assertFalse(result["blocked"])
+        self.assertEqual(result["classification"], "uncertain")
+        self.assertEqual(result["source"], "anatomy_candidate")
+
     def test_borderline_roi_recheck_confirms_violation(self) -> None:
         local_detector = FakeLocalDetector([True])
 

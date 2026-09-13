@@ -334,6 +334,7 @@ class LavocadoService:
                 is_violation,
                 frame_sequence=getattr(captured_frame, "sequence", None),
                 region=result.get("region"),
+                evidence_type=_visual_evidence_type(result),
             )
             rescue_status = self._decision_rescue_status(monitor_index)
             self.diagnostics.record_scan(
@@ -556,3 +557,19 @@ class LavocadoService:
             future.result()
         except Exception:
             LOGGER.exception("Could not finish recording protection event")
+
+
+def _visual_evidence_type(result: dict[str, object]) -> str | None:
+    """Return a visual-violation type only; never a viewing-purpose label."""
+
+    payload = result.get("evidence")
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict) and item.get("evidence_type"):
+                return str(item["evidence_type"])
+    source = result.get("source")
+    if source in {"yolo_sexual_act", "yolo_sexual_act_roi", "sexual_act_candidate"}:
+        return "sexual_act"
+    if source in {"anatomy_roi", "anatomy_candidate", "nudenet_roi", "nudenet_full"}:
+        return "explicit_anatomy"
+    return None

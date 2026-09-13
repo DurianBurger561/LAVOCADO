@@ -254,8 +254,10 @@ class DiagnosticsStore:
             status = "none"
         elif source == "nudenet_borderline":
             status = "borderline"
-        elif source == "nudenet_roi":
+        elif source in {"nudenet_roi", "anatomy_roi"}:
             status = "roi_confirmed"
+        elif source == "anatomy_candidate":
+            status = "borderline"
         elif source == "nudenet_borderline_context":
             status = "context_confirmed"
         elif source == "rescue_tile":

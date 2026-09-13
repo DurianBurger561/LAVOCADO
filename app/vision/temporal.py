@@ -30,6 +30,7 @@ class TemporalVerifier:
         self._window_size = window_size
         self._required_hits = required_hits
         self._history: deque[bool] = deque(maxlen=window_size)
+        self._evidence: deque[str | None] = deque(maxlen=window_size)
         self._last_frame_sequence: int | None = None
         self._active_region: object | None = None
 
@@ -45,12 +46,19 @@ class TemporalVerifier:
 
         return tuple(self._history)
 
+    @property
+    def evidence_history(self) -> tuple[str | None, ...]:
+        """Return visual-violation evidence types, never pixels or purpose."""
+
+        return tuple(self._evidence)
+
     def update(
         self,
         is_candidate: bool,
         *,
         frame_sequence: int | None = None,
         region: object | None = None,
+        evidence_type: str | None = None,
     ) -> bool:
         """Record one fresh-frame decision and report whether it is confirmed.
 
@@ -71,18 +79,21 @@ class TemporalVerifier:
         if is_candidate and region is not None and self._active_region is not None:
             if not _regions_overlap(region, self._active_region):
                 self._history.clear()
+                self._evidence.clear()
         if is_candidate and region is not None:
             self._active_region = region
         elif not is_candidate:
             self._active_region = None
 
         self._history.append(bool(is_candidate))
+        self._evidence.append(evidence_type if is_candidate else None)
         return self._is_confirmed()
 
     def reset(self) -> None:
         """Forget all previous frame decisions."""
 
         self._history.clear()
+        self._evidence.clear()
         self._last_frame_sequence = None
         self._active_region = None
 
