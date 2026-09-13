@@ -9,6 +9,7 @@ from app.context.settings import RuleSettingsStore
 from app.intervention.recorder import EventRecorder
 from app.platforms import PlatformAdapter
 from app.ui.api import DashboardAPI
+from app.ui.app_picker import ForegroundAppPicker
 from app.ui.controller import ProtectionController
 from app.vision.model_assets import resource_root
 
@@ -30,6 +31,7 @@ def run_web_dashboard(
     controller=None,
     recorder=None,
     rule_store=None,
+    app_picker=None,
     root: Path | None = None,
 ) -> None:
     """Open the local web dashboard on the GUI main thread."""
@@ -51,7 +53,10 @@ def run_web_dashboard(
         platform_adapter.default_data_dir() / "events.db",
         legacy_blocked_apps=config.BLOCKED_APPS,
     )
-    api = DashboardAPI(controller, recorder, controller, rule_store)
+    app_picker = app_picker or ForegroundAppPicker(
+        platform_adapter.get_foreground_application
+    )
+    api = DashboardAPI(controller, recorder, controller, rule_store, app_picker)
     closed = False
 
     def close_resources() -> None:
@@ -62,7 +67,10 @@ def run_web_dashboard(
         try:
             controller.close()
         finally:
-            recorder.close()
+            try:
+                app_picker.close()
+            finally:
+                recorder.close()
 
     window = webview_module.create_window(
         "LAVOCADO",

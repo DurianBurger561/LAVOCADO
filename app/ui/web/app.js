@@ -4,6 +4,7 @@ const ui = {
   inFlight: new Set(),
   timers: [],
   canEditRules: false,
+  appPickTimer: null,
 };
 
 const element = (id) => document.getElementById(id);
@@ -418,6 +419,48 @@ async function removeRule(group, rule) {
   }
 }
 
+async function beginAppPick(form) {
+  if (!ui.canEditRules || ui.appPickTimer !== null || ui.inFlight.has("app-pick-start")) return;
+  ui.inFlight.add("app-pick-start");
+  try {
+    const response = assertResponse(await invoke("begin_app_pick"));
+    if (response.status !== "pending") {
+      showRuleMessage("Application selection is unavailable. Enter its identifier manually.", true);
+      return;
+    }
+    showRuleMessage(`Switch to the target application within ${response.delay_seconds} seconds, then return here.`);
+    const started = Date.now();
+    ui.appPickTimer = window.setInterval(async () => {
+      if (ui.inFlight.has("app-pick-result")) return;
+      ui.inFlight.add("app-pick-result");
+      try {
+        const result = assertResponse(await invoke("get_app_pick_result"));
+        if (result.status === "pending" && Date.now() - started < 15000) return;
+        window.clearInterval(ui.appPickTimer);
+        ui.appPickTimer = null;
+        if (result.status === "ready" && result.identifier) {
+          const input = form.elements.namedItem("value");
+          input.value = result.identifier;
+          input.focus();
+          showRuleMessage("Application selected. Review its identifier, then add the rule.");
+        } else {
+          showRuleMessage("No stable application identifier was found. You can enter one manually.", true);
+        }
+      } catch (error) {
+        window.clearInterval(ui.appPickTimer);
+        ui.appPickTimer = null;
+        showRuleMessage(error instanceof Error ? error.message : "Application selection failed.", true);
+      } finally {
+        ui.inFlight.delete("app-pick-result");
+      }
+    }, 500);
+  } catch (error) {
+    showRuleMessage(error instanceof Error ? error.message : "Application selection failed.", true);
+  } finally {
+    ui.inFlight.delete("app-pick-start");
+  }
+}
+
 async function initializeDashboard() {
   element("start-button").addEventListener("click", () => runAction("start_protection"));
   element("stop-button").addEventListener("click", () => runAction("stop_protection"));
@@ -428,6 +471,8 @@ async function initializeDashboard() {
       event.preventDefault();
       addRule(form);
     });
+    const picker = form.querySelector(".pick-app");
+    if (picker) picker.addEventListener("click", () => beginAppPick(form));
   });
 
   await Promise.all([refreshStatus(), refreshDiagnostics(), refreshEvents(), refreshRules()]);
@@ -440,6 +485,7 @@ async function initializeDashboard() {
 window.addEventListener("pywebviewready", initializeDashboard, { once: true });
 window.addEventListener("beforeunload", () => {
   ui.timers.forEach((timer) => window.clearInterval(timer));
+  if (ui.appPickTimer !== null) window.clearInterval(ui.appPickTimer);
 });
 
 renderTemporal([]);

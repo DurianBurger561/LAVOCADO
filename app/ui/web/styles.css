@@ -391,6 +391,7 @@ main {
 
 .rule-entry {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
 }
 

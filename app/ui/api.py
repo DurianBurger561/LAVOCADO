@@ -13,11 +13,14 @@ from app.ui.rules import RuleConflict, RuleEditor
 class DashboardAPI:
     """Expose only control and privacy-safe read operations to JavaScript."""
 
-    def __init__(self, controller, recorder, diagnostics=None, rule_store=None) -> None:
+    def __init__(
+        self, controller, recorder, diagnostics=None, rule_store=None, app_picker=None
+    ) -> None:
         self.controller = controller
         self.recorder = recorder
         self.diagnostics = controller if diagnostics is None else diagnostics
         self.rule_editor = None if rule_store is None else RuleEditor(rule_store)
+        self.app_picker = app_picker
         self._rule_lock = RLock()
 
     def start_protection(self) -> dict[str, Any]:
@@ -136,6 +139,25 @@ class DashboardAPI:
             return {"ok": False, "message": "Invalid rule value or match mode."}
         except Exception as error:  # noqa: BLE001 - JSON API boundary
             return self._error_result("Could not remove protection rule", error)
+
+    def begin_app_pick(self) -> dict[str, Any]:
+        try:
+            with self._rule_lock:
+                if not self._can_edit_rules():
+                    return self._rules_running_result()
+                if self.app_picker is None:
+                    raise RuntimeError("Application selection is unavailable")
+                return {"ok": True, **self.app_picker.begin()}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not select an application", error)
+
+    def get_app_pick_result(self) -> dict[str, Any]:
+        try:
+            if self.app_picker is None:
+                raise RuntimeError("Application selection is unavailable")
+            return {"ok": True, **self.app_picker.result()}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not read application selection", error)
 
     def _require_rule_editor(self) -> RuleEditor:
         if self.rule_editor is None:

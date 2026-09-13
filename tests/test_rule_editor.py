@@ -86,6 +86,20 @@ class RuleEditorAPITests(unittest.TestCase):
         self.assertNotIn("private-secret", result["message"])
         self.assertFalse(self.api.add_rule("unknown", "chrome.exe")["ok"])
 
+    def test_application_pick_is_denied_while_running(self) -> None:
+        class Picker:
+            def begin(self):
+                return {"status": "pending", "identifier": None, "delay_seconds": 4}
+
+            def result(self):
+                return {"status": "ready", "identifier": "steam.exe"}
+
+        self.api.app_picker = Picker()
+        self.assertEqual(self.api.begin_app_pick()["status"], "pending")
+        self.assertEqual(self.api.get_app_pick_result()["identifier"], "steam.exe")
+        self.controller.status = ProtectionStatus.RUNNING
+        self.assertFalse(self.api.begin_app_pick()["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

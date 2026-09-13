@@ -142,6 +142,9 @@ class WebDashboardTests(unittest.TestCase):
         self.assertIn('id="rule-confirmation"', html)
         self.assertIn("Visual protection will be completely disabled", script)
         self.assertIn("You are responsible for content", script)
+        self.assertEqual(html.count('class="button ghost pick-app"'), 2)
+        self.assertIn('"begin_app_pick"', script)
+        self.assertIn('"get_app_pick_result"', script)
 
     def test_dashboard_renders_capture_backend_diagnostics(self) -> None:
         html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
