@@ -85,11 +85,13 @@ def load_yolo11_nsfw_detector(
     model_factory: Callable[[], YoloDetectionModel] | None = None,
     environ: Mapping[str, str] | None = None,
     default_input_size: int = 640,
+    data_dir: object | None = None,
 ) -> Yolo11NsfwDetector | None:
     adapter = load_yolo_adapter(
         enabled=enabled,
         model_factory=model_factory,
         environ=environ,
+        data_dir=data_dir,  # type: ignore[arg-type]
     )
     if adapter is None:
         return None

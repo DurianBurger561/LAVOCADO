@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
-import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -14,99 +12,71 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.vision.model_assets import (
-    NUDENET_640M_DOWNLOAD_URL,
     NUDENET_640M_FILENAME,
-    NUDENET_640M_SHA256,
     NUDENET_640M_SIZE,
     is_expected_nudenet_model,
 )
+from app.vision.model_lifecycle import (
+    build_nudenet_request,
+    download_nudenet,
+)
+from app.vision.model_lifecycle import download_model as download_catalog_model
 
 DEFAULT_DESTINATION = PROJECT_ROOT / "models" / NUDENET_640M_FILENAME
 
 
 def build_download_request(
     environ: Mapping[str, str] | None = None,
-) -> urllib.request.Request:
+):
     """Build the GitHub asset request with optional Actions authentication."""
 
-    environment = os.environ if environ is None else environ
-    headers = {
-        "Accept": "application/octet-stream",
-        "User-Agent": "LAVOCADO-model-downloader",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    token = environment.get("GITHUB_TOKEN", "").strip()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    return urllib.request.Request(
-        NUDENET_640M_DOWNLOAD_URL,
-        headers=headers,
-    )
+    return build_nudenet_request(environ)
 
 
 def download_model(destination: Path, *, force: bool = False) -> Path:
     """Download the pinned NudeNet model atomically and verify its digest."""
 
     destination = destination.expanduser().resolve()
-    if destination.exists() and not force:
-        if is_expected_nudenet_model(destination):
-            print(f"NudeNet 640m is already verified: {destination}")
-            return destination
-        raise RuntimeError(
-            f"Existing model does not match the pinned asset: {destination}. "
-            "Pass --force to replace it."
-        )
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = destination.with_suffix(destination.suffix + ".part")
-    request = build_download_request()
-
+    if destination.exists() and not force and is_expected_nudenet_model(destination):
+        print(f"NudeNet 640m is already verified: {destination}")
+        return destination
     print(
         f"Downloading NudeNet 640m ({NUDENET_640M_SIZE / 1024 / 1024:.1f} MiB)..."
     )
-    try:
-        with (
-            urllib.request.urlopen(request, timeout=120) as response,
-            temporary_path.open("wb") as model_file,
-        ):
-            while chunk := response.read(1024 * 1024):
-                model_file.write(chunk)
-
-        if not is_expected_nudenet_model(temporary_path):
-            actual_size = temporary_path.stat().st_size
-            raise RuntimeError(
-                "Downloaded NudeNet model failed verification: "
-                f"expected {NUDENET_640M_SIZE} bytes and SHA-256 "
-                f"{NUDENET_640M_SHA256}, received {actual_size} bytes."
-            )
-        os.replace(temporary_path, destination)
-    except Exception:
-        temporary_path.unlink(missing_ok=True)
-        raise
-
+    path = download_nudenet(destination, force=force)
     print(f"Verified NudeNet 640m: {destination}")
-    return destination
+    return path
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--model",
+        choices=("nudenet_640m", "viddexa_nano", "viddexa_mini"),
+        default="nudenet_640m",
+        help="catalog model to download (default: nudenet_640m)",
+    )
+    parser.add_argument(
         "--destination",
         type=Path,
         default=DEFAULT_DESTINATION,
-        help="model output path (default: models/640m.onnx)",
+        help="NudeNet output path (default: models/640m.onnx)",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="replace an existing unverified model",
+        help="replace an existing unverified NudeNet model",
     )
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    download_model(args.destination, force=args.force)
+    if args.model == "nudenet_640m":
+        download_model(args.destination, force=args.force)
+        return 0
+    download_catalog_model(args.model, root=PROJECT_ROOT, force=args.force)
+    print(f"Verified {args.model}")
     return 0
 
 

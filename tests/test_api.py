@@ -99,6 +99,24 @@ class DashboardAPITests(unittest.TestCase):
         self.assertEqual(payloads[1]["events"][0]["label"], "TEST_LABEL")
         self.assertEqual(payloads[2]["diagnostics"]["temporal"], [0, 1, 1])
 
+    def test_model_status_excludes_filesystem_paths(self) -> None:
+        payload = self.api.get_model_status()
+
+        json.dumps(payload)
+        self.assertTrue(payload["ok"])
+        serialized = json.dumps(payload).casefold()
+        for forbidden in ("/home/", "c:\\", "640m.onnx", "screenshot"):
+            self.assertNotIn(forbidden, serialized)
+        ids = {row["id"] for row in payload["models"]}
+        self.assertIn("nudenet_640m", ids)
+        self.assertIn("viddexa_mini", ids)
+
+    def test_unknown_model_download_is_rejected(self) -> None:
+        result = self.api.download_optional_model("not-a-model")
+
+        self.assertFalse(result["ok"])
+        self.assertIn("Unknown", result["message"])
+
     def test_vision_settings_exclude_intent_modes(self) -> None:
         payload = self.api.get_vision_settings()
 

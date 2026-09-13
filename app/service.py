@@ -33,6 +33,7 @@ from app.vision.decision import DecisionEngine
 from app.vision.detector import Detector
 from app.vision.detectors.factory import PRIMARY_YOLO, load_primary_bundle
 from app.vision.diagnostics import DiagnosticsStore
+from app.vision.model_lifecycle import compact_model_status, inspect_models
 from app.vision.overlay import Overlay
 from app.vision.pipeline import VisionPipeline
 from app.vision.runtime import VisionSession, allows_vision
@@ -93,11 +94,12 @@ class LavocadoService:
             bundle = load_primary_bundle(
                 requested_primary,
                 full_input_size=self.vision_settings.detector.full_input_size,
+                data_dir=data_dir,
             )
             self.detector = bundle.checker
             yolo_status = bundle.yolo_status
             if self.vision_settings.shadow.enabled:
-                shadow_adapter = load_yolo_adapter(enabled=True)
+                shadow_adapter = load_yolo_adapter(enabled=True, data_dir=data_dir)
         else:
             self.detector = detector if detector is not None else Detector()
         self.capturer = (
@@ -132,6 +134,7 @@ class LavocadoService:
                 tile_overlap=self.vision_settings.tiles.overlap,
                 max_tile_skip=self.vision_settings.tiles.max_skip,
                 checks_per_scan=self.vision_settings.tiles.checks_per_scan,
+                borderline_margin=self.vision_settings.recheck.proposal_margin,
             )
         self.vision_pipeline = VisionPipeline(
             self.detector,
@@ -168,6 +171,9 @@ class LavocadoService:
                 getattr(self.detector, "name", None)
                 or getattr(self.detector, "model_variant", "nudenet_640m")
             ),
+            models=compact_model_status(
+                inspect_models(data_dir=data_dir)
+            ),
         )
         self.overlay = (
             overlay if overlay is not None else Overlay(platform_adapter)
@@ -189,11 +195,14 @@ class LavocadoService:
             verifier_factory
             if verifier_factory is not None
             else lambda: TemporalVerifier(
-                config.CONFIRMATION_WINDOW_SIZE,
-                config.CONFIRMATION_REQUIRED_HITS,
+                self.vision_settings.temporal.window_size,
+                self.vision_settings.temporal.min_fresh_hits,
             )
         )
-        self.change_scheduler = change_scheduler or ChangeScheduler()
+        self.change_scheduler = change_scheduler or ChangeScheduler(
+            change_ratio_threshold=self.vision_settings.scan.change_sensitivity,
+            adaptive=self.vision_settings.scan.adaptive,
+        )
         self.context_store = context_store or ForegroundContextStore()
         self.context_policy = context_policy or ContextPolicyService()
         self.context_worker = (

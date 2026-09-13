@@ -302,7 +302,11 @@ class DecisionEngine:
             label = result.get("label")
             score = float(result.get("confidence", 0.0) or 0.0)
             box = result.get("box")
-        if self.local_detector is None or not isinstance(box, (list, tuple)):
+        if (
+            not self.settings.recheck.enabled
+            or self.local_detector is None
+            or not isinstance(box, (list, tuple))
+        ):
             return fallback
         detection = {
             "class": str(label),
@@ -348,7 +352,8 @@ class DecisionEngine:
         original = getattr(captured_frame, "original_frame", None)
         model = getattr(captured_frame, "model_frame", None)
         if (
-            self.local_detector is None
+            not self.settings.recheck.enabled
+            or self.local_detector is None
             or not isinstance(box, (list, tuple))
             or not isinstance(original, np.ndarray)
             or not hasattr(model, "shape")

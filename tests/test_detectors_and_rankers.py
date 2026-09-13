@@ -127,6 +127,17 @@ class SettingsSchemaTests(unittest.TestCase):
         self.assertEqual(settings.tiles.overlap, 0.25)
         self.assertEqual(settings.tiles.checks_per_scan, 2)
         self.assertEqual(settings.recheck.crop_expansion, 2.5)
+        settings = sanitize_vision_settings(
+            {
+                "recheck": {"proposal_margin": 0.99},
+                "temporal": {"decay": 0.01, "evidence_threshold": 9},
+                "scan": {"change_sensitivity": 0.9},
+            }
+        )
+        self.assertEqual(settings.recheck.proposal_margin, 0.20)
+        self.assertEqual(settings.temporal.decay, 0.3)
+        self.assertEqual(settings.temporal.evidence_threshold, 3.5)
+        self.assertEqual(settings.scan.change_sensitivity, 0.05)
 
     def test_nudenet_locks_input_size_to_640(self) -> None:
         settings = sanitize_vision_settings(

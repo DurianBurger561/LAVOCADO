@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
@@ -207,6 +208,7 @@ def load_yolo_adapter(
     enabled: bool | None = None,
     model_factory: Callable[[], YoloDetectionModel] | None = None,
     environ: Mapping[str, str] | None = None,
+    data_dir: str | Path | None = None,
 ) -> Yolo11Adapter | None:
     """Load an optional local YOLO model. Missing deps never crash protection."""
 
@@ -216,7 +218,10 @@ def load_yolo_adapter(
         return None
     factory = model_factory
     if factory is None:
-        model_path = resolve_yolo_model_path(environ=environ)
+        model_path = resolve_yolo_model_path(
+            environ=environ,
+            data_dir=None if data_dir is None else Path(data_dir),
+        )
         if model_path is None:
             LOGGER.info("YOLO11 weights are unavailable; continuing NudeNet-only")
             return None

@@ -228,6 +228,24 @@ class WebDashboardTests(unittest.TestCase):
         self.assertIn("decision-classification", script)
         self.assertIn('id="diag-yolo"', html)
         self.assertIn('"diag-yolo"', script)
+        for field in (
+            "scan-mode",
+            "scan-total-ms",
+            "scan-interval-ms",
+            "scan-full",
+            "scan-tiles",
+            "scan-track",
+            "scan-shadow",
+            "model-status-list",
+            "vision-proposal-select",
+            "vision-adaptive-select",
+            "vision-fresh-hits-select",
+        ):
+            with self.subTest(extra=field):
+                self.assertIn(f'id="{field}"', html)
+                self.assertIn(f'"{field}"', script)
+        self.assertIn('"get_model_status"', script)
+        self.assertIn('"download_optional_model"', script)
 
     def test_dashboard_names_native_and_mss_capture_modes(self) -> None:
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")

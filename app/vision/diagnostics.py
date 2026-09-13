@@ -55,6 +55,7 @@ class DiagnosticsStore:
         context_status: str,
         yolo_status: str = "disabled",
         primary_detector: str | None = None,
+        models: dict[str, str] | None = None,
     ) -> None:
         self._lock = Lock()
         primary = primary_detector or model_variant
@@ -67,6 +68,7 @@ class DiagnosticsStore:
             "context_model": context_model,
             "context_status": context_status,
             "yolo_status": yolo_status,
+            "models": dict(models or {}),
             "foreground_context": {
                 "application_available": False,
                 "is_browser": None,

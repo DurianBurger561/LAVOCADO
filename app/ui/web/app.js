@@ -227,12 +227,132 @@ function renderDiagnostics(data) {
       : "Visual violation only; tile rank cannot block",
   );
   renderTemporal(data.temporal);
+  renderScanPlan(data);
 
   const rescue = data.rescue || {};
   const tile = rescue.tile_index === null || rescue.tile_index === undefined ? "—" : Number(rescue.tile_index) + 1;
   text("rescue-tile", tile);
   text("rescue-pin", String(rescue.pinned_checks_remaining || 0));
   renderFailureExplorer(data);
+}
+
+function renderScanPlan(data) {
+  const scan = data.scan || {};
+  const mode = scan.mode || "monitoring";
+  text("scan-mode", humanize(mode, "Monitoring"));
+  element("scan-mode").className = `signal-tag ${mode === "focused" ? "capture-healthy" : "neutral"}`;
+  text(
+    "scan-total-ms",
+    scan.total_ms === null || scan.total_ms === undefined ? "—" : `${formatNumber(scan.total_ms, 0)} ms`,
+  );
+  text(
+    "scan-interval-ms",
+    scan.target_interval_ms === null || scan.target_interval_ms === undefined
+      ? "—"
+      : `${formatNumber(scan.target_interval_ms, 0)} ms`,
+  );
+  const full = data.full || data.nudenet || {};
+  text(
+    "scan-full",
+    full.label
+      ? `${humanize(full.status, "None")} · ${humanize(full.label)} ${formatNumber(full.confidence || full.score)}`
+      : humanize(full.status, "None"),
+  );
+  const ranking = ((data.tiles || {}).ranking) || [];
+  text(
+    "scan-tiles",
+    ranking.length
+      ? ranking.slice(0, 4).map((item) => `#${Number(item.index) + 1} ${formatNumber(item.priority)}`).join(" · ")
+      : "—",
+  );
+  const track = data.track || {};
+  text(
+    "scan-track",
+    track.active
+      ? `${humanize(track.source, "Track")} · ${track.fresh_hits || 0} hits · ${formatNumber(track.evidence)}`
+      : "Inactive",
+  );
+  const shadow = data.shadow || {};
+  text(
+    "scan-shadow",
+    shadow.agreement
+      ? `${humanize(shadow.agreement)} · ${formatNumber(shadow.latency_ms, 0)} ms`
+      : "Off",
+  );
+}
+
+function modelStatusLabel(status) {
+  const labels = {
+    available: "Available",
+    missing: "Not downloaded",
+    invalid: "Failed verification",
+    downloading: "Downloading",
+    failed: "Download failed",
+    fallback: "Using fallback",
+  };
+  return labels[status] || humanize(status, "Unknown");
+}
+
+function renderModelStatus(models) {
+  const list = element("model-status-list");
+  if (!list) return;
+  list.replaceChildren();
+  (Array.isArray(models) ? models : []).forEach((model) => {
+    const item = document.createElement("li");
+    const textWrap = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = model.label || model.id;
+    const detail = document.createElement("span");
+    detail.className = "muted";
+    const revision = model.revision ? ` · ${String(model.revision).slice(0, 12)}` : "";
+    detail.textContent = `${modelStatusLabel(model.status)}${revision}`;
+    if (model.fallback) {
+      detail.textContent += ` · fallback ${model.fallback}`;
+    }
+    if (model.error) {
+      detail.textContent += ` · ${model.error}`;
+    }
+    textWrap.append(title, document.createElement("br"), detail);
+    item.append(textWrap);
+    if (model.downloadable && model.status !== "available" && model.status !== "downloading") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button ghost";
+      button.textContent = "Download";
+      button.dataset.modelId = model.id;
+      button.addEventListener("click", () => downloadOptionalModel(model.id));
+      item.append(button);
+    }
+    list.append(item);
+  });
+}
+
+async function refreshModelStatus() {
+  if (ui.inFlight.has("model-status")) return;
+  ui.inFlight.add("model-status");
+  try {
+    const payload = assertResponse(await invoke("get_model_status"));
+    renderModelStatus(payload.models || []);
+  } catch (_error) {
+    renderModelStatus([]);
+  } finally {
+    ui.inFlight.delete("model-status");
+  }
+}
+
+async function downloadOptionalModel(modelId) {
+  if (ui.inFlight.has("model-download")) return;
+  ui.inFlight.add("model-download");
+  try {
+    const result = assertResponse(await invoke("download_optional_model", modelId));
+    showVisionMessage(result.message || "Download started.");
+    renderModelStatus([result.model].filter(Boolean));
+    await refreshModelStatus();
+  } catch (error) {
+    showVisionMessage(error instanceof Error ? error.message : "Download failed.", true);
+  } finally {
+    ui.inFlight.delete("model-download");
+  }
 }
 
 function renderFailureExplorer(data) {
@@ -584,6 +704,15 @@ function renderVisionSettings(settings) {
   setSelectValue("vision-max-skip-select", tiles.max_skip || 3);
   setSelectValue("vision-crop-select", recheck.crop_expansion || 1.75);
   setSelectValue("vision-shadow-select", shadow.enabled ? "true" : "false");
+  setSelectValue("vision-recheck-select", recheck.enabled === false ? "false" : "true");
+  setSelectValue("vision-proposal-select", recheck.proposal_margin || 0.10);
+  setSelectValue("vision-adaptive-select", scan.adaptive === false ? "false" : "true");
+  setSelectValue("vision-change-select", scan.change_sensitivity || 0.01);
+  setSelectValue("vision-active-monitor-select", scan.active_monitor_priority === false ? "false" : "true");
+  const temporalSchema = schema.temporal || settings.temporal || {};
+  setSelectValue("vision-fresh-hits-select", temporalSchema.min_fresh_hits || temporalSchema.required_hits || 2);
+  setSelectValue("vision-evidence-select", temporalSchema.evidence_threshold || 2.5);
+  setSelectValue("vision-decay-select", temporalSchema.decay || 0.5);
 }
 
 function visionFormPayload() {
@@ -607,10 +736,22 @@ function visionFormPayload() {
       checks_per_scan: Number(element("vision-checks-select").value),
       max_skip: Number(element("vision-max-skip-select").value),
     },
-    recheck: { crop_expansion: Number(element("vision-crop-select").value) },
+    recheck: {
+      enabled: element("vision-recheck-select").value === "true",
+      crop_expansion: Number(element("vision-crop-select").value),
+      proposal_margin: Number(element("vision-proposal-select").value),
+    },
     scan: {
       normal_interval_ms: normalMs,
       candidate_interval_ms: candidateMs,
+      adaptive: element("vision-adaptive-select").value === "true",
+      change_sensitivity: Number(element("vision-change-select").value),
+      active_monitor_priority: element("vision-active-monitor-select").value === "true",
+    },
+    temporal: {
+      min_fresh_hits: Number(element("vision-fresh-hits-select").value),
+      evidence_threshold: Number(element("vision-evidence-select").value),
+      decay: Number(element("vision-decay-select").value),
     },
     shadow: { enabled: element("vision-shadow-select").value === "true" },
   };
@@ -707,8 +848,10 @@ async function initializeDashboard() {
     refreshEvents(),
     refreshRules(),
     refreshVisionSettings(),
+    refreshModelStatus(),
   ]);
   ui.timers.push(window.setInterval(refreshDiagnostics, 500));
+  ui.timers.push(window.setInterval(refreshModelStatus, 4000));
   ui.timers.push(window.setInterval(refreshStatus, 1000));
   ui.timers.push(window.setInterval(refreshEvents, 2000));
   ui.timers.push(window.setInterval(refreshRules, 2000));

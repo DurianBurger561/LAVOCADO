@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from app.vision.detector import Detector
@@ -56,6 +57,7 @@ def load_primary_bundle(
     *,
     yolo_enabled: bool | None = None,
     full_input_size: int = 640,
+    data_dir: Path | None = None,
 ) -> PrimaryBundle:
     """Load the selected primary. YOLO failure always falls back to NudeNet."""
 
@@ -64,6 +66,7 @@ def load_primary_bundle(
         yolo = load_yolo11_nsfw_detector(
             enabled=True if yolo_enabled is None else yolo_enabled,
             default_input_size=full_input_size,
+            data_dir=data_dir,
         )
         if yolo is not None:
             return PrimaryBundle(
@@ -75,7 +78,7 @@ def load_primary_bundle(
         LOGGER.warning(
             "YOLO11 NSFW Small is unavailable; falling back to NudeNet 640m"
         )
-        nudenet = NudeNetPrimaryDetector()
+        nudenet = NudeNetPrimaryDetector(data_dir=data_dir)
         return PrimaryBundle(
             name=nudenet.name,
             checker=nudenet,
@@ -84,7 +87,7 @@ def load_primary_bundle(
             yolo_status="unavailable",
         )
 
-    nudenet = NudeNetPrimaryDetector()
+    nudenet = NudeNetPrimaryDetector(data_dir=data_dir)
     return PrimaryBundle(
         name=nudenet.name,
         checker=nudenet,

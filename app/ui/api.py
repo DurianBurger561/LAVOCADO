@@ -17,6 +17,7 @@ from app.settings.storage import (
 )
 from app.ui.controller import ProtectionStatus
 from app.ui.rules import RuleConflict, RuleEditor
+from app.vision.model_lifecycle import inspect_models, start_download
 from app.vision.settings import vision_settings_snapshot
 
 
@@ -157,6 +158,32 @@ class DashboardAPI:
             }
         except Exception as error:  # noqa: BLE001 - JSON API boundary
             return self._error_result("Could not reset vision settings", error)
+
+    def get_model_status(self) -> dict[str, Any]:
+        try:
+            models = inspect_models(data_dir=self._data_dir)
+            return {"ok": True, "models": models}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not read model status", error)
+
+    def download_optional_model(self, model_id: str) -> dict[str, Any]:
+        try:
+            row = start_download(str(model_id), data_dir=self._data_dir)
+            return {
+                "ok": True,
+                "model": row,
+                "message": (
+                    f"{row['label']} download started."
+                    if row.get("status") == "downloading"
+                    else f"{row['label']} status: {row.get('status')}."
+                ),
+            }
+        except ValueError:
+            return {"ok": False, "message": "Unknown model."}
+        except RuntimeError as error:
+            return {"ok": False, "message": str(error)}
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not start model download", error)
 
     def _safe_restart_protection(self) -> bool:
         status = getattr(self.controller, "status", None)

@@ -22,6 +22,7 @@ class NudeNetPrimaryDetector:
         model: DetectionModel | None = None,
         model_factory: Callable[..., DetectionModel] | None = None,
         model_path: str | Path | None = None,
+        data_dir: str | Path | None = None,
     ) -> None:
         if detector is not None:
             self._detector = detector
@@ -30,9 +31,12 @@ class NudeNetPrimaryDetector:
                 model=model,
                 model_factory=model_factory,
                 model_path=model_path,
+                data_dir=data_dir,
             )
         else:
-            self._detector = Detector(model=model, model_path=model_path)
+            self._detector = Detector(
+                model=model, model_path=model_path, data_dir=data_dir
+            )
         self._last_raw: list[dict[str, Any]] = []
 
     @property

@@ -59,7 +59,7 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
         },
         "roi": {
             "expansion": float(current.recheck.crop_expansion),
-            "borderline_margin": float(config.NUDENET_BORDERLINE_MARGIN),
+            "borderline_margin": float(current.recheck.proposal_margin),
         },
         "temporal": {
             "window_size": int(current.temporal.window_size),

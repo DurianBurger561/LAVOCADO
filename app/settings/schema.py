@@ -17,6 +17,10 @@ TILE_INPUT_SIZES = (640, 960)
 GRID_CHOICES = ((2, 2), (3, 3))
 OVERLAPS = (0.0, 0.10, 0.15, 0.20, 0.25)
 CROP_EXPANSIONS = (1.25, 1.5, 1.75, 2.0, 2.5)
+PROPOSAL_MARGINS = (0.05, 0.10, 0.15, 0.20)
+CHANGE_SENSITIVITIES = (0.005, 0.01, 0.02, 0.05)
+EVIDENCE_DECAYS = (0.3, 0.5, 0.7)
+EVIDENCE_THRESHOLDS = (1.5, 2.0, 2.5, 3.0, 3.5)
 SCAN_SPEEDS = {
     "slow": (1000, 250),
     "balanced": (750, 150),
@@ -79,6 +83,7 @@ class TileSettings:
 class RecheckSettings:
     enabled: bool = True
     crop_expansion: float = 1.75
+    proposal_margin: float = 0.10
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,7 +145,10 @@ def default_vision_settings() -> VisionSettings:
             rows=int(config.RESCUE_TILE_ROWS),
             columns=int(config.RESCUE_TILE_COLUMNS),
         ),
-        recheck=RecheckSettings(crop_expansion=float(config.CONTEXT_CROP_EXPANSION)),
+        recheck=RecheckSettings(
+            crop_expansion=float(config.CONTEXT_CROP_EXPANSION),
+            proposal_margin=float(config.NUDENET_BORDERLINE_MARGIN),
+        ),
         scan=ScanSettings(
             normal_interval_ms=round(float(config.CHECK_INTERVAL) * 1000),
             change_sensitivity=float(config.CHANGE_RATIO_THRESHOLD),
@@ -193,6 +201,15 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
         _clamp_float(recheck_raw.get("crop_expansion"), 1.0, 3.0, base.recheck.crop_expansion),
         CROP_EXPANSIONS,
     )
+    proposal_margin = _closest(
+        _clamp_float(
+            recheck_raw.get("proposal_margin"),
+            0.0,
+            0.4,
+            base.recheck.proposal_margin,
+        ),
+        PROPOSAL_MARGINS,
+    )
     preset = _choice(payload.get("preset", base.preset), PRESETS, base.preset)
     shadow_detector = _choice(
         shadow_raw.get("detector", base.shadow.detector),
@@ -228,6 +245,7 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
         recheck=RecheckSettings(
             enabled=bool(recheck_raw.get("enabled", base.recheck.enabled)),
             crop_expansion=crop,
+            proposal_margin=proposal_margin,
         ),
         scan=ScanSettings(
             normal_interval_ms=_clamp_int(
@@ -243,21 +261,36 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
             vision_budget_ms=_clamp_int(
                 scan_raw.get("vision_budget_ms"), 50, 1000, base.scan.vision_budget_ms
             ),
-            change_sensitivity=_clamp_float(
-                scan_raw.get("change_sensitivity"), 0.0, 1.0, base.scan.change_sensitivity
+            change_sensitivity=_closest(
+                _clamp_float(
+                    scan_raw.get("change_sensitivity"),
+                    0.0,
+                    1.0,
+                    base.scan.change_sensitivity,
+                ),
+                CHANGE_SENSITIVITIES,
             ),
         ),
         temporal=TemporalSettings(
             min_fresh_hits=_clamp_int(
-                temporal_raw.get("min_fresh_hits"), 1, 5, base.temporal.min_fresh_hits
+                temporal_raw.get("min_fresh_hits"), 1, 3, base.temporal.min_fresh_hits
             ),
             window_size=_clamp_int(
                 temporal_raw.get("window_size"), 2, 8, base.temporal.window_size
             ),
-            evidence_threshold=_clamp_float(
-                temporal_raw.get("evidence_threshold"), 0.5, 10.0, base.temporal.evidence_threshold
+            evidence_threshold=_closest(
+                _clamp_float(
+                    temporal_raw.get("evidence_threshold"),
+                    0.5,
+                    10.0,
+                    base.temporal.evidence_threshold,
+                ),
+                EVIDENCE_THRESHOLDS,
             ),
-            decay=_clamp_float(temporal_raw.get("decay"), 0.1, 0.9, base.temporal.decay),
+            decay=_closest(
+                _clamp_float(temporal_raw.get("decay"), 0.1, 0.9, base.temporal.decay),
+                EVIDENCE_DECAYS,
+            ),
         ),
         shadow=ShadowSettings(
             enabled=bool(shadow_raw.get("enabled", False)),

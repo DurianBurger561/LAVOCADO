@@ -39,38 +39,56 @@ def bundled_yolo_model_path(root: Path | None = None) -> Path:
     return (resource_root() if root is None else root) / "models" / "yolo11.pt"
 
 
+def _user_model_path(filename: str, data_dir: Path | None) -> Path | None:
+    if data_dir is None:
+        return None
+    return Path(data_dir) / "models" / filename
+
+
 def resolve_yolo_model_path(
     *,
     environ: Mapping[str, str] | None = None,
     root: Path | None = None,
+    data_dir: Path | None = None,
 ) -> Path | None:
     """Resolve an explicit YOLO override or a local models/yolo11.pt file."""
 
     environ = os.environ if environ is None else environ
     override = str(environ.get("LAVOCADO_YOLO_MODEL", "")).strip()
-    candidate = (
-        Path(override).expanduser()
-        if override
-        else bundled_yolo_model_path(root)
-    )
-    return candidate if candidate.is_file() else None
+    candidates = []
+    if override:
+        candidates.append(Path(override).expanduser())
+    user_path = _user_model_path("yolo11.pt", data_dir)
+    if user_path is not None:
+        candidates.append(user_path)
+    candidates.append(bundled_yolo_model_path(root))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def resolve_nudenet_model_path(
     *,
     environ: Mapping[str, str] | None = None,
     root: Path | None = None,
+    data_dir: Path | None = None,
 ) -> Path | None:
-    """Resolve an explicit override or the bundled model when it exists."""
+    """Resolve an explicit override, user download, or bundled model."""
 
     environ = os.environ if environ is None else environ
     override = environ.get("LAVOCADO_NUDENET_MODEL")
-    candidate = (
-        Path(override).expanduser()
-        if override
-        else bundled_nudenet_model_path(root)
-    )
-    return candidate if candidate.is_file() else None
+    candidates = []
+    if override:
+        candidates.append(Path(override).expanduser())
+    user_path = _user_model_path(NUDENET_640M_FILENAME, data_dir)
+    if user_path is not None:
+        candidates.append(user_path)
+    candidates.append(bundled_nudenet_model_path(root))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def model_file_sha256(path: Path) -> str:

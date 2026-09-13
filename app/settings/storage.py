@@ -79,5 +79,10 @@ def public_settings_view(settings: VisionSettings) -> dict[str, Any]:
         "crop_expansion": [1.25, 1.5, 1.75, 2.0, 2.5],
         "checks_per_scan": [1, 2],
         "max_skip": [1, 2, 3, 4, 5, 6, 7, 8],
+        "proposal_margin": [0.05, 0.10, 0.15, 0.20],
+        "change_sensitivity": [0.005, 0.01, 0.02, 0.05],
+        "min_fresh_hits": [1, 2, 3],
+        "evidence_threshold": [1.5, 2.0, 2.5, 3.0, 3.5],
+        "decay": [0.3, 0.5, 0.7],
     }
     return payload

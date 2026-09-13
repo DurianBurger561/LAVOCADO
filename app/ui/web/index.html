@@ -190,6 +190,39 @@
               <span>Pinned checks <strong id="rescue-pin">0</strong></span>
             </div>
 
+            <div class="capture-card" aria-labelledby="scan-plan-heading">
+              <div class="capture-heading">
+                <span id="scan-plan-heading" class="signal-name">Scan plan</span>
+                <span id="scan-mode" class="signal-tag neutral">Monitoring</span>
+              </div>
+              <dl class="capture-list">
+                <div>
+                  <dt>Duration</dt>
+                  <dd id="scan-total-ms">—</dd>
+                </div>
+                <div>
+                  <dt>Target interval</dt>
+                  <dd id="scan-interval-ms">—</dd>
+                </div>
+                <div>
+                  <dt>Full detector</dt>
+                  <dd id="scan-full">None</dd>
+                </div>
+                <div>
+                  <dt>Tile ranking</dt>
+                  <dd id="scan-tiles">—</dd>
+                </div>
+                <div>
+                  <dt>Track</dt>
+                  <dd id="scan-track">Inactive</dd>
+                </div>
+                <div>
+                  <dt>Shadow</dt>
+                  <dd id="scan-shadow">Off</dd>
+                </div>
+              </dl>
+            </div>
+
             <div class="capture-card explorer-card" aria-labelledby="explorer-heading">
               <div class="capture-heading">
                 <span id="explorer-heading" class="signal-name">Failure explorer</span>
@@ -332,6 +365,12 @@
             There is no medical, art, education, or news mode. Changing models restarts protection.
           </p>
           <p id="vision-settings-message" class="rules-message" role="status" aria-live="polite"></p>
+          <div class="capture-card" aria-labelledby="model-status-heading">
+            <div class="capture-heading">
+              <span id="model-status-heading" class="signal-name">Model status</span>
+            </div>
+            <ul id="model-status-list" class="model-status-list"></ul>
+          </div>
           <form id="vision-settings-form" class="vision-form">
             <div class="vision-form-grid">
               <label>
@@ -440,6 +479,71 @@
                   <select id="vision-shadow-select" name="shadow">
                     <option value="false">Off</option>
                     <option value="true">YOLO11 shadow</option>
+                  </select>
+                </label>
+                <label>
+                  Local recheck
+                  <select id="vision-recheck-select" name="recheck_enabled">
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                  </select>
+                </label>
+                <label>
+                  Proposal sensitivity
+                  <select id="vision-proposal-select" name="proposal_margin">
+                    <option value="0.05">0.05</option>
+                    <option value="0.10">0.10</option>
+                    <option value="0.15">0.15</option>
+                    <option value="0.20">0.20</option>
+                  </select>
+                </label>
+                <label>
+                  Adaptive scan
+                  <select id="vision-adaptive-select" name="adaptive">
+                    <option value="true">Enabled</option>
+                    <option value="false">Every frame</option>
+                  </select>
+                </label>
+                <label>
+                  Screen change sensitivity
+                  <select id="vision-change-select" name="change_sensitivity">
+                    <option value="0.005">0.5%</option>
+                    <option value="0.01">1%</option>
+                    <option value="0.02">2%</option>
+                    <option value="0.05">5%</option>
+                  </select>
+                </label>
+                <label>
+                  Active monitor priority
+                  <select id="vision-active-monitor-select" name="active_monitor_priority">
+                    <option value="true">Enabled</option>
+                    <option value="false">Equal</option>
+                  </select>
+                </label>
+                <label>
+                  Temporal fresh hits
+                  <select id="vision-fresh-hits-select" name="min_fresh_hits">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                  </select>
+                </label>
+                <label>
+                  Evidence threshold
+                  <select id="vision-evidence-select" name="evidence_threshold">
+                    <option value="1.5">1.5</option>
+                    <option value="2.0">2.0</option>
+                    <option value="2.5">2.5</option>
+                    <option value="3.0">3.0</option>
+                    <option value="3.5">3.5</option>
+                  </select>
+                </label>
+                <label>
+                  Evidence decay
+                  <select id="vision-decay-select" name="decay">
+                    <option value="0.3">0.3</option>
+                    <option value="0.5">0.5</option>
+                    <option value="0.7">0.7</option>
                   </select>
                 </label>
               </div>

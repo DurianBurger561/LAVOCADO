@@ -95,6 +95,15 @@ class ChangeSchedulerTests(unittest.TestCase):
         scheduler.reset()
         self.assertTrue(scheduler.should_scan(frame(0), 1).scan)
 
+    def test_non_adaptive_mode_scans_every_frame(self) -> None:
+        scheduler = ChangeScheduler(adaptive=False)
+        scheduler.should_scan(frame(0), 1)
+
+        decision = scheduler.should_scan(frame(0), 1)
+
+        self.assertTrue(decision.scan)
+        self.assertEqual(decision.source, "always")
+
     def test_only_a_bounded_grayscale_map_is_retained(self) -> None:
         scheduler = ChangeScheduler(map_max_edge=4)
         scheduler.should_scan(frame(0), 1)

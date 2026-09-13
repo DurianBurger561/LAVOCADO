@@ -34,6 +34,7 @@ class Detector:
         *,
         model_factory: Callable[..., DetectionModel] = NudeDetector,
         model_path: str | Path | None = None,
+        data_dir: str | Path | None = None,
     ) -> None:
         self.model_variant = "injected"
         self.inference_resolution: int | None = None
@@ -44,7 +45,9 @@ class Detector:
         resolved_path = (
             Path(model_path)
             if model_path is not None and Path(model_path).is_file()
-            else resolve_nudenet_model_path()
+            else resolve_nudenet_model_path(
+                data_dir=None if data_dir is None else Path(data_dir)
+            )
         )
         if resolved_path is not None:
             try:
