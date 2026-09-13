@@ -324,6 +324,82 @@ class ServiceContextPolicyTests(unittest.TestCase):
         self.assertEqual(overlay.shown_on, [1])
         self.assertEqual(recorder.events, [])
 
+    def test_no_rules_preserve_existing_vision_protection(self) -> None:
+        cases = (
+            ("no_context", ForegroundContextStore(), {
+                "application_available": False,
+                "is_browser": None,
+                "website_state": "unavailable",
+            }),
+            ("browser_known_unlisted_site", store_for(application(), "github.com"), {
+                "application_available": True,
+                "is_browser": True,
+                "website_state": "known",
+            }),
+            ("browser_unknown_site", store_for(application()), {
+                "application_available": True,
+                "is_browser": True,
+                "website_state": "unknown",
+            }),
+            ("non_browser", store_for(application("code.exe")), {
+                "application_available": True,
+                "is_browser": False,
+                "website_state": "not_browser",
+            }),
+        )
+        expected_foreground = {
+            "application_rule": "normal",
+            "website_rule": "normal",
+            "effective_policy": "normal",
+        }
+
+        for name, store, availability in cases:
+            with self.subTest(name):
+                capturer = FakeCapturer(
+                    monitor_indexes=(1, 2),
+                    point_monitor_index=2,
+                )
+                detector = FakeDetector({
+                    1: [False, True, True],
+                    2: [False, False, False],
+                })
+                overlay = FakeOverlay()
+                recorder = FakeRecorder()
+                intervention = FakeIntervention()
+                service = LavocadoService(
+                    FakePlatform(),
+                    capturer=capturer,
+                    detector=detector,
+                    overlay=overlay,
+                    recorder=recorder,
+                    intervention=intervention,
+                    context_store=store,
+                    context_policy=policy(),
+                    verifier_factory=lambda: TemporalVerifier(3, 2),
+                )
+
+                service.check_once()
+                service.check_once()
+                self.assertEqual(service.state, State.CANDIDATE)
+                self.assertEqual(overlay.shown_on, [])
+                self.assertEqual(recorder.events, [])
+
+                service.check_once()
+
+                self.assertEqual(capturer.grabbed_indexes, [1, 2, 1, 2, 1])
+                self.assertEqual(detector.checked_indexes, [1, 2, 1, 2, 1])
+                self.assertEqual(overlay.shown_on, [1])
+                self.assertEqual(service.state, State.COOLDOWN)
+                self.assertEqual(recorder.events[0].trigger_type, "vision")
+                self.assertEqual(recorder.events[0].label, "TEST")
+                self.assertEqual(recorder.events[0].monitor_index, 1)
+                self.assertEqual(recorder.shown_event_ids, [1])
+                self.assertEqual(intervention.generate_count, 1)
+                self.assertEqual(
+                    service.diagnostics.snapshot()["foreground_context"],
+                    {**availability, **expected_foreground},
+                )
+
     def test_context_worker_starts_and_stops_with_protection_process(self) -> None:
         worker = FakeContextWorker()
         service = LavocadoService(

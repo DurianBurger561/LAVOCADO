@@ -120,7 +120,21 @@ class ContextPolicyTests(unittest.TestCase):
         self.assertEqual(result.website_action, Action.NORMAL)
 
     def test_no_rules_preserves_normal_behavior(self) -> None:
-        self.assertEqual(ContextPolicyService().evaluate(foreground()).action, Action.NORMAL)
+        service = ContextPolicyService()
+        cases = (
+            foreground(),
+            foreground(hostname=None, website_state=WebsiteContextState.UNKNOWN),
+            foreground("code.exe", is_browser=False),
+            foreground(identifier=None, is_browser=False),
+        )
+        for context in cases:
+            with self.subTest(identifier=context.application.identifier, browser=context.is_browser):
+                result = service.evaluate(context)
+                self.assertEqual(result.action, Action.NORMAL)
+                self.assertEqual(result.app_action, Action.NORMAL)
+                self.assertEqual(result.website_action, Action.NORMAL)
+                self.assertIsNone(result.matched_application_rule)
+                self.assertIsNone(result.matched_website_rule)
 
     def test_application_match_uses_identifier_not_name_or_title(self) -> None:
         policy = ApplicationPolicy([app_rule("steam.exe", Action.FORCE_BLOCK)])
