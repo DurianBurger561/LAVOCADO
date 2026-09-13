@@ -42,15 +42,20 @@ def compose_developer_html(user_html: str, lab_html: str) -> str:
         '<script src="app.js" defer></script>',
         '<script src="app.js" defer></script>\n    <script src="lab.js" defer></script>',
     )
-    nav = """
-      <nav id="edition-nav" class="edition-nav" aria-label="Developer edition">
-        <button type="button" class="nav-button is-active" data-view="protection">Protection</button>
-        <button type="button" class="nav-button" data-view="history">History</button>
-        <button type="button" class="nav-button" data-view="settings">Settings</button>
+    developer_nav = """
         <button type="button" class="nav-button" data-view="developer">Developer</button>
       </nav>
+      <nav id="developer-subnav" class="developer-subnav" hidden aria-label="Developer tools">
+        <button type="button" class="nav-button" data-view="developer">Benchmark Lab</button>
+        <button type="button" class="nav-button" data-view="diagnostics">Diagnostics</button>
+      </nav>
 """
-    html = html.replace('<div class="app-shell">', '<div class="app-shell">' + nav, 1)
+    html = html.replace(
+        '        <button type="button" class="nav-button" data-view="settings">Settings</button>\n      </nav>',
+        '        <button type="button" class="nav-button" data-view="settings">Settings</button>'
+        + developer_nav,
+        1,
+    )
     html = html.replace("</main>", lab_html + "\n      </main>", 1)
     return html
 

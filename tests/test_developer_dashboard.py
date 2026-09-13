@@ -34,6 +34,9 @@ class DeveloperDashboardTests(unittest.TestCase):
         )
         composed = compose_developer_html(user_html, lab_html)
         self.assertIn("LAVOCADO Developer", composed)
+        self.assertIn(">Home<", composed)
+        self.assertIn("developer-subnav", composed)
+        self.assertIn("Diagnostics", composed)
         self.assertIn("Benchmark Lab", composed)
         self.assertIn("Open dataset.json", composed)
         self.assertIn("Open dataset folder", composed)
@@ -54,7 +57,8 @@ class DeveloperDashboardTests(unittest.TestCase):
             self.assertTrue((directory / "lab.js").is_file())
             self.assertTrue((directory / "lab.css").is_file())
             html = entry.read_text(encoding="utf-8")
-            self.assertIn("edition-nav", html)
+            self.assertIn("app-nav", html)
+            self.assertIn("developer-subnav", html)
             self.assertIn("benchmark-lab", html)
         finally:
             import shutil
@@ -83,6 +87,10 @@ class DeveloperDashboardTests(unittest.TestCase):
         script = (PROJECT_ROOT / "app" / "ui" / "web" / "app.js").read_text(
             encoding="utf-8"
         )
+        self.assertIn('data-view="home"', html)
+        self.assertIn('data-view="protection"', html)
+        self.assertNotIn('data-view="developer"', html)
+        self.assertNotIn("developer-subnav", html)
         self.assertNotIn("Benchmark Lab", html)
         self.assertNotIn("lab_start_run", script)
         self.assertNotIn("developer.benchmark", script)

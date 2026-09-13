@@ -48,26 +48,32 @@ function percent(value) {
 
 function setView(view) {
   lab.view = view;
-  document.querySelectorAll("#edition-nav .nav-button").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.view === view);
+  const developerTool = view === "developer" || view === "diagnostics";
+  document.querySelectorAll("#app-nav .nav-button").forEach((button) => {
+    const target = button.dataset.view;
+    const active = target === view || (developerTool && target === "developer");
+    button.classList.toggle("is-active", active);
   });
+  const subnav = document.getElementById("developer-subnav");
+  if (subnav) {
+    subnav.hidden = !developerTool;
+    subnav.querySelectorAll(".nav-button").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.view === view);
+    });
+  }
   const labPanel = labEl("benchmark-lab");
-  const showLab = view === "developer";
-  if (labPanel) labPanel.hidden = !showLab;
-  document.querySelectorAll(".hero, .dashboard-grid, .rules, .vision-settings, .history").forEach((node) => {
-    const settings = node.classList.contains("rules") || node.classList.contains("vision-settings");
-    const history = node.classList.contains("history");
-    const protection = node.classList.contains("hero") || node.classList.contains("dashboard-grid");
-    if (showLab) {
-      node.hidden = true;
-      return;
-    }
-    if (view === "settings") node.hidden = !settings;
-    else if (view === "history") node.hidden = !history;
-    else node.hidden = !(protection || (!settings && !history && node.classList.contains("hero")));
-    if (view === "protection") {
-      node.hidden = !(protection || node.classList.contains("hero") || node.classList.contains("dashboard-grid"));
-    }
+  if (labPanel) labPanel.hidden = view !== "developer";
+  document.querySelectorAll(".hero").forEach((node) => {
+    node.hidden = !(view === "home" || view === "protection");
+  });
+  document.querySelectorAll(".dashboard-grid").forEach((node) => {
+    node.hidden = !(view === "home" || view === "diagnostics");
+  });
+  document.querySelectorAll(".history").forEach((node) => {
+    node.hidden = view !== "history";
+  });
+  document.querySelectorAll(".rules, .vision-settings").forEach((node) => {
+    node.hidden = view !== "settings";
   });
 }
 
@@ -446,9 +452,9 @@ async function pollProgress() {
 }
 
 function initializeLab() {
-  const nav = document.getElementById("edition-nav");
+  const nav = document.getElementById("app-nav");
   if (!nav) return;
-  nav.querySelectorAll(".nav-button").forEach((button) => {
+  document.querySelectorAll("#app-nav .nav-button, #developer-subnav .nav-button").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
   document.querySelectorAll(".lab-tab").forEach((button) => {
@@ -647,7 +653,7 @@ function initializeLab() {
   refreshDatasets().catch(() => {});
   refreshConfigs().catch(() => {});
   lab.progressTimer = window.setInterval(() => pollProgress().catch(() => {}), 1000);
-  setView("protection");
+  setView("home");
 }
 
 window.addEventListener("pywebviewready", initializeLab, { once: true });

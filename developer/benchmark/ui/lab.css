@@ -1,8 +1,12 @@
-.edition-nav {
+.developer-subnav {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 0 0 22px;
+  margin: -12px 0 22px;
+}
+
+.developer-subnav[hidden] {
+  display: none;
 }
 
 .nav-button,

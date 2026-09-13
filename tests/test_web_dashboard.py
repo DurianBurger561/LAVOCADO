@@ -122,6 +122,9 @@ class WebDashboardTests(unittest.TestCase):
 
         self.assertIn('href="styles.css"', html)
         self.assertIn('src="app.js"', html)
+        self.assertIn('id="app-nav"', html)
+        self.assertIn('data-view="home"', html)
+        self.assertNotIn('data-view="developer"', html)
         self.assertIn('addEventListener("pywebviewready"', script)
         for method in (
             "start_protection",
