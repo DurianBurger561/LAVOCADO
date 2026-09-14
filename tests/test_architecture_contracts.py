@@ -58,7 +58,20 @@ class ArchitectureContractTests(unittest.TestCase):
     def test_no_project_package_shadows_pypi_packaging(self) -> None:
         self.assertFalse((ROOT / "packaging").exists())
 
+    def test_runtime_settings_do_not_duplicate_config_defaults(self) -> None:
+        from app import config
+
+        for name in ("MONITOR_INDEX", "COOLDOWN_SECONDS", "CHANGE_PERIODIC_SCAN_INTERVAL"):
+            self.assertFalse(hasattr(config, name))
+        service = (APP / "service.py").read_text(encoding="utf-8")
+        self.assertNotIn("activate_threshold_policy", service)
+
     def test_single_primary_detector_contract(self) -> None:
+        from typing import get_type_hints
+
+        from app.vision.detectors.base import PrimaryDetector
+        from app.vision.preprocessor import PreparedFrame
+
         definitions = [
             _display(path)
             for path in _files(APP)
@@ -66,11 +79,64 @@ class ArchitectureContractTests(unittest.TestCase):
             if isinstance(node, ast.ClassDef) and node.name == "PrimaryDetector"
         ]
         self.assertEqual(definitions, ["app/vision/detectors/base.py"])
+        self.assertIs(get_type_hints(PrimaryDetector.detect)["prepared"], PreparedFrame)
+
+    def test_one_frame_preprocessor_owns_resize_and_color_conversion(self) -> None:
+        definitions = [
+            _display(path)
+            for path in _files(APP)
+            for node in ast.walk(_tree(path))
+            if isinstance(node, ast.ClassDef) and node.name == "FramePreprocessor"
+        ]
+        self.assertEqual(definitions, ["app/vision/preprocessor.py"])
+        for path in _files(APP / "vision"):
+            if path.name == "preprocessor.py":
+                continue
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn("cv2.resize(", source, _display(path))
+            self.assertNotIn("cv2.cvtColor(", source, _display(path))
+
+    def test_no_legacy_detector_or_watcher_classes(self) -> None:
+        stale = [
+            f"{_display(path)}:{node.lineno}"
+            for path in _files(APP)
+            for node in ast.walk(_tree(path))
+            if isinstance(node, ast.ClassDef)
+            and node.name in {"Detector", "WindowWatcher", "CapturedFrame"}
+        ]
+        self.assertEqual(stale, [])
+        self.assertFalse((APP / "vision" / "nudenet_adapter.py").exists())
+
+    def test_single_diagnostics_snapshot_and_benchmark_contracts(self) -> None:
+        from app.diagnostics import DiagnosticsStore, RuntimeDiagnosticsSnapshot
+        from developer.benchmark.contracts import BenchmarkEnvironment, BenchmarkRequest
+        from developer.benchmark.failures import FailureCase
+        from developer.benchmark.metrics import Metric
+        from developer.benchmark.results import BenchmarkResult
+
+        self.assertIsInstance(
+            DiagnosticsStore(
+                model_variant="640m",
+                inference_resolution=640,
+                context_model="off",
+                context_status="disabled",
+            ).snapshot(),
+            RuntimeDiagnosticsSnapshot,
+        )
+        for contract in (
+            BenchmarkRequest,
+            BenchmarkResult,
+            BenchmarkEnvironment,
+            Metric,
+            FailureCase,
+        ):
+            self.assertTrue(hasattr(contract, "__dataclass_fields__"))
 
     def test_visual_decision_boundary_is_typed(self) -> None:
         from typing import get_type_hints
 
         from app.vision import violation_policy
+        from app.vision.decision import DecisionEngine
         from app.vision.visual_decision import VisualDecisionDraft, VisualDecisionEngine
 
         self.assertIs(
@@ -78,6 +144,16 @@ class ArchitectureContractTests(unittest.TestCase):
             VisualDecisionDraft,
         )
         self.assertFalse(hasattr(violation_policy, "visual_decision_from_engine_payload"))
+        self.assertFalse(hasattr(violation_policy, "activate_threshold_policy"))
+        self.assertFalse(hasattr(violation_policy, "_ACTIVE_POLICY"))
+        for method in (
+            "_evaluate_borderline", "_evaluate_rescue", "_evaluate_focused",
+            "_evaluate_subtiles", "_confirm_primary_candidate",
+        ):
+            self.assertFalse(hasattr(DecisionEngine, method))
+        pure_source = (APP / "vision" / "visual_decision.py").read_text(encoding="utf-8")
+        for forbidden in ("FramePreprocessor", "CandidateVerifier", "NudeDetector", "classify_batch"):
+            self.assertNotIn(forbidden, pure_source)
 
     def test_display_uses_platform_independent_paths(self) -> None:
         self.assertEqual(

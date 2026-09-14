@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
+from statistics import mean as statistics_mean
+from statistics import median as statistics_median
 from typing import Any
 
 from developer.benchmark.configs import TARGET_FULL_PROTECTION_PIPELINE
@@ -37,6 +39,22 @@ class ConfusionCounts:
 
     def to_dict(self) -> dict[str, int]:
         return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class Metric:
+    """One named scalar; missing measurements remain unavailable, not zero."""
+
+    name: str
+    value: float | None
+    unit: str
+
+    def difference_from(self, baseline: Metric) -> float | None:
+        if self.name != baseline.name or self.unit != baseline.unit:
+            raise ValueError("cannot compare different metrics")
+        if self.value is None or baseline.value is None:
+            return None
+        return self.value - baseline.value
 
 
 def outcome_for(expected: str | None, predicted: str | None, *, excluded: bool) -> str:
@@ -124,8 +142,8 @@ def summarize_rows(
     payload = {
         "target": target,
         **metric_bundle(counts),
-        "mean_latency_ms": _mean(latencies),
-        "p95_latency_ms": _percentile(latencies, 0.95),
+        "mean_latency_ms": mean(latencies) if latencies else None,
+        "p95_latency_ms": percentile(latencies, 0.95) if latencies else None,
         "tag_metrics": tag_metrics(eligible),
     }
     ranking = summarize_ranking(rows)
@@ -154,8 +172,8 @@ def summarize_context_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         "correct": correct,
         "incorrect": len(labelled) - correct,
         "accuracy": _ratio(correct, len(labelled)),
-        "mean_latency_ms": _mean(latencies),
-        "p95_latency_ms": _percentile(latencies, 0.95),
+        "mean_latency_ms": mean(latencies) if latencies else None,
+        "p95_latency_ms": percentile(latencies, 0.95) if latencies else None,
     }
 
 
@@ -176,8 +194,8 @@ def summarize_detector_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]
         "target": "detector_only",
         "sample_count": len(samples),
         "detection_count": len(detections),
-        "mean_latency_ms": _mean(latencies),
-        "p95_latency_ms": _percentile(latencies, 0.95),
+        "mean_latency_ms": mean(latencies) if latencies else None,
+        "p95_latency_ms": percentile(latencies, 0.95) if latencies else None,
         "detections": [
             {
                 "label": item.get("class") or item.get("label"),
@@ -245,17 +263,28 @@ def tag_metrics(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     return payload
 
 
-def _mean(values: list[float]) -> float | None:
-    if not values:
-        return None
-    return sum(values) / len(values)
+def mean(values: Iterable[float]) -> float:
+    """Shared arithmetic mean for every Benchmark Lab runner."""
+
+    return float(statistics_mean(values))
 
 
-def _percentile(values: list[float], fraction: float) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    if len(ordered) == 1:
-        return ordered[0]
-    index = min(len(ordered) - 1, max(0, round((len(ordered) - 1) * fraction)))
-    return ordered[index]
+def median(values: Iterable[float]) -> float:
+    """Shared median for every Benchmark Lab runner."""
+
+    return float(statistics_median(values))
+
+
+def percentile(values: Iterable[float], fraction: float) -> float:
+    """Shared linearly interpolated percentile, with one definition of p95."""
+
+    ordered = sorted(float(value) for value in values)
+    if not ordered:
+        raise ValueError("cannot summarize an empty sample")
+    if not 0 <= fraction <= 1:
+        raise ValueError("fraction must be within 0..1")
+    position = (len(ordered) - 1) * fraction
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = position - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * weight

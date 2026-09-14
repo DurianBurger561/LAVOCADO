@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
-from threading import Lock
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -26,15 +24,13 @@ from app.vision.model_manifest import (
     YOLO11_NSFW_SMALL_REVISION,
 )
 from app.vision.pipeline import VisionPipeline
-from app.vision.preprocessor import FramePreprocessor
+from app.vision.preprocessor import FramePreprocessor, PreparedFrame
+from app.vision.primary_detector_set import PrimaryDetectorSet
 from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import (
-    ThresholdPolicy,
     ViolationEvidence,
     VisualViolationClassification,
     VisualViolationDecision,
-    activate_threshold_policy,
-    active_threshold_policy,
 )
 from developer.benchmark.configs import (
     TARGET_CONTEXT_POLICY,
@@ -56,21 +52,6 @@ from developer.benchmark.inference_cache import (
 )
 from developer.benchmark.metrics import outcome_for
 from developer.benchmark.ranking import measure_ranking
-
-_POLICY_LOCK = Lock()
-
-
-@contextmanager
-def isolated_threshold_policy(policy: ThresholdPolicy) -> Iterator[None]:
-    """Apply a session-local threshold table without leaking to other users."""
-
-    with _POLICY_LOCK:
-        previous = active_threshold_policy()
-        activate_threshold_policy(policy)
-        try:
-            yield
-        finally:
-            activate_threshold_policy(previous)
 
 
 def load_bgr_image(path) -> np.ndarray:
@@ -95,7 +76,9 @@ def model_revision_for(detector_name: str) -> str:
     return NUDENET_640M_SHA256
 
 
-def detections_payload(evidence: list[ViolationEvidence]) -> list[dict[str, Any]]:
+def detections_payload(
+    evidence: list[ViolationEvidence] | tuple[ViolationEvidence, ...],
+) -> list[dict[str, Any]]:
     payload = []
     for item in evidence:
         payload.append(
@@ -129,11 +112,12 @@ class CachedPrimaryDetector:
         self._raw = list(detections)
 
     def detect(
-        self, frame: np.ndarray, *, input_size: int, frame_sequence: int
-    ) -> list[ViolationEvidence]:
-        del frame, input_size
-        return evidence_from_payload(
-            self._raw, self.name, frame_sequence=frame_sequence
+        self, prepared: PreparedFrame
+    ) -> tuple[ViolationEvidence, ...]:
+        return tuple(
+            evidence_from_payload(
+                self._raw, self.name, frame_sequence=prepared.frame_sequence
+            )
         )
 
 
@@ -155,7 +139,6 @@ class BenchmarkSession:
         self.config = config
         self.settings: VisionSettings = config.vision_settings()
         self.cache = cache
-        self._threshold_policy = ThresholdPolicy.from_settings(self.settings)
         if config.benchmark_target == TARGET_CONTEXT_POLICY:
             self.detector = None
             self.decision_engine = None
@@ -240,16 +223,19 @@ class BenchmarkSession:
             model_revision=model_revision_for(self.config.detector),
             input_size=self.config.full_input_size,
             region_id="full",
-            tile_geometry=self.config.cache_geometry(),
+            preprocessing_config=self.config.cache_geometry(),
         )
         if self.cache is not None:
             cached = self.cache.get(key)
             if cached is not None:
                 return cached
         started = time.perf_counter()
-        preprocess_ms = 0.0
+        prepared = FramePreprocessor(captured_frame_from_bgr(image, sequence=1))
+        model_frame = prepared.prepare_full(self.config.full_input_size)
+        preprocess_ms = (time.perf_counter() - started) * 1000
+        started = time.perf_counter()
         evidence = self.detector.detect(
-            image, input_size=self.config.full_input_size, frame_sequence=1
+            model_frame
         )
         detections = detections_payload(evidence)
         inference_ms = (time.perf_counter() - started) * 1000
@@ -259,6 +245,7 @@ class BenchmarkSession:
             model_revision=model_revision_for(self.config.detector),
             input_size=self.config.full_input_size,
             region_id="full",
+            preprocessing_config=self.config.cache_geometry(),
             detections=detections,
             preprocess_ms=preprocess_ms,
             inference_ms=inference_ms,
@@ -371,41 +358,41 @@ class BenchmarkSession:
         fresh_frames = 0
         started = time.perf_counter()
         try:
-            with isolated_threshold_policy(self._threshold_policy):
-                for index in range(repeats):
-                    frame = captured_frame_from_bgr(image, sequence=index + 1)
-                    fresh_frames += 1
-                    if runtime is not None:
-                        outcome = runtime.scan_monitor(
-                            frame,
-                            1,
-                            is_active_monitor=True,
-                            scan_started=time.perf_counter(),
-                        )
-                        decided = outcome.decision or decided
-                        confirmed = outcome.confirmed
-                        temporal_history = outcome.temporal_history
-                        if confirmed:
-                            break
-                    else:
-                        prepared = FramePreprocessor(frame)
-                        plan = replay_pipeline.prepare_scan(
-                            frame, 1, prepared_frame=prepared
-                        )
-                        decided = replay_pipeline.evaluate(
-                            frame,
-                            monitor_index=1,
-                            scan_plan=plan,
-                            prepared_frame=prepared,
-                        )
+            for index in range(repeats):
+                frame = captured_frame_from_bgr(image, sequence=index + 1)
+                fresh_frames += 1
+                if runtime is not None:
+                    outcome = runtime.scan_monitor(
+                        frame,
+                        1,
+                        is_active_monitor=True,
+                        scan_started=time.perf_counter(),
+                    )
+                    decided = outcome.decision or decided
+                    confirmed = outcome.confirmed
+                    temporal_history = outcome.temporal_history
+                    if confirmed:
+                        break
+                else:
+                    prepared = FramePreprocessor(frame)
+                    plan = replay_pipeline.prepare_scan(
+                        frame, 1, prepared_frame=prepared
+                    )
+                    decided = replay_pipeline.evaluate(
+                        frame,
+                        monitor_index=1,
+                        scan_plan=plan,
+                        prepared_frame=prepared,
+                    )
         finally:
             self.decision_engine.candidate_verifier.detector = previous_local
         if decided is None:
             raise RuntimeError("Benchmark vision pipeline did not evaluate a frame")
+        displayed_detections = self._full_resolution_detections(image, raw)
         ranking = measure_ranking(
             self.decision_engine.viddexa_ranker.classifier,
             image,
-            raw.detections,
+            displayed_detections,
             rows=self.config.tile_rows,
             columns=self.config.tile_columns,
             overlap=self.config.tile_overlap,
@@ -438,7 +425,7 @@ class BenchmarkSession:
             } if full_protection else None,
             "detector_summary": {
                 "model": self.config.detector,
-                "detections": raw.detections,
+                "detections": displayed_detections,
                 "best_label": None if strongest is None else strongest.get("class"),
                 "best_confidence": None if strongest is None else strongest.get("score"),
                 "inference_ms": raw.inference_ms,
@@ -469,6 +456,19 @@ class BenchmarkSession:
                 ],
             },
         }
+
+    def _full_resolution_detections(
+        self, image: np.ndarray, raw: RawInferenceResult
+    ) -> list[dict[str, Any]]:
+        prepared = FramePreprocessor(captured_frame_from_bgr(image, sequence=1))
+        model_image = prepared.resized_long_edge(raw.input_size)
+        evidence = evidence_from_payload(
+            raw.detections, self.config.detector, frame_sequence=1
+        )
+        mapped = PrimaryDetectorSet.original_coordinates(
+            prepared, model_image.shape, tuple(evidence)
+        )
+        return detections_payload(mapped)
 
     def _policy_result(self, sample: BenchmarkSample) -> ContextPolicyResult:
         policy, context = context_policy_for_sample(sample)

@@ -17,6 +17,7 @@
             <button type="button" class="lab-tab" data-lab-tab="results">Results</button>
             <button type="button" class="lab-tab" data-lab-tab="tools">Tools &amp; Hardware</button>
           </div>
+          <div id="lab-categories" class="lab-toolbar" aria-label="Benchmark categories"></div>
 
           <p id="lab-message" class="rules-message" role="status" aria-live="polite"></p>
 
@@ -306,6 +307,10 @@
                 <option value="incorrect">Incorrect Context Policy</option>
                 <option value="false_negative">False Negative</option>
                 <option value="false_positive">False Positive</option>
+                <option value="context_conflict">Context Conflict</option>
+                <option value="temporal_miss">Temporal Miss</option>
+                <option value="capture_failure">Capture Failure</option>
+                <option value="timeout">Timeout</option>
               </select>
               <select id="lab-fail-tag">
                 <option value="">Any tag</option>
@@ -328,7 +333,7 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Config</th><th>Recall</th><th>FNR</th><th>FPR</th><th>Precision</th><th>Accuracy</th><th>p95</th><th>Top-1 tile</th><th>Top-2 tile</th><th>Context ms</th>
+                    <th>Config</th><th>Recall</th><th>FNR</th><th>FPR</th><th>Precision</th><th>Accuracy</th><th>p95</th><th>Δ Recall</th><th>FN fewer</th><th>Δ p95</th><th>Δ CPU</th><th>Δ RAM</th><th>Top-1 tile</th><th>Top-2 tile</th><th>Context ms</th>
                   </tr>
                 </thead>
                 <tbody id="lab-compare-body"></tbody>

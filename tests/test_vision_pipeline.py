@@ -8,7 +8,7 @@ import numpy as np
 from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
 from app.vision.pipeline import VisionPipeline
-from app.vision.preprocessor import FramePreprocessor
+from app.vision.preprocessor import FramePreprocessor, PreparedFrame
 from app.vision.violation_policy import (
     ViolationEvidence,
     ViolationEvidenceType,
@@ -22,13 +22,10 @@ class FakeDetector:
         self.evidence = list(evidence or [])
         self.checked = 0
 
-    def detect(
-        self, image: object, *, input_size: int = 640, frame_sequence: int
-    ) -> list[ViolationEvidence]:
-        del input_size, frame_sequence
+    def detect(self, prepared: PreparedFrame) -> tuple[ViolationEvidence, ...]:
         self.checked += 1
-        self.image = image
-        return list(self.evidence)
+        self.image = prepared.image
+        return tuple(self.evidence)
 
 
 class FakeYolo:
@@ -103,6 +100,9 @@ class VisionPipelineTests(unittest.TestCase):
         self.assertEqual(pipeline.evaluate_calls, 1)
         self.assertEqual(detector.checked, 1)
         self.assertIs(result.classification, VisualViolationClassification.CLEAR)
+        self.assertGreaterEqual(pipeline.last_latency.vision_total_ms, 0.0)
+        self.assertGreaterEqual(pipeline.last_latency.primary_ms, 0.0)
+        self.assertEqual(pipeline.last_latency.viddexa_ms, 0.0)
 
     def test_yolo_sexual_act_enters_visual_decision(self) -> None:
         detector = FakeDetector()

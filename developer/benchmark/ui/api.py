@@ -16,6 +16,7 @@ from developer.benchmark.configs import (
     selection_from_payload,
     settings_to_protection_payload,
 )
+from developer.benchmark.contracts import BenchmarkRequest
 from developer.benchmark.dataset import (
     DatasetError,
     create_dataset,
@@ -25,6 +26,7 @@ from developer.benchmark.dataset import (
     update_sample,
 )
 from developer.benchmark.exporter import export_csv, export_json
+from developer.benchmark.failures import failure_from_row
 from developer.benchmark.high_recall import benchmark_report, load_cases
 from developer.benchmark.inference_cache import InferenceCache
 from developer.benchmark.jobs import (
@@ -36,6 +38,7 @@ from developer.benchmark.jobs import (
 from developer.benchmark.matrix import job_count, matrix
 from developer.benchmark.preview import annotated_data_url, image_data_url
 from developer.benchmark.ranking_metrics import ranking_quality, recall_gain
+from developer.benchmark.registry import BenchmarkRegistry
 from developer.benchmark.runner import BenchmarkRunner
 from developer.benchmark.sweep import DEFAULT_PROPOSAL, DEFAULT_STRONG, sweep_thresholds
 from developer.benchmark.tags import catalog_payload
@@ -53,6 +56,7 @@ class DeveloperDashboardAPI(DashboardAPI):
         self._run = None
         self._error: str | None = None
         self._tool_job: LabProcessJob | None = None
+        self._benchmark_registry = BenchmarkRegistry()
 
     def get_build_edition(self) -> dict[str, Any]:
         return {"ok": True, "edition": "developer", "app_name": "LAVOCADO Developer"}
@@ -212,7 +216,11 @@ class DeveloperDashboardAPI(DashboardAPI):
             return self._error_result("Could not annotate selection", error)
 
     def lab_schema_options(self) -> dict[str, Any]:
-        return {"ok": True, "options": schema_options()}
+        return {
+            "ok": True,
+            "options": schema_options(),
+            "categories": self._benchmark_registry.categories(),
+        }
 
     def lab_expand_configs(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
@@ -237,9 +245,8 @@ class DeveloperDashboardAPI(DashboardAPI):
                 configs = expand_configs(selection_from_payload(payload))
                 if not configs:
                     return {"ok": False, "message": "No valid configurations selected."}
-                runner = BenchmarkRunner(
-                    dataset,
-                    configs,
+                runner = self._benchmark_registry.runner(
+                    BenchmarkRequest(dataset, tuple(configs)),
                     cache=InferenceCache(dataset.cache_dir),
                     session_kwargs={"data_dir": self._data_dir},
                 )
@@ -269,7 +276,9 @@ class DeveloperDashboardAPI(DashboardAPI):
                 if self._tool_job is not None:
                     self._tool_job.snapshot()
                 arguments = self._tool_arguments(kind, data)
-                self._tool_job = LabProcessJob(kind, arguments, self._data_dir)
+                self._tool_job = self._benchmark_registry.tool_job(
+                    kind, arguments, self._data_dir
+                )
             return {"ok": True, "message": "Lab tool started.", "job_id": self._tool_job.id}
         except ValueError as error:
             return {"ok": False, "message": str(error)}
@@ -431,15 +440,18 @@ class DeveloperDashboardAPI(DashboardAPI):
             rows = [row for row in rows if row.get("config_id") == config_id]
         if tag:
             rows = [row for row in rows if tag in (row.get("tags") or [])]
+        rows = [
+            {**row, "failure_kind": case.kind.value if case is not None else None}
+            for row in rows
+            for case in (failure_from_row(row),)
+        ]
         wanted = str(kind or "all").lower()
-        if wanted == "false_negative":
-            rows = [row for row in rows if row.get("outcome") == "fn"]
-        elif wanted == "false_positive":
-            rows = [row for row in rows if row.get("outcome") == "fp"]
-        elif wanted == "correct":
+        if wanted == "correct":
             rows = [row for row in rows if row.get("outcome") in {"tp", "tn", "correct"}]
         elif wanted == "incorrect":
             rows = [row for row in rows if row.get("outcome") == "incorrect"]
+        elif wanted != "all":
+            rows = [row for row in rows if row.get("failure_kind") == wanted]
         return {"ok": True, "rows": rows}
 
     def lab_annotated_preview(self, sample_id: str, config_id: str | None = None) -> dict[str, Any]:

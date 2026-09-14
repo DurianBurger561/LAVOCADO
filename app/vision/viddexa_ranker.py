@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Protocol
 
 import numpy as np
@@ -30,10 +31,27 @@ class ViddexaRanker:
 
     def __init__(self, classifier: ContextSensor | None) -> None:
         self.classifier = classifier
+        self._frame_token: int | None = None
+        self.last_latency_ms = 0.0
+
+    def latency_for(self, prepared: FramePreprocessor) -> float:
+        """Return only this frame's model-ranking time without retaining pixels."""
+
+        return (
+            self.last_latency_ms
+            if self._frame_token == prepared.generation_id
+            else 0.0
+        )
+
+    def _begin_frame(self, prepared: FramePreprocessor) -> None:
+        if self._frame_token != prepared.generation_id:
+            self._frame_token = prepared.generation_id
+            self.last_latency_ms = 0.0
 
     def refresh_scores(
         self, prepared: FramePreprocessor, tiles: list[TileState]
     ) -> None:
+        self._begin_frame(prepared)
         if self.classifier is None:
             for tile in tiles:
                 tile.context_score = 0.0
@@ -45,7 +63,11 @@ class ViddexaRanker:
             for tile in tiles
             if (crop := prepared.crop_xyxy(tile.region)) is not None
         ]
-        results = self.classifier.classify_batch([crop for _, crop in valid])
+        started = perf_counter()
+        try:
+            results = self.classifier.classify_batch([crop for _, crop in valid])
+        finally:
+            self.last_latency_ms += (perf_counter() - started) * 1000
         for tile in tiles:
             tile.context_score = 0.0
             tile.context_scores = {}
@@ -56,13 +78,18 @@ class ViddexaRanker:
     def top_subtile(
         self, prepared: FramePreprocessor, region: Region
     ) -> FrameRegion | None:
+        self._begin_frame(prepared)
         subtiles = prepared.subtiles(region)
         if not subtiles:
             return None
         if self.classifier is None:
             return subtiles[0]
-        scored = [
-            (_risk(self.classifier.classify(tile.image) or {}), index, tile)
-            for index, tile in enumerate(subtiles)
-        ]
+        started = perf_counter()
+        try:
+            scored = [
+                (_risk(self.classifier.classify(tile.image) or {}), index, tile)
+                for index, tile in enumerate(subtiles)
+            ]
+        finally:
+            self.last_latency_ms += (perf_counter() - started) * 1000
         return min(scored, key=lambda item: (-item[0], item[1]))[2]

@@ -69,7 +69,7 @@ def sweep_thresholds(
             model_revision=model_revision_for(config.detector),
             input_size=config.full_input_size,
             region_id="full",
-            tile_geometry=config.cache_geometry(),
+            preprocessing_config=config.cache_geometry(),
         )
         cached = cache.get(key)
         if cached is None:

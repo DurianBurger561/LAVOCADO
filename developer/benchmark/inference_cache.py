@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.vision.preprocessor import PREPROCESSING_CACHE_VERSION
+
 
 @dataclass
 class RawInferenceResult:
@@ -16,6 +18,7 @@ class RawInferenceResult:
     model_revision: str
     input_size: int
     region_id: str
+    preprocessing_config: str = ""
     detections: list[dict[str, Any]] = field(default_factory=list)
     preprocess_ms: float = 0.0
     inference_ms: float = 0.0
@@ -34,6 +37,7 @@ class RawInferenceResult:
             model_revision=str(payload.get("model_revision") or ""),
             input_size=int(payload.get("input_size") or 0),
             region_id=str(payload.get("region_id") or "full"),
+            preprocessing_config=str(payload.get("preprocessing_config") or ""),
             detections=list(payload.get("detections") or []),
             preprocess_ms=float(payload.get("preprocess_ms") or 0.0),
             inference_ms=float(payload.get("inference_ms") or 0.0),
@@ -50,7 +54,7 @@ def cache_key(
     model_revision: str,
     input_size: int,
     region_id: str,
-    tile_geometry: str = "",
+    preprocessing_config: str,
 ) -> str:
     payload = "|".join(
         [
@@ -59,7 +63,8 @@ def cache_key(
             str(model_revision),
             str(int(input_size)),
             str(region_id),
-            str(tile_geometry),
+            str(PREPROCESSING_CACHE_VERSION),
+            str(preprocessing_config),
         ]
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()

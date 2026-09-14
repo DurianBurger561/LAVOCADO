@@ -6,7 +6,7 @@ from app.context.models import ContextPolicyAction
 from app.context.policy.resolver import allows_vision
 from app.context.store import ForegroundContextStore
 from app.service import LavocadoService, State
-from app.vision.nudenet_adapter import NudeNetAdapter
+from app.vision.detectors.base import to_violation_evidence
 from app.vision.temporal import EvidenceAccumulator
 from app.vision.violation_policy import ViolationEvidenceType
 from app.vision.visual_decision import VisualDecisionEngine
@@ -32,9 +32,11 @@ class VisionRuntimeTests(unittest.TestCase):
 
         self.assertIsNot(VisualDecisionEngine, DecisionEngine)
 
-    def test_nudenet_adapter_emits_shared_evidence(self) -> None:
-        evidence = NudeNetAdapter().detect_evidence(
-            [{"class": "ANUS_EXPOSED", "score": 0.7, "box": [1, 2, 3, 4]}]
+    def test_primary_boundary_emits_shared_evidence(self) -> None:
+        evidence = to_violation_evidence(
+            [{"class": "ANUS_EXPOSED", "score": 0.7, "box": [1, 2, 3, 4]}],
+            model="nudenet_640m",
+            frame_sequence=1,
         )
 
         self.assertEqual(len(evidence), 1)

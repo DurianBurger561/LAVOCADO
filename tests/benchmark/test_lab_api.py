@@ -44,7 +44,7 @@ class LabAPITests(unittest.TestCase):
             self.assertFalse(denied["ok"])
             with (
                 patch.object(api, "get_status", return_value={"ok": True, "can_start": True}),
-                patch("developer.benchmark.ui.api.LabProcessJob") as job_class,
+                patch("developer.benchmark.registry.LabProcessJob") as job_class,
             ):
                 job_class.return_value.id = "job-id"
                 started = api.lab_start_tool("capture", {"backend": "both", "frames": 20})

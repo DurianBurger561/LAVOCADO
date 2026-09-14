@@ -91,7 +91,7 @@ def _listen_for_control(
             test_intervention_event.set()
         elif command == "diagnostics" and diagnostics is not None:
             payload = json.dumps(
-                diagnostics.snapshot(),
+                diagnostics.snapshot().to_dict(),
                 ensure_ascii=True,
                 separators=(",", ":"),
             )

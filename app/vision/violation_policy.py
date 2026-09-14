@@ -82,9 +82,6 @@ _YOLO_LABEL_TYPES: dict[str, ViolationEvidenceType] = {
     "buttocks-exposed": ViolationEvidenceType.BUTTOCKS_EXPOSURE,
 }
 
-_ACTIVE_POLICY: ThresholdPolicy | None = None
-
-
 @dataclass(frozen=True, slots=True)
 class ThresholdPolicy:
     """Per-model proposal/strong tables. Numbers are experimental starting points."""
@@ -198,15 +195,6 @@ def _pair_from_dict(payload: object) -> tuple[float, float] | None:
     return (proposal, strong)
 
 
-def activate_threshold_policy(policy: ThresholdPolicy | None) -> None:
-    global _ACTIVE_POLICY
-    _ACTIVE_POLICY = policy
-
-
-def active_threshold_policy() -> ThresholdPolicy:
-    return _ACTIVE_POLICY or ThresholdPolicy.from_settings()
-
-
 @dataclass(frozen=True, slots=True)
 class ViolationEvidence:
     evidence_type: ViolationEvidenceType
@@ -252,7 +240,9 @@ def evidence_type_for_label(label: str) -> ViolationEvidenceType | None:
 
 
 def threshold_for_label(label: str, model: str | None = None) -> float | None:
-    return active_threshold_policy().strong(label, model)
+    """Read the immutable default table; runtime code uses its own policy."""
+
+    return ThresholdPolicy.from_settings().strong(label, model)
 
 
 def severity_for(evidence_type: ViolationEvidenceType) -> int:
@@ -268,11 +258,10 @@ def proposal_threshold_for_label(
     margin: float,
     model: str | None = None,
 ) -> float | None:
-    policy = _ACTIVE_POLICY
-    if policy is not None:
-        proposal = policy.proposal(label, model)
-        if proposal is not None:
-            return proposal
+    policy = ThresholdPolicy.from_settings()
+    proposal = policy.proposal(label, model)
+    if proposal is not None:
+        return proposal
     strong = threshold_for_label(label, model)
     if strong is None:
         return None
@@ -286,11 +275,10 @@ def tier_for_score(
     margin: float,
     model: str | None = None,
 ) -> DetectionTier:
-    policy = _ACTIVE_POLICY
-    if policy is not None:
-        pair = policy.pair(label, model)
-        if pair is not None:
-            return policy.tier(score, label, model)
+    policy = ThresholdPolicy.from_settings()
+    pair = policy.pair(label, model)
+    if pair is not None:
+        return policy.tier(score, label, model)
     strong = threshold_for_label(label, model)
     if strong is None:
         return DetectionTier.IGNORE

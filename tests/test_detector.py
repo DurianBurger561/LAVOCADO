@@ -8,7 +8,9 @@ from unittest.mock import patch
 
 import numpy as np
 
+from app.platforms.capture.models import CaptureFrame
 from app.vision.detectors.nudenet import NudeNetPrimaryDetector
+from app.vision.preprocessor import FramePreprocessor
 from app.vision.violation_policy import ViolationEvidence, ViolationEvidenceType
 
 
@@ -26,6 +28,9 @@ class NudeNetPrimaryDetectorTests(unittest.TestCase):
     def setUp(self) -> None:
         self.image = np.zeros((320, 320, 3), dtype=np.uint8)
 
+    def prepared(self):
+        return FramePreprocessor(CaptureFrame(self.image, sequence=4)).prepare_full(640)
+
     def test_emits_anatomy_evidence_below_strong_threshold(self) -> None:
         model = FakeModel(
             [
@@ -39,7 +44,7 @@ class NudeNetPrimaryDetectorTests(unittest.TestCase):
         )
 
         evidence = NudeNetPrimaryDetector(model=model).detect(
-            self.image, input_size=640, frame_sequence=4
+            self.prepared()
         )
 
         self.assertEqual(model.calls, 1)
@@ -61,7 +66,7 @@ class NudeNetPrimaryDetectorTests(unittest.TestCase):
         )
 
         evidence = NudeNetPrimaryDetector(model=model).detect(
-            self.image, input_size=640, frame_sequence=4
+            self.prepared()
         )
 
         self.assertEqual(evidence[0].label, "FEMALE_GENITALIA_EXPOSED")
@@ -85,7 +90,7 @@ class NudeNetPrimaryDetectorTests(unittest.TestCase):
         )
 
         evidence = NudeNetPrimaryDetector(model=model).detect(
-            self.image, input_size=640, frame_sequence=4
+            self.prepared()
         )
 
         self.assertEqual([item.label for item in evidence], [

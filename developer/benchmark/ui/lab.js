@@ -89,6 +89,32 @@ function setLabTab(tab) {
   });
 }
 
+function renderLabCategories(categories) {
+  const container = labEl("lab-categories");
+  if (!container) return;
+  container.replaceChildren();
+  categories.forEach((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button ghost";
+    button.textContent = entry.label;
+    button.dataset.labCategory = entry.id;
+    button.addEventListener("click", () => {
+      if (entry.execution === "tool") {
+        setLabTab("tools");
+        if (entry.tool_mode) labEl("lab-tool-mode").value = entry.tool_mode;
+        labEl(entry.tool_kind === "capture" ? "lab-capture-backend" : "lab-tool-mode")?.focus();
+      } else {
+        const target = document.querySelector(`input[name="lab-target"][value="${entry.id}"]`);
+        if (target) target.checked = true;
+        setLabTab("configure");
+        target?.focus();
+      }
+    });
+    container.appendChild(button);
+  });
+}
+
 function checkedValues(name) {
   return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((node) => node.value);
 }
@@ -402,7 +428,7 @@ async function refreshFailures() {
       const score = top.score == null ? "—" : Number(top.score).toFixed(2);
       item.textContent = `${row.sample_id} · ${detections.length} detections · ${top.class || "none"} ${score}`;
     } else {
-      item.textContent = `${row.sample_id} · expected ${row.expected || "unlabelled"} · predicted ${row.predicted || "—"} · ${row.outcome || ""}`;
+      item.textContent = `${row.sample_id} · expected ${row.expected || "unlabelled"} · predicted ${row.predicted || "—"} · ${row.failure_kind || row.outcome || ""}`;
     }
     item.addEventListener("click", () => {
       document.querySelectorAll(".lab-fail-row").forEach((node) => node.classList.remove("is-active"));
@@ -414,6 +440,7 @@ async function refreshFailures() {
       const temporal = row.temporal_summary || {};
       detail.innerHTML = `
         <p><strong>Sample ${row.sample_id}</strong></p>
+        <p>Failure: ${row.failure_kind || "none"}</p>
         <p>Expected ${row.expected || "Unlabelled"} · Predicted ${row.predicted || "—"}</p>
         <p>Tags: ${(row.tags || []).join(", ") || "—"}</p>
         <p>Detector: ${detector.best_label || "none"} ${detector.best_confidence == null ? "" : detector.best_confidence}</p>
@@ -449,6 +476,11 @@ async function refreshCompare() {
       <td>${percent(row.precision)}</td>
       <td>${percent(row.accuracy)}</td>
       <td>${row.p95_latency_ms == null ? "—" : `${Number(row.p95_latency_ms).toFixed(0)} ms`}</td>
+      <td>${row.recall_gain == null ? "—" : `${(Number(row.recall_gain) * 100).toFixed(1)} pp`}</td>
+      <td>${row.false_negative_reduction == null ? "—" : Number(row.false_negative_reduction).toFixed(0)}</td>
+      <td>${row.p95_cost_ms == null ? "—" : `${Number(row.p95_cost_ms).toFixed(1)} ms`}</td>
+      <td>${row.cpu_cost_percent == null ? "—" : `${Number(row.cpu_cost_percent).toFixed(1)}%`}</td>
+      <td>${row.ram_cost_bytes == null ? "—" : `${(Number(row.ram_cost_bytes) / 1048576).toFixed(1)} MiB`}</td>
       <td>${percent(row.top1_relevant_tile_rate)}</td>
       <td>${percent(row.top2_relevant_tile_rate)}</td>
       <td>${row.mean_context_latency_ms == null ? "—" : `${Number(row.mean_context_latency_ms).toFixed(0)} ms`}</td>
@@ -520,6 +552,9 @@ function initializeLab() {
   document.querySelectorAll(".lab-tab").forEach((button) => {
     button.addEventListener("click", () => setLabTab(button.dataset.labTab));
   });
+  labInvoke("lab_schema_options").then((response) => {
+    renderLabCategories(labAssert(response).categories || []);
+  }).catch((error) => labMessage(error.message, true));
   labEl("lab-create-dataset").addEventListener("click", async () => {
     try {
       const name = labEl("lab-dataset-name").value;

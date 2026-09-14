@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from time import perf_counter
 from typing import Any
 
 from app.platforms.capture.models import CaptureFrame
@@ -13,6 +14,16 @@ from app.vision.primary_detector_set import PrimaryDetection, PrimaryDetectorSet
 from app.vision.scheduler import ScanPlan
 from app.vision.violation_policy import VisualViolationDecision
 from app.vision.yolo_adapter import Yolo11Adapter
+
+
+@dataclass(frozen=True, slots=True)
+class VisionLatency:
+    preprocessing_ms: float = 0.0
+    primary_ms: float = 0.0
+    supplementary_ms: float = 0.0
+    viddexa_ms: float = 0.0
+    decision_ms: float = 0.0
+    vision_total_ms: float = 0.0
 
 
 class VisionPipeline:
@@ -29,17 +40,21 @@ class VisionPipeline:
         yolo_adapter: Yolo11Adapter | None = None,
         *,
         shadow_adapter: Yolo11Adapter | None = None,
-        full_input_size: int = 640,
+        full_input_size: int | None = None,
     ) -> None:
         self.decision_engine = decision_engine
         self.shadow_adapter = shadow_adapter
         self.primary_detectors = PrimaryDetectorSet(
             detector,
             supplementary=yolo_adapter,
-            full_input_size=full_input_size,
+            full_input_size=(
+                decision_engine.settings.detector.full_input_size
+                if full_input_size is None else full_input_size
+            ),
         )
         self.evaluate_calls = 0
         self.last_shadow: dict[str, Any] | None = None
+        self.last_latency = VisionLatency()
 
     def evaluate(
         self,
@@ -53,10 +68,12 @@ class VisionPipeline:
         """Return a visual-violation decision without retaining pixels."""
 
         self.evaluate_calls += 1
+        total_started = perf_counter()
         prepared = prepared_frame or FramePreprocessor(captured_frame)
         prepared.require_frame(captured_frame)
         focused = scan_plan is not None and scan_plan.mode == "focused"
         if focused:
+            decision_started = perf_counter()
             decided = self.decision_engine.evaluate(
                 PrimaryDetection.from_primary(()),
                 captured_frame,
@@ -65,8 +82,11 @@ class VisionPipeline:
                 is_active_monitor=is_active_monitor,
                 prepared_frame=prepared,
             )
+            detector_latency = None
         else:
             detected = self.primary_detectors.detect(prepared)
+            detector_latency = self.primary_detectors.last_latency
+            decision_started = perf_counter()
             decided = self.decision_engine.evaluate(
                 detected,
                 captured_frame,
@@ -75,7 +95,17 @@ class VisionPipeline:
                 is_active_monitor=is_active_monitor,
                 prepared_frame=prepared,
             )
+        decision_ms = (perf_counter() - decision_started) * 1000
+        if not focused:
             decided = self._with_shadow(captured_frame, decided)
+        self.last_latency = VisionLatency(
+            preprocessing_ms=0.0 if detector_latency is None else detector_latency.preprocessing_ms,
+            primary_ms=0.0 if detector_latency is None else detector_latency.primary_ms,
+            supplementary_ms=0.0 if detector_latency is None else detector_latency.supplementary_ms,
+            viddexa_ms=self.decision_engine.viddexa_ranker.latency_for(prepared),
+            decision_ms=decision_ms,
+            vision_total_ms=(perf_counter() - total_started) * 1000,
+        )
         return decided
 
     def prepare_scan(
@@ -138,3 +168,4 @@ class VisionPipeline:
 
         self.decision_engine.reset()
         self.last_shadow = None
+        self.last_latency = VisionLatency()

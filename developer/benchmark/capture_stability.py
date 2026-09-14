@@ -27,6 +27,7 @@ from app.platforms.capture import (
     ScreenCaptureBackend,
 )
 from developer.benchmark.hardware_ipc import write_json
+from developer.benchmark.metrics import median, percentile
 
 EXIT_FAILED = 1
 EXIT_PERMISSION_DENIED = 2
@@ -78,22 +79,13 @@ class PsutilProcessSampler:
         )
 
 
-def _percentile(values: list[float], percentile: float) -> float:
-    ordered = sorted(values)
-    position = (len(ordered) - 1) * percentile
-    lower = int(position)
-    upper = min(lower + 1, len(ordered) - 1)
-    fraction = position - lower
-    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
-
-
 def _timing_summary(values: list[float]) -> dict[str, float | int]:
     if not values:
         return {"samples": 0, "median_ms": 0.0, "p95_ms": 0.0, "max_ms": 0.0}
     return {
         "samples": len(values),
-        "median_ms": round(statistics.median(values), 3),
-        "p95_ms": round(_percentile(values, 0.95), 3),
+        "median_ms": round(median(values), 3),
+        "p95_ms": round(percentile(values, 0.95), 3),
         "max_ms": round(max(values), 3),
     }
 

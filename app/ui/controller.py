@@ -264,4 +264,4 @@ class ProtectionController:
             context_status="not_started",
             yolo_status="not_started",
             primary_detector=settings.detector.primary,
-        ).snapshot()
+        ).snapshot().to_dict()

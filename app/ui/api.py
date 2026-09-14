@@ -90,7 +90,7 @@ class DashboardAPI:
 
     def get_diagnostics(self) -> dict[str, Any]:
         try:
-            return {"ok": True, "diagnostics": self.diagnostics.snapshot()}
+            return {"ok": True, "diagnostics": self.diagnostics.snapshot().to_dict()}
         except Exception as error:  # noqa: BLE001 - JSON API boundary
             return self._error_result("Could not read diagnostics", error)
 

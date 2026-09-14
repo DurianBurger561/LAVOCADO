@@ -13,6 +13,7 @@ from nudenet import NudeDetector
 from app import config
 from app.vision.detectors.base import to_violation_evidence
 from app.vision.model_assets import resolve_nudenet_model_path
+from app.vision.preprocessor import PreparedFrame
 from app.vision.violation_policy import ViolationEvidence
 
 LOGGER = logging.getLogger(__name__)
@@ -81,15 +82,13 @@ class NudeNetPrimaryDetector:
 
     def detect(
         self,
-        frame: np.ndarray,
-        *,
-        input_size: int,
-        frame_sequence: int,
-    ) -> list[ViolationEvidence]:
-        """Run NudeNet. ``input_size`` is recorded; NudeNet resizes internally."""
+        prepared: PreparedFrame,
+    ) -> tuple[ViolationEvidence, ...]:
+        """Run NudeNet on pixels owned by the per-frame preprocessor."""
 
-        del input_size
-        if not isinstance(frame, np.ndarray):
-            return []
-        detections = list(self.model.detect(frame))
-        return to_violation_evidence(detections, model=self.name, frame_sequence=frame_sequence)
+        detections = list(self.model.detect(prepared.image))
+        return tuple(
+            to_violation_evidence(
+                detections, model=self.name, frame_sequence=prepared.frame_sequence
+            )
+        )

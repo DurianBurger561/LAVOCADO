@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from app.platforms.capture.models import CaptureFrame, Rect
-from app.vision.preprocessor import FramePreprocessor, TileSpec
+from app.vision.preprocessor import FramePreprocessor, PreparedFrame, TileSpec
 
 
 def frame(sequence: int = 1) -> CaptureFrame:
@@ -38,15 +38,38 @@ class FramePreprocessorTests(unittest.TestCase):
         self.assertEqual(tuple(rgb[0, 0]), tuple(prepared.original[0, 0, ::-1]))
         self.assertEqual(tuple(prepared.original[0, 0]), (0, 1, 2))
 
-    def test_crop_and_resized_crop_share_cached_pixels(self) -> None:
+    def test_crop_and_prepared_region_share_cached_pixels(self) -> None:
         prepared = FramePreprocessor(frame())
         rect = Rect(2, 1, 4, 3)
 
         self.assertIs(prepared.crop(rect), prepared.crop_xyxy((2, 1, 6, 4)))
         self.assertEqual(prepared.crop(rect).shape, (3, 4, 3))
-        self.assertIs(prepared.resized_crop(rect, 2), prepared.resized_crop(rect, 2))
-        self.assertEqual(prepared.resized_crop(rect, 2).shape, (2, 2, 3))
+        self.assertTrue(np.shares_memory(prepared.crop(rect), prepared.original))
+        region = (2, 1, 6, 4)
+        self.assertIs(prepared.prepare_region(region, 2), prepared.prepare_region(region, 2))
+        self.assertEqual(prepared.prepare_region(region, 2).image.shape, (2, 2, 3))
+        self.assertIs(
+            prepared.prepare_region((-1, 0, 4, 3), 2),
+            prepared.prepare_region((0, 0, 4, 3), 2),
+        )
         self.assertIsNone(prepared.crop(Rect(20, 20, 1, 1)))
+
+    def test_prepared_frame_is_contiguous_and_cached_only_within_generation(self) -> None:
+        pixels = frame().image[:, ::2, :]
+        first = FramePreprocessor(CaptureFrame(pixels, sequence=4))
+        full = first.prepare_full(640)
+        region = first.prepare_region((1, 1, 3, 4), 640)
+
+        self.assertIsInstance(full, PreparedFrame)
+        self.assertTrue(full.image.flags.c_contiguous)
+        self.assertTrue(region.image.flags.c_contiguous)
+        self.assertIs(first.prepare_full(640), full)
+        self.assertEqual(full.frame_sequence, 4)
+        self.assertIsNot(FramePreprocessor(CaptureFrame(pixels, sequence=5)).prepare_full(640), full)
+
+    def test_prepared_frame_rejects_noncontiguous_pixels(self) -> None:
+        with self.assertRaisesRegex(ValueError, "contiguous BGR"):
+            PreparedFrame(frame().image[:, ::2, :], 640, 1)
 
     def test_tiles_cover_odd_edges_and_reuse_crops(self) -> None:
         prepared = FramePreprocessor(frame())

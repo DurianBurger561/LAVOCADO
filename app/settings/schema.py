@@ -88,6 +88,16 @@ class DetectorSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class CaptureSettings:
+    monitor_index: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UISettings:
+    cooldown_seconds: float = 8.0
+
+
+@dataclass(frozen=True, slots=True)
 class ContextSettings:
     model: str = "viddexa_mini"
     tile_ranking: bool = True
@@ -118,6 +128,7 @@ class ScanSettings:
     active_monitor_priority: bool = True
     vision_budget_ms: int = 250
     change_sensitivity: float = 0.01
+    periodic_scan_interval: int = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +156,8 @@ class VisionSettings:
     schema_version: int = SCHEMA_VERSION
     preset: str = "balanced"
     detector: DetectorSettings = field(default_factory=DetectorSettings)
+    capture: CaptureSettings = field(default_factory=CaptureSettings)
+    ui: UISettings = field(default_factory=UISettings)
     context: ContextSettings = field(default_factory=ContextSettings)
     tiles: TileSettings = field(default_factory=TileSettings)
     recheck: RecheckSettings = field(default_factory=RecheckSettings)
@@ -239,6 +252,8 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
         return base
 
     detector_raw = payload.get("detector") if isinstance(payload.get("detector"), dict) else {}
+    capture_raw = payload.get("capture") if isinstance(payload.get("capture"), dict) else {}
+    ui_raw = payload.get("ui") if isinstance(payload.get("ui"), dict) else {}
     context_raw = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     tiles_raw = payload.get("tiles") if isinstance(payload.get("tiles"), dict) else {}
     recheck_raw = payload.get("recheck") if isinstance(payload.get("recheck"), dict) else {}
@@ -297,6 +312,19 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
             full_input_size=full_input,
             tile_input_size=tile_input,
         ),
+        capture=CaptureSettings(
+            monitor_index=(
+                None
+                if capture_raw.get("monitor_index") is None
+                else _clamp_int(capture_raw["monitor_index"], 1, 32, 1)
+            ),
+        ),
+        ui=UISettings(
+            cooldown_seconds=_clamp_float(
+                ui_raw.get("cooldown_seconds"), 0.0, 120.0,
+                base.ui.cooldown_seconds,
+            ),
+        ),
         context=ContextSettings(
             model=context_model,
             tile_ranking=_bool(
@@ -340,6 +368,12 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
                     base.scan.change_sensitivity,
                 ),
                 CHANGE_SENSITIVITIES,
+            ),
+            periodic_scan_interval=_clamp_int(
+                scan_raw.get("periodic_scan_interval"),
+                1,
+                120,
+                base.scan.periodic_scan_interval,
             ),
         ),
         temporal=TemporalSettings(

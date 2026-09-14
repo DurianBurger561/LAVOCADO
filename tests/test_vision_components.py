@@ -8,7 +8,7 @@ from app.platforms.capture.models import CaptureFrame
 from app.settings.schema import default_vision_settings, merge_vision_settings
 from app.vision.candidate_verifier import CandidateVerifier
 from app.vision.context.base import ContextResult
-from app.vision.preprocessor import FramePreprocessor
+from app.vision.preprocessor import FramePreprocessor, PreparedFrame
 from app.vision.scan_planner import ScanPlanner
 from app.vision.scheduler import ScanPlan, TileScheduler
 from app.vision.tiles import TileState
@@ -25,17 +25,15 @@ class LocalModel:
     def __init__(self) -> None:
         self.images: list[np.ndarray] = []
 
-    def detect(
-        self, frame: np.ndarray, *, input_size: int, frame_sequence: int
-    ) -> list[ViolationEvidence]:
-        self.images.append(frame)
-        assert input_size == 640
-        return [
+    def detect(self, prepared: PreparedFrame) -> tuple[ViolationEvidence, ...]:
+        self.images.append(prepared.image)
+        assert prepared.input_size == 640
+        return (
             ViolationEvidence(
                 ViolationEvidenceType.BREAST_EXPOSURE,
-                "FEMALE_BREAST_EXPOSED", 0.8, None, "nudenet_640m", frame_sequence,
-            )
-        ]
+                "FEMALE_BREAST_EXPOSED", 0.8, None, "nudenet_640m", prepared.frame_sequence,
+            ),
+        )
 
 
 class ContextModel:
@@ -103,6 +101,8 @@ class VisionComponentTests(unittest.TestCase):
 
         self.assertGreater(tiles[0].context_score, tiles[1].context_score)
         self.assertEqual(top.region, (0, 0, 2, 2))
+        self.assertGreaterEqual(ranker.latency_for(source), 0.0)
+        self.assertEqual(ranker.latency_for(prepared(image.copy(), 2)), 0.0)
         self.assertFalse(hasattr(ranker, "blocked"))
 
     def test_tile_scheduler_owns_change_state_and_reset(self) -> None:

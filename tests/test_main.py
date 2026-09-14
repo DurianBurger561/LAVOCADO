@@ -158,7 +158,11 @@ class MainTests(unittest.TestCase):
         class Diagnostics:
             @staticmethod
             def snapshot():
-                return {"protection_state": "MONITORING", "temporal": [1]}
+                from types import SimpleNamespace
+
+                return SimpleNamespace(
+                    to_dict=lambda: {"protection_state": "MONITORING", "temporal": [1]}
+                )
 
         main._listen_for_control(
             stop_event,

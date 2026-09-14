@@ -11,14 +11,6 @@ NUDENET_FALLBACK_INFERENCE_RESOLUTION = 320
 # when available; otherwise a small grayscale map avoids retaining full frames.
 CHANGE_MAP_MAX_EDGE = 64
 CHANGE_PIXEL_DELTA = 12
-CHANGE_PERIODIC_SCAN_INTERVAL = 8
-
-# None selects the primary monitor automatically. Set an integer to override it.
-MONITOR_INDEX: int | None = None
-
-# Time given to close the triggering content after dismissing the overlay.
-COOLDOWN_SECONDS = 8.0
-
 # A short, deterministic intervention before the dismiss button is enabled.
 INTERVENTION_PAUSE_SECONDS = 3.0
 INTERVENTION_BREATHE_SECONDS = 6.0

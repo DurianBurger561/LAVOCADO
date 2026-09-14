@@ -40,6 +40,18 @@ class SettingsStorageTests(unittest.TestCase):
         self.assertFalse(settings.shadow.enabled)
         self.assertTrue(settings.tiles.enabled)
 
+    def test_runtime_capture_scan_and_ui_controls_have_one_settings_owner(self) -> None:
+        settings = sanitize_vision_settings({
+            "capture": {"monitor_index": 2},
+            "scan": {"periodic_scan_interval": 12},
+            "ui": {"cooldown_seconds": 11.5},
+        })
+
+        self.assertEqual(settings.capture.monitor_index, 2)
+        self.assertEqual(settings.scan.periodic_scan_interval, 12)
+        self.assertEqual(settings.ui.cooldown_seconds, 11.5)
+        self.assertIsNone(default_vision_settings().capture.monitor_index)
+
 
 if __name__ == "__main__":
     unittest.main()

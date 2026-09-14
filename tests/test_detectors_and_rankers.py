@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
+from app.platforms.capture.models import CaptureFrame
 from app.settings.presets import apply_preset
 from app.settings.schema import sanitize_vision_settings
 from app.settings.storage import load_vision_settings, save_vision_settings
@@ -21,10 +22,15 @@ from app.vision.detectors.factory import (
 from app.vision.detectors.nudenet import NudeNetPrimaryDetector
 from app.vision.detectors.yolo11_nsfw import Yolo11NsfwDetector
 from app.vision.evidence import decay_evidence, evidence_from_confidence, is_confirmed
+from app.vision.preprocessor import FramePreprocessor
 from app.vision.scheduler import TileScheduler
 from app.vision.tiles import TileState, mark_checked, rank_tiles
 from app.vision.tracking import CandidateTrack, CandidateTracker
-from app.vision.violation_policy import DetectionTier, tier_for_score
+from app.vision.violation_policy import (
+    DetectionTier,
+    ViolationEvidenceType,
+    tier_for_score,
+)
 from app.vision.yolo_adapter import Yolo11Adapter
 
 
@@ -49,10 +55,16 @@ class FakeYolo:
 
 
 class DetectorAbstractionTests(unittest.TestCase):
+    @staticmethod
+    def prepared(size: int, sequence: int = 1):
+        return FramePreprocessor(
+            CaptureFrame(np.zeros((size, size, 3), dtype=np.uint8), sequence=sequence)
+        ).prepare_full(960 if size == 32 else 640)
+
     def test_nudenet_keeps_original_labels(self) -> None:
         detector = NudeNetPrimaryDetector(model=FakeNudeModel())
         evidence = detector.detect(
-            np.zeros((16, 16, 3), dtype=np.uint8), input_size=640, frame_sequence=1
+            self.prepared(16)
         )
 
         self.assertEqual(detector.name, "nudenet_640m")
@@ -60,9 +72,7 @@ class DetectorAbstractionTests(unittest.TestCase):
 
     def test_nudenet_detect_emits_typed_anatomy_evidence(self) -> None:
         evidence = NudeNetPrimaryDetector(model=FakeNudeModel()).detect(
-            np.zeros((16, 16, 3), dtype=np.uint8),
-            input_size=640,
-            frame_sequence=1,
+            self.prepared(16),
         )
         self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
         self.assertAlmostEqual(evidence[0].confidence, 0.71)
@@ -71,7 +81,7 @@ class DetectorAbstractionTests(unittest.TestCase):
         model = FakeYolo()
         detector = Yolo11NsfwDetector(Yolo11Adapter(model), default_input_size=640)
         evidence = detector.detect(
-            np.zeros((32, 32, 3), dtype=np.uint8), input_size=960, frame_sequence=1
+            self.prepared(32)
         )
 
         self.assertEqual(detector.name, "yolo11_nsfw_small")
@@ -205,6 +215,29 @@ class TilePriorityTests(unittest.TestCase):
 
 
 class TrackingAndEvidenceTests(unittest.TestCase):
+    def test_candidate_identity_keeps_typed_evidence_separate(self) -> None:
+        tracker = CandidateTracker()
+        common = {
+            "monitor_index": 1,
+            "box": (10, 10, 40, 40),
+            "label": "same_raw_label",
+            "confidence": 0.8,
+            "source": "full",
+            "evidence_delta": 1.0,
+        }
+        anatomy = tracker.match_or_create(
+            **common, frame_sequence=1,
+            evidence_type=ViolationEvidenceType.BREAST_EXPOSURE,
+        )
+        act = tracker.match_or_create(
+            **common, frame_sequence=2,
+            evidence_type=ViolationEvidenceType.SEXUAL_ACT,
+        )
+
+        self.assertNotEqual(anatomy.id, act.id)
+        self.assertIs(anatomy.evidence_type, ViolationEvidenceType.BREAST_EXPOSURE)
+        self.assertIs(act.evidence_type, ViolationEvidenceType.SEXUAL_ACT)
+
     def test_same_region_matches_and_different_monitor_does_not(self) -> None:
         tracker = CandidateTracker()
         first = tracker.match_or_create(

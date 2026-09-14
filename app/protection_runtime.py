@@ -29,6 +29,18 @@ class ScanOutcome:
     temporal_history: tuple[bool, ...] = ()
 
 
+@dataclass(slots=True)
+class MonitorRuntimeState:
+    """One monitor's freshness and temporal identity; never shared across displays."""
+
+    monitor_index: int
+    backend: str | None = None
+    latest_sequence: int = 0
+    verifier: TemporalVerifier | None = None
+    candidate_since: float | None = None
+    candidate_track_id: int | None = None
+
+
 class ProtectionRuntime:
     """Own scan scheduling, pipeline execution, and temporal evidence state."""
 
@@ -47,8 +59,7 @@ class ProtectionRuntime:
         self.diagnostics = diagnostics
         self.verifier_factory = verifier_factory
         self.scan_clock = scan_clock
-        self._verifiers: dict[int, TemporalVerifier] = {}
-        self._last_frame_sequences: dict[int, tuple[str, int]] = {}
+        self._monitors: dict[int, MonitorRuntimeState] = {}
 
     def scan_monitor(
         self,
@@ -93,10 +104,20 @@ class ProtectionRuntime:
         if decision.classification is VisualViolationClassification.UNCERTAIN:
             self.change_scheduler.request_focused_verification(monitor_index)
 
-        verifier = self._verifiers.get(monitor_index)
-        if verifier is None:
-            verifier = self.verifier_factory()
-            self._verifiers[monitor_index] = verifier
+        state = self._monitor(monitor_index)
+        if state.verifier is None:
+            state.verifier = self.verifier_factory()
+        verifier = state.verifier
+        temporal_started = self.scan_clock()
+        if not is_violation:
+            state.candidate_since = None
+            state.candidate_track_id = None
+        elif (
+            state.candidate_since is None
+            or (decision.track_id is not None and decision.track_id != state.candidate_track_id)
+        ):
+            state.candidate_since = scan_started
+            state.candidate_track_id = decision.track_id
         confirmed = verifier.update(
             is_violation,
             frame_sequence=frame.sequence,
@@ -105,12 +126,20 @@ class ProtectionRuntime:
             track_id=decision.track_id,
             evidence_score=decision.track_evidence,
         )
+        temporal_finished = self.scan_clock()
         self.diagnostics.record_scan(
             monitor_index=monitor_index,
             elapsed_ms=(self.scan_clock() - scan_started) * 1000,
             decision=decision,
             temporal=verifier.history,
             rescue_status=self.decision_engine.rescue_status(monitor_index),
+            latencies=self.pipeline.last_latency,
+            temporal_ms=(temporal_finished - temporal_started) * 1000,
+            confirmation_ms=(
+                (temporal_finished - state.candidate_since) * 1000
+                if confirmed and state.candidate_since is not None
+                else None
+            ),
         )
         return ScanOutcome(
             fresh_frame=True,
@@ -123,8 +152,11 @@ class ProtectionRuntime:
     def reset_vision(self) -> None:
         """Reset temporal and scan state after an intervention."""
 
-        for verifier in self._verifiers.values():
-            verifier.reset()
+        for state in self._monitors.values():
+            if state.verifier is not None:
+                state.verifier.reset()
+            state.candidate_since = None
+            state.candidate_track_id = None
         self.pipeline.reset()
         self.change_scheduler.reset()
 
@@ -132,14 +164,21 @@ class ProtectionRuntime:
         """Also discard freshness identities when vision has been bypassed."""
 
         self.reset_vision()
-        self._last_frame_sequences.clear()
+        self._monitors.clear()
+
+    def _monitor(self, monitor_index: int) -> MonitorRuntimeState:
+        state = self._monitors.get(monitor_index)
+        if state is None:
+            state = MonitorRuntimeState(monitor_index=monitor_index)
+            self._monitors[monitor_index] = state
+        return state
 
     def _is_fresh_frame(self, monitor_index: int, frame: CaptureFrame) -> bool:
         if frame.sequence < 1:
             return True
-        identity = (frame.backend, frame.sequence)
-        previous = self._last_frame_sequences.get(monitor_index)
-        if previous is not None and previous[0] == frame.backend and frame.sequence <= previous[1]:
+        state = self._monitor(monitor_index)
+        if state.backend == frame.backend and frame.sequence <= state.latest_sequence:
             return False
-        self._last_frame_sequences[monitor_index] = identity
+        state.backend = frame.backend
+        state.latest_sequence = frame.sequence
         return True

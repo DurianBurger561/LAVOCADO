@@ -57,11 +57,13 @@ class FakeRecorder:
 
 class FakeDiagnostics:
     def snapshot(self):
-        return {
+        from types import SimpleNamespace
+
+        return SimpleNamespace(to_dict=lambda: {
             "protection_state": "MONITORING",
             "last_scan_ms": 123.4,
             "temporal": [0, 1, 1],
-        }
+        })
 
 
 class BrokenController(FakeController):

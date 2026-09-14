@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from threading import Event
 
-from app import config
 from app.context.foreground_service import ForegroundContextService
 from app.context.models import (
     ContextPolicyAction,
@@ -39,7 +38,6 @@ from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import (
     ThresholdPolicy,
     VisualViolationDecision,
-    activate_threshold_policy,
 )
 from app.vision.yolo_adapter import load_yolo_adapter
 
@@ -75,7 +73,7 @@ class LavocadoService:
         context_worker: ForegroundContextWorker | None = None,
         verifier_factory: Callable[[], TemporalVerifier] | None = None,
         check_interval: float | None = None,
-        cooldown_seconds: float = config.COOLDOWN_SECONDS,
+        cooldown_seconds: float | None = None,
         clock: Callable[[], float] = time.monotonic,
         scan_clock: Callable[[], float] = time.perf_counter,
         sleeper: Callable[[float], None] = time.sleep,
@@ -83,7 +81,6 @@ class LavocadoService:
         self.platform_adapter = platform_adapter
         data_dir = platform_adapter.default_data_dir()
         self.vision_settings = load_vision_settings(data_dir)
-        activate_threshold_policy(ThresholdPolicy.from_settings(self.vision_settings))
         uses_default_detector = detector is None
         yolo_adapter = None
         shadow_adapter = None
@@ -104,7 +101,10 @@ class LavocadoService:
         self.capturer = (
             capturer
             if capturer is not None
-            else Capturer(platform_adapter)
+            else Capturer(
+                platform_adapter,
+                monitor_index=self.vision_settings.capture.monitor_index,
+            )
         )
         if decision_engine is not None:
             self.decision_engine = decision_engine
@@ -208,6 +208,7 @@ class LavocadoService:
         self.change_scheduler = change_scheduler or ChangeScheduler(
             change_ratio_threshold=self.vision_settings.scan.change_sensitivity,
             adaptive=self.vision_settings.scan.adaptive,
+            periodic_scan_interval=self.vision_settings.scan.periodic_scan_interval,
             candidate_followup_checks=max(0, self.vision_settings.temporal.window_size - 1),
         )
         self.context_store = context_store or ForegroundContextStore()
@@ -223,7 +224,11 @@ class LavocadoService:
             if check_interval is None
             else check_interval
         )
-        self.cooldown_seconds = cooldown_seconds
+        self.cooldown_seconds = (
+            self.vision_settings.ui.cooldown_seconds
+            if cooldown_seconds is None
+            else cooldown_seconds
+        )
         self._clock = clock
         self._scan_clock = scan_clock
         self._sleeper = sleeper

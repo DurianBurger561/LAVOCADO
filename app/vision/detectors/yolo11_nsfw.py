@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 
-import numpy as np
-
 from app.vision.detectors.base import (
     to_violation_evidence,
 )
+from app.vision.preprocessor import PreparedFrame
 from app.vision.violation_policy import ViolationEvidence
 from app.vision.yolo_adapter import (
     Yolo11Adapter,
@@ -37,25 +36,24 @@ class Yolo11NsfwDetector:
 
     def detect(
         self,
-        frame: np.ndarray,
-        *,
-        input_size: int,
-        frame_sequence: int,
-    ) -> list[ViolationEvidence]:
-        if not isinstance(frame, np.ndarray):
-            return []
+        prepared: PreparedFrame,
+    ) -> tuple[ViolationEvidence, ...]:
         model = self._adapter.model
         previous = getattr(model, "imgsz", None)
         if hasattr(model, "imgsz"):
-            model.imgsz = int(input_size)
+            model.imgsz = prepared.input_size
         try:
-            detections = list(model.detect(frame))
+            detections = list(model.detect(prepared.image))
         except Exception:  # noqa: BLE001 - inference must not crash protection
-            return []
+            return ()
         finally:
             if hasattr(model, "imgsz"):
                 model.imgsz = previous
-        return to_violation_evidence(detections, model=self.name, frame_sequence=frame_sequence)
+        return tuple(
+            to_violation_evidence(
+                detections, model=self.name, frame_sequence=prepared.frame_sequence
+            )
+        )
 
 
 def load_yolo11_nsfw_detector(

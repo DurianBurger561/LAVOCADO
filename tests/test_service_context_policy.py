@@ -231,7 +231,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
         self.assertEqual(recorder.events[0].trigger_type, "website_rule")
         self.assertIsNone(recorder.events[0].label)
         self.assertIsNone(results)
-        self.assertEqual(service.diagnostics.snapshot()["foreground_context"], {
+        self.assertEqual(service.diagnostics.snapshot().to_dict()["foreground_context"], {
             "application_available": True,
             "is_browser": True,
             "website_state": "known",
@@ -351,7 +351,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
         self.assertEqual(service.state, State.BYPASSED)
         self.assertEqual(capturer.grabbed_indexes, [])
         self.assertEqual(
-            service.diagnostics.snapshot()["foreground_context"]["effective_policy"],
+            service.diagnostics.snapshot().to_dict()["foreground_context"]["effective_policy"],
             "full_bypass",
         )
 
@@ -451,7 +451,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
                 self.assertEqual(recorder.shown_event_ids, [1])
                 self.assertEqual(intervention.generate_count, 1)
                 self.assertEqual(
-                    service.diagnostics.snapshot()["foreground_context"],
+                    service.diagnostics.snapshot().to_dict()["foreground_context"],
                     {**availability, **expected_foreground},
                 )
 

@@ -5,9 +5,9 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-from developer.benchmark.results import BenchmarkRun
+from developer.benchmark.results import BenchmarkResult
 
 JSON_FIELDS = (
     "config",
@@ -21,7 +21,7 @@ JSON_FIELDS = (
 )
 
 
-def export_json(run: BenchmarkRun, path: Path) -> Path:
+def export_json(run: BenchmarkResult, path: Path) -> Path:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -42,7 +42,7 @@ def export_json(run: BenchmarkRun, path: Path) -> Path:
     return destination
 
 
-def export_csv(run: BenchmarkRun, path: Path) -> Path:
+def export_csv(run: BenchmarkResult, path: Path) -> Path:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
@@ -87,7 +87,7 @@ def export_csv(run: BenchmarkRun, path: Path) -> Path:
     return destination
 
 
-def _row_export(row: dict[str, Any], run: BenchmarkRun) -> dict[str, Any]:
+def _row_export(row: dict[str, Any], run: BenchmarkResult) -> dict[str, Any]:
     config = next(
         (item for item in run.configs if item.get("id") == row.get("config_id")),
         {},
@@ -109,5 +109,5 @@ def _row_export(row: dict[str, Any], run: BenchmarkRun) -> dict[str, Any]:
     }
 
 
-def default_export_name(run: BenchmarkRun, suffix: str) -> str:
+def default_export_name(run: BenchmarkResult, suffix: str) -> str:
     return f"lavocado-benchmark-{run.id}.{suffix}"

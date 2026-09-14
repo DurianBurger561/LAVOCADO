@@ -5,7 +5,6 @@ Uses synthetic pixels only. Timings are diagnostic, not pass/fail thresholds.
 
 from __future__ import annotations
 
-import statistics
 import time
 
 import cv2
@@ -14,6 +13,7 @@ import numpy as np
 from app.platforms.capture.models import CaptureFrame
 from app.vision.preprocessor import FramePreprocessor, TileSpec
 from app.vision.regions import crop_region, overlapping_tile_regions
+from developer.benchmark.metrics import median
 
 
 def _uncached(frame: CaptureFrame, size: int) -> tuple[np.ndarray, np.ndarray]:
@@ -62,8 +62,8 @@ def benchmark_preprocessor(
         if new_result[0] is not new_result[1]:
             raise RuntimeError("prepared resize was not reused")
 
-    old_ms = statistics.median(baseline)
-    new_ms = statistics.median(prepared)
+    old_ms = median(baseline)
+    new_ms = median(prepared)
     return {
         "ok": True,
         "metric_kind": "preprocessor_microbenchmark",

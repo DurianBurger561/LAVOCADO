@@ -10,6 +10,7 @@ from app.platforms.capture.models import CaptureFrame
 from app.settings.schema import default_vision_settings
 from app.vision.context.base import ContextResult
 from app.vision.decision import DecisionEngine
+from app.vision.preprocessor import PreparedFrame
 from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.violation_policy import (
     ViolationEvidence,
@@ -51,24 +52,21 @@ class FakeLocalDetector:
         self._candidates = iter(candidates)
         self.received_means: list[int] = []
 
-    def detect(
-        self, image: np.ndarray, *, input_size: int, frame_sequence: int
-    ) -> list[ViolationEvidence]:
-        del input_size
-        self.received_means.append(int(image.mean()))
+    def detect(self, prepared: PreparedFrame) -> tuple[ViolationEvidence, ...]:
+        self.received_means.append(int(prepared.image.mean()))
         candidate = next(self._candidates, False)
         if not candidate:
-            return []
-        return [
+            return ()
+        return (
             ViolationEvidence(
                 evidence_type=ViolationEvidenceType.BREAST_EXPOSURE,
                 label="FEMALE_BREAST_EXPOSED",
                 confidence=0.80,
                 bbox=(0.0, 0.0, 1.0, 1.0),
                 model="nudenet_640m",
-                frame_sequence=frame_sequence,
-            )
-        ]
+                frame_sequence=prepared.frame_sequence,
+            ),
+        )
 
 
 def captured_frame() -> CaptureFrame:

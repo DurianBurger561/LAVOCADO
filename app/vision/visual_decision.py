@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from app.vision.violation_policy import (
     DetectionTier,
@@ -45,6 +45,7 @@ class VisualDecisionDraft:
     evidence: tuple[ViolationEvidence, ...]
     source: str = ""
     label: str | None = None
+    model: str | None = None
     confidence: float = 0.0
     box: tuple[float, float, float, float] | None = None
     region: tuple[int, int, int, int] | None = None
@@ -112,6 +113,22 @@ class VisualDecisionEngine:
             VisualViolationClassification.VIOLATION, strongest, threshold
         )
 
+    @staticmethod
+    def draft_from_assessment(
+        evidence: tuple[ViolationEvidence, ...],
+        assessment: PrimaryAssessment,
+    ) -> VisualDecisionDraft:
+        strongest = assessment.strong
+        return VisualDecisionDraft(
+            classification=assessment.classification,
+            evidence=evidence,
+            label=None if strongest is None else strongest.label,
+            model=None if strongest is None else strongest.model,
+            confidence=0.0 if strongest is None else strongest.confidence,
+            box=None if strongest is None else strongest.bbox,
+            threshold=assessment.threshold,
+        )
+
     def borderline_candidate(
         self, evidence: Iterable[ViolationEvidence]
     ) -> BorderlineCandidate | None:
@@ -135,6 +152,29 @@ class VisualDecisionEngine:
             key=lambda item: (
                 item.evidence.confidence - item.threshold,
                 item.evidence.confidence,
+            ),
+        )
+
+    @staticmethod
+    def with_metadata(
+        result: VisualDecisionDraft,
+        *,
+        source: str,
+        region: tuple[int, int, int, int] | None = None,
+        threshold: float | None = None,
+        classification: VisualViolationClassification | None = None,
+    ) -> VisualDecisionDraft:
+        return replace(
+            result,
+            source=source,
+            region=region,
+            threshold=threshold,
+            context_label=None,
+            context_score=None,
+            rescue_tile_index=None,
+            recheck_performed=False,
+            classification=(
+                result.classification if classification is None else classification
             ),
         )
 

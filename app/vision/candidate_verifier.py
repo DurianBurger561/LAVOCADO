@@ -4,23 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
 
-import numpy as np
-
-from app.vision.preprocessor import FramePreprocessor
+from app.vision.detectors.base import PrimaryDetector
+from app.vision.preprocessor import FramePreprocessor, PreparedFrame
 from app.vision.regions import Region
 from app.vision.violation_policy import (
     DetectionTier,
     ThresholdPolicy,
     ViolationEvidence,
 )
-
-
-class LocalNudityDetector(Protocol):
-    def detect(
-        self, frame: np.ndarray, *, input_size: int, frame_sequence: int
-    ) -> list[ViolationEvidence]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +26,7 @@ class CandidateVerifier:
 
     def __init__(
         self,
-        detector: LocalNudityDetector | None,
+        detector: PrimaryDetector | None,
         *,
         threshold_policy: ThresholdPolicy,
         tile_input_size: int,
@@ -45,12 +37,10 @@ class CandidateVerifier:
         self.tile_input_size = tile_input_size
         self.enabled = enabled
 
-    def strong_hit(self, crop: np.ndarray, *, frame_sequence: int) -> ViolationEvidence | None:
-        if self.detector is None or not isinstance(crop, np.ndarray):
+    def strong_hit(self, prepared: PreparedFrame) -> ViolationEvidence | None:
+        if self.detector is None:
             return None
-        evidence = self.detector.detect(
-            crop, input_size=self.tile_input_size, frame_sequence=frame_sequence
-        )
+        evidence = self.detector.detect(prepared)
         strong = [
             item
             for item in evidence
@@ -72,15 +62,18 @@ class CandidateVerifier:
         cropped = prepared.context_crop(box, model_shape, expansion)
         if cropped is None:
             return None
-        image, region = cropped
-        return RecheckResult(region, self.strong_hit(image, frame_sequence=prepared.frame.sequence))
+        _image, region = cropped
+        model_frame = prepared.prepare_region(region, self.tile_input_size)
+        if model_frame is None:
+            return None
+        return RecheckResult(region, self.strong_hit(model_frame))
 
     def region_recheck(
         self, prepared: FramePreprocessor, region: Region
     ) -> RecheckResult | None:
         if self.detector is None:
             return None
-        crop = prepared.crop_xyxy(region)
-        if crop is None:
+        model_frame = prepared.prepare_region(region, self.tile_input_size)
+        if model_frame is None:
             return None
-        return RecheckResult(region, self.strong_hit(crop, frame_sequence=prepared.frame.sequence))
+        return RecheckResult(region, self.strong_hit(model_frame))

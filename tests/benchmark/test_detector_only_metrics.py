@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from developer.benchmark.metrics import summarize_detector_rows, summarize_rows
-from developer.benchmark.results import BenchmarkRun, finalize_run
+from developer.benchmark.results import BenchmarkResult, finalize_run
 
 
 class DetectorOnlyMetricsTests(unittest.TestCase):
@@ -36,7 +36,7 @@ class DetectorOnlyMetricsTests(unittest.TestCase):
         self.assertNotIn("accuracy", summary)
 
     def test_finalize_run_does_not_fallback_detector_rows_into_product_metrics(self) -> None:
-        run = BenchmarkRun(
+        run = BenchmarkResult(
             id="d1",
             created_at="2026-01-01T00:00:00+00:00",
             dataset_name="desk",

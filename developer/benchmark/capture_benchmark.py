@@ -6,15 +6,12 @@ import argparse
 import json
 import os
 import platform
-import statistics
 import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Protocol
-
-import numpy as np
 
 from app.platforms import create_platform_adapter
 from app.platforms.capture import (
@@ -24,20 +21,14 @@ from app.platforms.capture import (
     CapturePermissionDeniedError,
     ScreenCaptureBackend,
 )
+from app.vision.detectors.base import PrimaryDetector
 from app.vision.detectors.nudenet import NudeNetPrimaryDetector
-from app.vision.violation_policy import ViolationEvidence
+from app.vision.preprocessor import FramePreprocessor
 from developer.benchmark.hardware_ipc import read_json, worker_command, write_json
+from developer.benchmark.metrics import mean, median, percentile
 
 EXIT_FAILED = 1
 EXIT_PERMISSION_DENIED = 2
-
-
-class DetectorLike(Protocol):
-    """Detection seam used by the benchmark and its tests."""
-
-    def detect(
-        self, image: np.ndarray, *, input_size: int = 640, frame_sequence: int
-    ) -> list[ViolationEvidence]: ...
 
 
 class MemorySampler(Protocol):
@@ -62,17 +53,6 @@ class PsutilMemorySampler:
         return int(self._process.memory_info().rss)
 
 
-def _percentile(values: list[float], percentile: float) -> float:
-    ordered = sorted(values)
-    if not ordered:
-        raise ValueError("cannot summarize an empty sample")
-    position = (len(ordered) - 1) * percentile
-    lower = int(position)
-    upper = min(lower + 1, len(ordered) - 1)
-    fraction = position - lower
-    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
-
-
 def summarize(values: list[float]) -> dict[str, float | int]:
     """Return stable aggregate timing fields in milliseconds."""
 
@@ -80,17 +60,11 @@ def summarize(values: list[float]) -> dict[str, float | int]:
         raise ValueError("cannot summarize an empty sample")
     return {
         "samples": len(values),
-        "mean_ms": round(statistics.mean(values), 3),
-        "median_ms": round(statistics.median(values), 3),
-        "p95_ms": round(_percentile(values, 0.95), 3),
+        "mean_ms": round(mean(values), 3),
+        "median_ms": round(median(values), 3),
+        "p95_ms": round(percentile(values, 0.95), 3),
         "max_ms": round(max(values), 3),
     }
-
-
-def _canonical_frame(image: np.ndarray) -> np.ndarray:
-    if image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
-        raise RuntimeError("Capture returned an invalid BGR frame")
-    return np.ascontiguousarray(image)
 
 
 def _next_fresh_frame(
@@ -120,7 +94,7 @@ def _next_fresh_frame(
 
 def benchmark_backend(
     backend: ScreenCaptureBackend,
-    detector: DetectorLike,
+    detector: PrimaryDetector,
     memory: MemorySampler,
     *,
     mode: str,
@@ -157,7 +131,7 @@ def benchmark_backend(
                 )
                 last_sequences[monitor.id] = frame.sequence
                 detector.detect(
-                    _canonical_frame(frame.image), input_size=640, frame_sequence=frame.sequence
+                    FramePreprocessor(frame).prepare_full(640)
                 )
                 peak_rss = max(peak_rss, memory.rss_bytes())
 
@@ -191,7 +165,7 @@ def benchmark_backend(
                 last_sequences[monitor.id] = frame.sequence
                 detection_started_ns = clock_ns()
                 evidence = detector.detect(
-                    _canonical_frame(frame.image), input_size=640, frame_sequence=frame.sequence
+                    FramePreprocessor(frame).prepare_full(640)
                 )
                 decision_finished_ns = clock_ns()
 

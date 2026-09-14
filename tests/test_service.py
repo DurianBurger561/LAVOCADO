@@ -126,18 +126,17 @@ class FakeDetector:
             for monitor_index, results in results_by_monitor.items()
         }
 
-    def detect(
-        self, image: object, *, input_size: int = 640, frame_sequence: int
-    ) -> list[ViolationEvidence]:
-        del input_size
+    def detect(self, prepared: object) -> tuple[ViolationEvidence, ...]:
+        image = prepared.image
+        frame_sequence = prepared.frame_sequence
         if not isinstance(image, np.ndarray) or image.shape != (8, 8, 3):
-            return []
+            return ()
         monitor_index = int(image[0, 0, 0])
         self.checked_indexes.append(monitor_index)
         blocked = next(self._results_by_monitor[monitor_index])
         if not blocked:
-            return []
-        return [
+            return ()
+        return (
             ViolationEvidence(
                 evidence_type=ViolationEvidenceType.BREAST_EXPOSURE,
                 label="FEMALE_BREAST_EXPOSED",
@@ -145,8 +144,8 @@ class FakeDetector:
                 bbox=None,
                 model="nudenet_640m",
                 frame_sequence=frame_sequence,
-            )
-        ]
+            ),
+        )
 
 
 class FakeChangeScheduler:
@@ -448,7 +447,9 @@ class ServiceTests(unittest.TestCase):
                         "adaptive": False,
                         "change_sensitivity": 0.05,
                         "vision_budget_ms": 150,
+                        "periodic_scan_interval": 12,
                     },
+                    "ui": {"cooldown_seconds": 11.5},
                     "temporal": {"window_size": 5, "min_fresh_hits": 3},
                     "tiles": {"rows": 3, "columns": 3, "max_skip": 5},
                     "recheck": {"proposal_margin": 0.20},
@@ -479,6 +480,8 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(service._next_interval(), 0.25)
             self.assertFalse(service.change_scheduler.adaptive)
             self.assertEqual(service.change_scheduler.change_ratio_threshold, 0.05)
+            self.assertEqual(service.change_scheduler.periodic_scan_interval, 12)
+            self.assertEqual(service.cooldown_seconds, 11.5)
             self.assertEqual(service.change_scheduler.candidate_followup_checks, 4)
             self.assertEqual(service.decision_engine.scheduler.pin_followup_checks, 4)
             self.assertEqual(service.decision_engine.scheduler.tile_spec.rows, 3)
@@ -607,7 +610,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(detector.checked_indexes, [1, 1])
 
     def test_updates_in_memory_diagnostics_after_scan(self) -> None:
-        scan_times = iter((10.0, 10.123))
+        scan_times = iter((10.0, 10.100, 10.101, 10.123))
         diagnostics = DiagnosticsStore(
             model_variant="test",
             inference_resolution=640,
@@ -627,7 +630,7 @@ class ServiceTests(unittest.TestCase):
 
         service.check_once()
 
-        snapshot = diagnostics.snapshot()
+        snapshot = diagnostics.snapshot().to_dict()
         self.assertEqual(snapshot["protection_state"], "CANDIDATE")
         self.assertEqual(snapshot["last_scan_ms"], 123.0)
         self.assertEqual(snapshot["monitor_index"], 1)
@@ -636,6 +639,34 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["capture"]["active_backend"], "fake-native")
         self.assertEqual(snapshot["capture"]["monitor_count"], 1)
         self.assertEqual(snapshot["capture"]["frame_age_ms"], 4.2)
+        self.assertEqual(snapshot["latencies"]["temporal_ms"], 1.0)
+        self.assertIsNone(snapshot["latencies"]["confirmation_ms"])
+
+    def test_confirmation_latency_uses_fresh_frames_on_one_monitor(self) -> None:
+        scan_times = iter((1.0, 1.050, 1.051, 1.070, 1.200, 1.250, 1.251, 1.270))
+        diagnostics = DiagnosticsStore(
+            model_variant="test", inference_resolution=640,
+            context_model="off", context_status="disabled",
+        )
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(),
+            detector=FakeDetector({1: [True, True]}),
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            diagnostics=diagnostics,
+            verifier_factory=lambda: TemporalVerifier(2, 2),
+            scan_clock=lambda: next(scan_times),
+        )
+
+        service.check_once()
+        self.assertIsNone(diagnostics.snapshot().latencies["confirmation_ms"])
+        service.check_once()
+
+        self.assertAlmostEqual(
+            diagnostics.snapshot().latencies["confirmation_ms"], 251.0
+        )
 
     def test_passes_full_capture_to_decision_engine(self) -> None:
         decision_engine = FakeDecisionEngine()

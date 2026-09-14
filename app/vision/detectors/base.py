@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-import numpy as np
-
+from app.vision.preprocessor import PreparedFrame
 from app.vision.violation_policy import (
     ViolationEvidence,
     evidence_type_for_label,
@@ -22,11 +21,8 @@ class PrimaryDetector(Protocol):
 
     def detect(
         self,
-        frame: np.ndarray,
-        *,
-        input_size: int,
-        frame_sequence: int,
-    ) -> list[ViolationEvidence]: ...
+        prepared: PreparedFrame,
+    ) -> tuple[ViolationEvidence, ...]: ...
 
 
 def box_from_raw(box: object) -> Box | None:

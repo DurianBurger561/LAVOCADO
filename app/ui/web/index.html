@@ -212,6 +212,10 @@
                   <dd id="scan-interval-ms">—</dd>
                 </div>
                 <div>
+                  <dt>Preprocess / primary / YOLO / Viddexa / decision / temporal</dt>
+                  <dd id="scan-stage-ms">—</dd>
+                </div>
+                <div>
                   <dt>Full detector</dt>
                   <dd id="scan-full">None</dd>
                 </div>
@@ -383,33 +387,11 @@
           <form id="vision-settings-form" class="vision-form">
             <div class="vision-form-grid">
               <label>
-                Primary detector
-                <select id="vision-primary-select" name="primary">
-                  <option value="nudenet_640m">NudeNet 640m</option>
-                  <option value="yolo11_nsfw_small">YOLO11 NSFW Small</option>
-                </select>
-              </label>
-              <label>
-                Region ranking model
-                <select id="vision-context-select" name="context">
-                  <option value="off">Off</option>
-                  <option value="viddexa_nano">Viddexa Nano</option>
-                  <option value="viddexa_mini">Viddexa Mini</option>
-                </select>
-              </label>
-              <label>
                 Detection mode
                 <select id="vision-preset-select" name="preset">
                   <option value="low_cpu">Low CPU</option>
                   <option value="balanced">Balanced</option>
                   <option value="high_recall">High Recall</option>
-                </select>
-              </label>
-              <label>
-                Tile detection
-                <select id="vision-tile-enabled-select" name="tiles_enabled">
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
                 </select>
               </label>
               <label>
@@ -420,17 +402,39 @@
                   <option value="fast">Fast</option>
                 </select>
               </label>
-              <label>
-                Tile grid
-                <select id="vision-grid-select" name="grid">
-                  <option value="2x2">2 × 2</option>
-                  <option value="3x3">3 × 3</option>
-                </select>
-              </label>
             </div>
             <details class="vision-advanced">
               <summary>Advanced detection settings</summary>
               <div class="vision-form-grid">
+                <label>
+                  Primary detector
+                  <select id="vision-primary-select" name="primary">
+                    <option value="nudenet_640m">NudeNet 640m</option>
+                    <option value="yolo11_nsfw_small">YOLO11 NSFW Small</option>
+                  </select>
+                </label>
+                <label>
+                  Region ranking model
+                  <select id="vision-context-select" name="context">
+                    <option value="off">Off</option>
+                    <option value="viddexa_nano">Viddexa Nano</option>
+                    <option value="viddexa_mini">Viddexa Mini</option>
+                  </select>
+                </label>
+                <label>
+                  Tile detection
+                  <select id="vision-tile-enabled-select" name="tiles_enabled">
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                  </select>
+                </label>
+                <label>
+                  Tile grid
+                  <select id="vision-grid-select" name="grid">
+                    <option value="2x2">2 × 2</option>
+                    <option value="3x3">3 × 3</option>
+                  </select>
+                </label>
                 <label>
                   Full-screen input size
                   <select id="vision-full-input-select" name="full_input_size">

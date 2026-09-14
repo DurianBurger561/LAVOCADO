@@ -8,8 +8,10 @@ from unittest.mock import Mock
 
 import numpy as np
 
+from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
 from app.vision.pipeline import VisionPipeline
+from app.vision.preprocessor import FramePreprocessor
 from app.vision.violation_policy import ViolationEvidence, ViolationEvidenceType
 from developer.benchmark.configs import (
     TARGET_CONTEXT_POLICY,
@@ -27,19 +29,19 @@ class RecordingDetector:
     def __init__(self) -> None:
         self.detect_calls = 0
 
-    def detect(self, frame, *, input_size: int, frame_sequence: int):
+    def detect(self, prepared):
         self.detect_calls += 1
-        del input_size, frame
-        return [
+        self.last_shape = prepared.image.shape
+        return (
             ViolationEvidence(
                 evidence_type=ViolationEvidenceType.BREAST_EXPOSURE,
                 label="FEMALE_BREAST_EXPOSED",
                 confidence=0.91,
                 bbox=(1.0, 2.0, 3.0, 4.0),
                 model="nudenet_640m",
-                frame_sequence=frame_sequence,
-            )
-        ]
+                frame_sequence=prepared.frame_sequence,
+            ),
+        )
 
 
 def config_for(target: str) -> BenchmarkConfig:
@@ -197,8 +199,8 @@ class SessionTests(unittest.TestCase):
         )
         frame = np.zeros((20, 20, 3), dtype=np.uint8)
 
-        first = detector.detect(frame, input_size=640, frame_sequence=1)
-        second = detector.detect(frame, input_size=640, frame_sequence=2)
+        first = detector.detect(FramePreprocessor(CaptureFrame(frame, sequence=1)).prepare_full(640))
+        second = detector.detect(FramePreprocessor(CaptureFrame(frame, sequence=2)).prepare_full(640))
 
         self.assertEqual(len(first), 1)
         self.assertEqual(first[0].evidence_type, ViolationEvidenceType.BREAST_EXPOSURE)
@@ -237,6 +239,20 @@ class SessionTests(unittest.TestCase):
         self.assertGreaterEqual(detector.detect_calls, 1)
         context_factory.assert_not_called()
         self.assertIsNone(session.pipeline)
+
+    def test_detector_only_uses_product_full_frame_preparation(self) -> None:
+        detector = RecordingDetector()
+        session = BenchmarkSession(config_for(TARGET_DETECTOR), detector=detector)
+
+        raw = session.run_detector_only(
+            BenchmarkSample("large", "large.png", "block", False, set()),
+            np.zeros((1200, 1600, 3), dtype=np.uint8),
+            sample_hash="large-hash",
+        )
+
+        self.assertEqual(detector.last_shape, (480, 640, 3))
+        self.assertGreaterEqual(raw.preprocess_ms, 0.0)
+        self.assertEqual(raw.preprocessing_config, session.config.cache_geometry())
 
     def test_full_pipeline_maps_blocked_to_product_ground_truth(self) -> None:
         config = BenchmarkConfig(

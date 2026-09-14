@@ -3,7 +3,8 @@
 import unittest
 
 from app.settings.schema import default_vision_settings, merge_vision_settings
-from app.vision.nudenet_adapter import detections_to_evidence
+from app.vision.detectors.base import to_violation_evidence
+from app.vision.evidence import evidence_from_confidence
 from app.vision.violation_policy import (
     ThresholdPolicy,
     ViolationEvidenceType,
@@ -52,8 +53,8 @@ class ViolationPolicyTests(unittest.TestCase):
                     ViolationEvidenceType.SEXUAL_ACT,
                 )
 
-    def test_nudenet_adapter_emits_only_policy_labels(self) -> None:
-        evidence = detections_to_evidence(
+    def test_primary_boundary_emits_only_policy_labels(self) -> None:
+        evidence = to_violation_evidence(
             [
                 {"class": "FACE_FEMALE", "score": 0.99, "box": [0, 0, 1, 1]},
                 {
@@ -61,7 +62,9 @@ class ViolationPolicyTests(unittest.TestCase):
                     "score": 0.81,
                     "box": [1, 2, 3, 4],
                 },
-            ]
+            ],
+            model="nudenet_640m",
+            frame_sequence=1,
         )
 
         self.assertEqual(len(evidence), 1)
@@ -109,6 +112,24 @@ class ViolationPolicyTests(unittest.TestCase):
 
         self.assertEqual(policy.strong("sexual-contact", "yolo11"), 0.75)
         self.assertEqual(policy.proposal("sexual-contact", "yolo11"), 0.70)
+
+    def test_custom_policy_is_explicit_and_does_not_change_defaults(self) -> None:
+        settings = merge_vision_settings(
+            default_vision_settings(),
+            {"thresholds": {"nudenet_640m": {
+                "FEMALE_BREAST_EXPOSED": {"proposal": 0.70, "strong": 0.75}
+            }}},
+        )
+        custom = ThresholdPolicy.from_settings(settings)
+
+        self.assertEqual(custom.strong("FEMALE_BREAST_EXPOSED"), 0.75)
+        self.assertEqual(threshold_for_label("FEMALE_BREAST_EXPOSED"), 0.65)
+        self.assertLess(
+            evidence_from_confidence(
+                0.70, "FEMALE_BREAST_EXPOSED", policy=custom
+            ),
+            evidence_from_confidence(0.70, "FEMALE_BREAST_EXPOSED"),
+        )
 
     def test_borderline_band_is_below_threshold(self) -> None:
         self.assertTrue(is_borderline_score(0.60, 0.65, 0.10))

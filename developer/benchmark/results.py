@@ -15,6 +15,7 @@ from developer.benchmark.configs import (
     TARGET_DETECTOR,
     BenchmarkConfig,
 )
+from developer.benchmark.contracts import BenchmarkEnvironment
 from developer.benchmark.dataset import BenchmarkDataset, hash_file
 from developer.benchmark.metrics import (
     summarize_context_rows,
@@ -24,13 +25,14 @@ from developer.benchmark.metrics import (
 
 
 @dataclass
-class BenchmarkRun:
+class BenchmarkResult:
     id: str
     created_at: str
     dataset_name: str
     dataset_hash: str
     engine_version: int
     product_version: str
+    environment: BenchmarkEnvironment = field(default_factory=BenchmarkEnvironment.current)
     configs: list[dict[str, Any]] = field(default_factory=list)
     rows: list[dict[str, Any]] = field(default_factory=list)
     summaries: dict[str, Any] = field(default_factory=dict)
@@ -44,6 +46,7 @@ class BenchmarkRun:
             "dataset_hash": self.dataset_hash,
             "engine_version": self.engine_version,
             "product_version": self.product_version,
+            "environment": self.environment.to_dict(),
             "configs": self.configs,
             "rows": self.rows,
             "summaries": self.summaries,
@@ -57,8 +60,8 @@ def dataset_hash(dataset: BenchmarkDataset) -> str:
     return ""
 
 
-def new_run(dataset: BenchmarkDataset, configs: list[BenchmarkConfig]) -> BenchmarkRun:
-    return BenchmarkRun(
+def new_run(dataset: BenchmarkDataset, configs: list[BenchmarkConfig]) -> BenchmarkResult:
+    return BenchmarkResult(
         id=uuid4().hex[:16],
         created_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         dataset_name=dataset.name,
@@ -69,7 +72,7 @@ def new_run(dataset: BenchmarkDataset, configs: list[BenchmarkConfig]) -> Benchm
     )
 
 
-def finalize_run(run: BenchmarkRun) -> BenchmarkRun:
+def finalize_run(run: BenchmarkResult) -> BenchmarkResult:
     by_config: dict[str, list[dict[str, Any]]] = {}
     for row in run.rows:
         by_config.setdefault(str(row.get("config_id") or ""), []).append(row)
@@ -86,7 +89,7 @@ def finalize_run(run: BenchmarkRun) -> BenchmarkRun:
     return run
 
 
-def save_run(dataset: BenchmarkDataset, run: BenchmarkRun) -> Path:
+def save_run(dataset: BenchmarkDataset, run: BenchmarkResult) -> Path:
     dataset.results_dir.mkdir(parents=True, exist_ok=True)
     path = dataset.results_dir / f"{run.id}.json"
     with path.open("w", encoding="utf-8") as handle:
@@ -95,16 +98,24 @@ def save_run(dataset: BenchmarkDataset, run: BenchmarkRun) -> Path:
     return path
 
 
-def load_run(path: Path) -> BenchmarkRun:
+def load_run(path: Path) -> BenchmarkResult:
     with Path(path).open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
-    return BenchmarkRun(
+    environment = payload.get("environment")
+    if not isinstance(environment, dict):
+        raise TypeError("benchmark result has no environment metadata")
+    return BenchmarkResult(
         id=str(payload.get("id") or ""),
         created_at=str(payload.get("created_at") or ""),
         dataset_name=str(payload.get("dataset_name") or ""),
         dataset_hash=str(payload.get("dataset_hash") or ""),
         engine_version=int(payload.get("engine_version") or ENGINE_VERSION),
         product_version=str(payload.get("product_version") or ""),
+        environment=BenchmarkEnvironment(
+            os=str(environment.get("os") or ""),
+            architecture=str(environment.get("architecture") or ""),
+            python=str(environment.get("python") or ""),
+        ),
         configs=list(payload.get("configs") or []),
         rows=list(payload.get("rows") or []),
         summaries=dict(payload.get("summaries") or {}),

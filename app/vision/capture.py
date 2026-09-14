@@ -6,7 +6,6 @@ from typing import Self
 
 import numpy as np
 
-from app import config
 from app.platforms import PlatformAdapter
 from app.platforms.capture import (
     CaptureBackendStatus,
@@ -23,7 +22,7 @@ class Capturer:
     def __init__(
         self,
         platform_adapter: PlatformAdapter,
-        monitor_index: int | None = config.MONITOR_INDEX,
+        monitor_index: int | None = None,
         *,
         backend: ScreenCaptureBackend | None = None,
     ) -> None:

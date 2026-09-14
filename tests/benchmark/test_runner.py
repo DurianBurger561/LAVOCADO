@@ -14,6 +14,7 @@ from developer.benchmark.configs import (
     ConfigSelection,
     expand_configs,
 )
+from developer.benchmark.contracts import BenchmarkRequest
 from developer.benchmark.dataset import (
     BenchmarkSample,
     create_dataset,
@@ -31,9 +32,9 @@ except ImportError:
 
 
 class FakeDetector:
-    def detect(self, image, *, input_size: int = 640, frame_sequence: int):
-        del image, input_size, frame_sequence
-        return []
+    def detect(self, prepared):
+        del prepared
+        return ()
 
 
 class RunnerTests(unittest.TestCase):
@@ -55,10 +56,13 @@ class RunnerTests(unittest.TestCase):
                 ConfigSelection(benchmark_target=TARGET_CONTEXT_POLICY)
             )[0]
 
-            run = BenchmarkRunner(dataset, [config]).start()
+            run = BenchmarkRunner(BenchmarkRequest(dataset, (config,))).start()
 
             self.assertEqual(run.rows[0]["predicted"], "force_block")
             self.assertEqual(run.summaries[config.id]["accuracy"], 1.0)
+            self.assertIn("cpu_percent", run.summaries[config.id])
+            self.assertGreater(run.summaries[config.id]["ram_bytes"], 0)
+            self.assertIn("environment", run.to_dict())
 
     def test_cancel_keeps_completed_rows(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -87,7 +91,9 @@ class RunnerTests(unittest.TestCase):
                 pipeline = VisionPipeline(detector, DecisionEngine(local_detector=detector))
                 return BenchmarkSession(cfg, pipeline=pipeline, cache=cache)
 
-            runner = BenchmarkRunner(dataset, [config], session_factory=factory)
+            runner = BenchmarkRunner(
+                BenchmarkRequest(dataset, (config,)), session_factory=factory
+            )
 
             def on_progress(progress):
                 if int(progress.get("sample_index") or 0) >= 1:

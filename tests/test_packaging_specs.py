@@ -30,9 +30,15 @@ class PackagingSpecTests(unittest.TestCase):
             "developer.benchmark.capture_stability",
             "developer.benchmark.diagnostic_worker",
             "developer.benchmark.jobs",
+            "developer.benchmark.cli",
+            "developer.benchmark.contracts",
+            "developer.benchmark.failures",
+            "developer.benchmark.registry",
             "psutil",
         ):
             self.assertIn(module, hidden)
+            if module != "psutil":
+                self.assertIn(module, USER_EXCLUDES)
         self.assertIn("developer", USER_EXCLUDES)
 
     def test_both_editions_collect_every_pinned_model_file(self) -> None:

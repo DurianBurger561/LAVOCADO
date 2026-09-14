@@ -37,7 +37,7 @@ class ChangeScheduler:
         map_max_edge: int = config.CHANGE_MAP_MAX_EDGE,
         pixel_delta: int = config.CHANGE_PIXEL_DELTA,
         change_ratio_threshold: float = ScanSettings().change_sensitivity,
-        periodic_scan_interval: int = config.CHANGE_PERIODIC_SCAN_INTERVAL,
+        periodic_scan_interval: int = ScanSettings().periodic_scan_interval,
         candidate_followup_checks: int = TemporalSettings().window_size - 1,
         adaptive: bool = True,
     ) -> None:

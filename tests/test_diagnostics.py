@@ -61,7 +61,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             temporal=(),
         )
 
-        summary = store.snapshot()["nudenet"]
+        summary = store.snapshot().to_dict()["nudenet"]
         self.assertEqual(summary["threshold"], 0.75)
         self.assertEqual(summary["status"], "borderline")
 
@@ -85,7 +85,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
         )
 
         store.record_foreground_context(context, policy)
-        self.assertEqual(store.snapshot()["foreground_context"], {
+        self.assertEqual(store.snapshot().to_dict()["foreground_context"], {
             "application_available": True,
             "is_browser": True,
             "website_state": "known",
@@ -94,12 +94,12 @@ class DiagnosticsStoreTests(unittest.TestCase):
             "effective_policy": "force_block",
             "vision_called": False,
         })
-        serialized = json.dumps(store.snapshot())
+        serialized = json.dumps(store.snapshot().to_dict())
         for forbidden in ("Private", "private.example", "secret", "chrome.exe"):
             self.assertNotIn(forbidden, serialized)
 
         store.record_foreground_context(None, None)
-        self.assertEqual(store.snapshot()["foreground_context"], {
+        self.assertEqual(store.snapshot().to_dict()["foreground_context"], {
             "application_available": False,
             "is_browser": None,
             "website_state": "unavailable",
@@ -125,7 +125,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             context, policy, effective_override=ContextPolicyAction.FORCE_BLOCK
         )
 
-        foreground = store.snapshot()["foreground_context"]
+        foreground = store.snapshot().to_dict()["foreground_context"]
         self.assertFalse(foreground["is_browser"])
         self.assertEqual(foreground["website_state"], "not_browser")
         self.assertEqual(foreground["effective_policy"], "force_block")
@@ -148,7 +148,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            store.snapshot()["capture"],
+            store.snapshot().to_dict()["capture"],
             {
                 "preferred_backend": "windows_dxgi",
                 "active_backend": "mss",
@@ -193,7 +193,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             },
         )
 
-        snapshot = store.snapshot()
+        snapshot = store.snapshot().to_dict()
         self.assertEqual(snapshot["protection_state"], "CANDIDATE")
         self.assertEqual(snapshot["model"], "NudeNet 640m")
         self.assertEqual(snapshot["last_scan_ms"], 183.3)
@@ -224,7 +224,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             temporal=(),
         )
 
-        snapshot = store.snapshot()
+        snapshot = store.snapshot().to_dict()
         self.assertEqual(snapshot["nudenet"]["label"], "FACE_FEMALE")
         self.assertEqual(snapshot["nudenet"]["status"], "observed")
         self.assertNotIn("check_points", snapshot)
@@ -232,17 +232,22 @@ class DiagnosticsStoreTests(unittest.TestCase):
 
     def test_snapshot_is_json_serializable_and_isolated(self) -> None:
         store = make_store()
-        first = store.snapshot()
+        typed = store.snapshot()
+        self.assertEqual(typed.protection_state, "STOPPED")
+        self.assertEqual(typed.context_state, "normal")
+        self.assertEqual(typed.scan_mode, "monitoring")
+        self.assertIsNone(typed.latencies["primary_ms"])
+        first = store.snapshot().to_dict()
         first["nudenet"]["label"] = "MUTATED"
 
-        second = store.snapshot()
+        second = store.snapshot().to_dict()
 
         self.assertIsNone(second["nudenet"]["label"])
         json.dumps(second)
 
     def test_schema_does_not_expose_sensitive_content_fields(self) -> None:
         store = make_store()
-        serialized = json.dumps(store.snapshot()).lower()
+        serialized = json.dumps(store.snapshot().to_dict()).lower()
 
         for forbidden in (
             "screenshot",

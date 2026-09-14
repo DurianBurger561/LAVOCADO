@@ -23,7 +23,7 @@ class CacheTests(unittest.TestCase):
                 model_revision="rev",
                 input_size=640,
                 region_id="full",
-                tile_geometry="full",
+                preprocessing_config="full",
             )
             result = RawInferenceResult(
                 sample_id="000001",
@@ -44,7 +44,7 @@ class CacheTests(unittest.TestCase):
                 model_revision="rev",
                 input_size=640,
                 region_id="full",
-                tile_geometry="full",
+                preprocessing_config="full",
             )
             self.assertEqual(key, same)
             changed = cache_key(
@@ -53,6 +53,28 @@ class CacheTests(unittest.TestCase):
                 model_revision="rev",
                 input_size=960,
                 region_id="full",
-                tile_geometry="full",
+                preprocessing_config="full",
             )
             self.assertNotEqual(key, changed)
+            self.assertNotEqual(
+                key,
+                cache_key(
+                    sample_hash="abc",
+                    model_id="nudenet_640m",
+                    model_revision="next-revision",
+                    input_size=640,
+                    region_id="full",
+                    preprocessing_config="full",
+                ),
+            )
+            self.assertNotEqual(
+                key,
+                cache_key(
+                    sample_hash="abc",
+                    model_id="nudenet_640m",
+                    model_revision="rev",
+                    input_size=640,
+                    region_id="full",
+                    preprocessing_config="rgb:bilinear",
+                ),
+            )

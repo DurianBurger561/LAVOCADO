@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Any
@@ -15,11 +16,35 @@ from app.context.models import (
 )
 from app.platforms.capture.models import CaptureBackendStatus
 from app.settings.schema import RecheckSettings
+from app.vision.pipeline import VisionLatency
 from app.vision.violation_policy import (
     ThresholdPolicy,
     VisualViolationDecision,
     evidence_to_dict,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeDiagnosticsSnapshot:
+    """Typed, privacy-safe view shared by IPC, Dashboard and Developer Lab."""
+
+    protection_state: str
+    context_state: str
+    capture_backend: str | None
+    frame_age_ms: float | None
+    scan_mode: str
+    model_status: dict[str, str]
+    candidate_active: bool
+    temporal_history: tuple[int, ...]
+    last_visual_classification: str | None
+    vision_latency_ms: float | None
+    latencies: dict[str, float | None]
+    _serialized: dict[str, Any] = field(repr=False, compare=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize only at a JSON/UI boundary; callers cannot mutate the store."""
+
+        return deepcopy(self._serialized)
 
 
 def _friendly_model_name(variant: str) -> str:
@@ -148,6 +173,16 @@ class DiagnosticsStore:
                 "total_ms": None,
                 "target_interval_ms": None,
             },
+            "latencies": {
+                "preprocessing_ms": None,
+                "primary_ms": None,
+                "supplementary_ms": None,
+                "viddexa_ms": None,
+                "decision_ms": None,
+                "vision_total_ms": None,
+                "temporal_ms": None,
+                "confirmation_ms": None,
+            },
             "full": {
                 "status": "none",
                 "label": None,
@@ -241,6 +276,9 @@ class DiagnosticsStore:
         decision: VisualViolationDecision,
         temporal: tuple[bool, ...],
         rescue_status: dict[str, int | None] | None = None,
+        latencies: VisionLatency | None = None,
+        temporal_ms: float | None = None,
+        confirmation_ms: float | None = None,
         scanned_at: str | None = None,
     ) -> None:
         """Extract a fixed safe schema from one completed monitor scan."""
@@ -268,6 +306,16 @@ class DiagnosticsStore:
                     payload.get("scan_interval_ms")
                 ),
             },
+            "latencies": {
+                "preprocessing_ms": None if latencies is None else round(latencies.preprocessing_ms, 1),
+                "primary_ms": None if latencies is None else round(latencies.primary_ms, 1),
+                "supplementary_ms": None if latencies is None else round(latencies.supplementary_ms, 1),
+                "viddexa_ms": None if latencies is None else round(latencies.viddexa_ms, 1),
+                "decision_ms": None if latencies is None else round(latencies.decision_ms, 1),
+                "vision_total_ms": None if latencies is None else round(latencies.vision_total_ms, 1),
+                "temporal_ms": self._nonnegative_float(temporal_ms),
+                "confirmation_ms": self._nonnegative_float(confirmation_ms),
+            },
             "full": self._nudenet_summary(payload),
             "tiles": {
                 "ranking": self._tile_ranking(payload),
@@ -286,11 +334,29 @@ class DiagnosticsStore:
             monitors[str(monitor_index)] = deepcopy(scan)
             self._snapshot.update(deepcopy(scan))
 
-    def snapshot(self) -> dict[str, Any]:
-        """Return an isolated JSON-serializable copy of current diagnostics."""
+    def snapshot(self) -> RuntimeDiagnosticsSnapshot:
+        """Return one typed, isolated view of privacy-safe runtime state."""
 
         with self._lock:
-            return deepcopy(self._snapshot)
+            payload = deepcopy(self._snapshot)
+        foreground = payload["foreground_context"]
+        capture = payload["capture"]
+        scan = payload["scan"]
+        track = payload["track"]
+        return RuntimeDiagnosticsSnapshot(
+            protection_state=str(payload["protection_state"]),
+            context_state=str(foreground["effective_policy"]),
+            capture_backend=capture["active_backend"],
+            frame_age_ms=capture["frame_age_ms"],
+            scan_mode=str(scan["mode"]),
+            model_status=dict(payload["models"]),
+            candidate_active=bool(track["active"]),
+            temporal_history=tuple(int(item) for item in payload["temporal"]),
+            last_visual_classification=payload["classification"],
+            vision_latency_ms=scan["total_ms"],
+            latencies=dict(payload["latencies"]),
+            _serialized=payload,
+        )
 
     @staticmethod
     def _optional_string(value: object) -> str | None:
@@ -315,23 +381,6 @@ class DiagnosticsStore:
         score = self._optional_float(decision.get("nudenet_score"))
         threshold = self._optional_float(decision.get("threshold"))
 
-        if label is None:
-            checkpoints = decision.get("check_points")
-            if isinstance(checkpoints, list):
-                valid = [
-                    item
-                    for item in checkpoints
-                    if isinstance(item, dict) and item.get("class") is not None
-                ]
-                if valid:
-                    strongest = max(
-                        valid,
-                        key=lambda item: float(item.get("score", 0.0)),
-                    )
-                    label = str(strongest["class"])
-                    score = self._optional_float(strongest.get("score"))
-                    threshold = self._threshold_policy.strong(label)
-
         if label is not None and threshold is None:
             threshold = self._threshold_policy.strong(label)
 
@@ -345,8 +394,6 @@ class DiagnosticsStore:
             status = "roi_confirmed"
         elif source == "anatomy_candidate":
             status = "borderline"
-        elif source == "nudenet_borderline_context":
-            status = "context_confirmed"
         elif source == "rescue_tile":
             status = "rescued"
         elif source in {"yolo_sexual_act", "yolo_sexual_act_roi"}:

@@ -8,12 +8,12 @@ import unittest
 from pathlib import Path
 
 from developer.benchmark.exporter import export_csv, export_json
-from developer.benchmark.results import BenchmarkRun
+from developer.benchmark.results import BenchmarkResult
 
 
 class ExporterTests(unittest.TestCase):
     def test_json_and_csv_do_not_embed_images(self) -> None:
-        run = BenchmarkRun(
+        run = BenchmarkResult(
             id="run1",
             created_at="2026-01-01T00:00:00+00:00",
             dataset_name="desktop",

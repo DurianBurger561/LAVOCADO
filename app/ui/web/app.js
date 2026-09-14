@@ -249,6 +249,14 @@ function renderScanPlan(data) {
       ? "—"
       : `${formatNumber(scan.target_interval_ms, 0)} ms`,
   );
+  const latencies = data.latencies || {};
+  const stages = ["preprocessing_ms", "primary_ms", "supplementary_ms", "viddexa_ms", "decision_ms", "temporal_ms"];
+  text(
+    "scan-stage-ms",
+    stages.every((key) => latencies[key] == null)
+      ? "—"
+      : stages.map((key) => latencies[key] == null ? "—" : formatNumber(latencies[key], 1)).join(" / ") + " ms",
+  );
   const full = data.full || data.nudenet || {};
   text(
     "scan-full",

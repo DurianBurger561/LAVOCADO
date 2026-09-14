@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from itertools import count
 
 import cv2
 import numpy as np
@@ -21,6 +22,9 @@ from app.vision.regions import (
     overlapping_tile_regions,
     subdivide_region,
 )
+
+PREPROCESSING_CACHE_VERSION = 2
+_GENERATIONS = count(1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,16 +40,40 @@ class FrameRegion:
     image: np.ndarray = field(compare=False, repr=False)
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedFrame:
+    """One model-ready BGR view/copy with a known capture generation."""
+
+    image: np.ndarray = field(compare=False, repr=False)
+    input_size: int
+    frame_sequence: int
+
+    def __post_init__(self) -> None:
+        if self.input_size < 1 or self.frame_sequence < 0:
+            raise ValueError("invalid prepared-frame size or sequence")
+        if (
+            not isinstance(self.image, np.ndarray)
+            or self.image.dtype != np.uint8
+            or self.image.ndim != 3
+            or self.image.shape[2] != 3
+            or not self.image.size
+            or not self.image.flags.c_contiguous
+        ):
+            raise ValueError("prepared frame must be contiguous BGR uint8 H x W x 3")
+
+
 class FramePreprocessor:
     """Prepare one canonical frame and cache transformations within that frame."""
 
     def __init__(self, frame: CaptureFrame) -> None:
         self.frame = frame
+        self.generation_id = next(_GENERATIONS)
         self._resized: dict[int, np.ndarray] = {}
         self._rgb: np.ndarray | None = None
         self._crops: dict[Region, np.ndarray] = {}
-        self._resized_crops: dict[tuple[Region, int], np.ndarray] = {}
         self._tiles: dict[TileSpec, tuple[FrameRegion, ...]] = {}
+        self._prepared_full: dict[int, PreparedFrame] = {}
+        self._prepared_regions: dict[tuple[Region, int], PreparedFrame] = {}
 
     @property
     def original(self) -> np.ndarray:
@@ -83,7 +111,7 @@ class FramePreprocessor:
             raise ValueError("cannot resize an empty image")
         long_edge = max(height, width)
         if long_edge <= size:
-            return image
+            return np.ascontiguousarray(image)
         scale = size / long_edge
         target = (max(1, round(width * scale)), max(1, round(height * scale)))
         return np.ascontiguousarray(cv2.resize(image, target, interpolation=cv2.INTER_AREA))
@@ -93,12 +121,48 @@ class FramePreprocessor:
             self._resized[size] = self._resize_long_edge(self.original, size)
         return self._resized[size]
 
+    def prepare_full(self, size: int) -> PreparedFrame:
+        if size not in self._prepared_full:
+            self._prepared_full[size] = PreparedFrame(
+                image=self.resized_long_edge(size),
+                input_size=size,
+                frame_sequence=self.frame.sequence,
+            )
+        return self._prepared_full[size]
+
+    def prepare_region(self, region: Region, size: int) -> PreparedFrame | None:
+        clamped = self._clamp_region(region)
+        if clamped is None:
+            return None
+        key = (clamped, size)
+        if key not in self._prepared_regions:
+            crop = self.crop_xyxy(clamped)
+            if crop is None:
+                return None
+            self._prepared_regions[key] = PreparedFrame(
+                image=np.ascontiguousarray(self._resize_long_edge(crop, size)),
+                input_size=size,
+                frame_sequence=self.frame.sequence,
+            )
+        return self._prepared_regions[key]
+
     def crop(self, rect: Rect) -> np.ndarray | None:
         return self.crop_xyxy(
             (rect.left, rect.top, rect.left + rect.width, rect.top + rect.height)
         )
 
     def crop_xyxy(self, region: Region) -> np.ndarray | None:
+        clamped = self._clamp_region(region)
+        if clamped is None:
+            return None
+        if clamped not in self._crops:
+            cropped = crop_region(self.original, clamped)
+            if cropped is None:
+                return None
+            self._crops[clamped] = cropped
+        return self._crops[clamped]
+
+    def _clamp_region(self, region: Region) -> Region | None:
         height, width = self.original.shape[:2]
         left, top, right, bottom = region
         clamped = (
@@ -109,29 +173,7 @@ class FramePreprocessor:
         )
         if clamped[2] <= clamped[0] or clamped[3] <= clamped[1]:
             return None
-        if clamped not in self._crops:
-            cropped = crop_region(self.original, clamped)
-            if cropped is None:
-                return None
-            self._crops[clamped] = cropped
-        return self._crops[clamped]
-
-    def resized_crop(self, rect: Rect, size: int) -> np.ndarray | None:
-        region = (rect.left, rect.top, rect.left + rect.width, rect.top + rect.height)
-        crop = self.crop_xyxy(region)
-        if crop is None:
-            return None
-        height, width = self.original.shape[:2]
-        clamped = (
-            max(0, min(width, region[0])),
-            max(0, min(height, region[1])),
-            max(0, min(width, region[2])),
-            max(0, min(height, region[3])),
-        )
-        key = (clamped, size)
-        if key not in self._resized_crops:
-            self._resized_crops[key] = self._resize_long_edge(crop, size)
-        return self._resized_crops[key]
+        return clamped
 
     def context_crop(
         self,
