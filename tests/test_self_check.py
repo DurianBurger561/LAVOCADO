@@ -8,17 +8,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import developer_main
 import main
-from app.build_edition import USER_EDITION, set_build_edition
 from app.self_check import perform_self_check, verify_model
 from app.vision.model_manifest import ModelRole, ModelSpec, PinnedModelFile
 
 
 class SelfCheckTests(unittest.TestCase):
-    def tearDown(self) -> None:
-        set_build_edition(USER_EDITION)
-
     def test_model_asset_digest_is_required_before_loading(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -54,24 +49,15 @@ class SelfCheckTests(unittest.TestCase):
             for name in ("index.html", "styles.css", "app.js"):
                 (web / name).touch()
             report = perform_self_check(root=root)
-            self.assertFalse(perform_self_check(root=root, developer=True)["Dashboard assets"])
-            lab = root / "developer" / "benchmark" / "ui"
-            lab.mkdir(parents=True)
-            for name in ("lab.html", "lab.css", "lab.js"):
-                (lab / name).touch()
-            self.assertTrue(perform_self_check(root=root, developer=True)["Dashboard assets"])
         self.assertTrue(report["Dashboard assets"])
         self.assertTrue(report["SQLite"])
         self.assertFalse(report["NudeNet 640m"])
         self.assertNotIn("/private/path", str(report))
 
-    def test_user_and_developer_entrypoints_route_self_check_before_gui(self) -> None:
+    def test_entrypoint_routes_self_check_before_gui(self) -> None:
         with patch("app.self_check.print_self_check", return_value=0) as check, patch(
             "main.create_platform_adapter",
             side_effect=AssertionError("GUI path must not start"),
         ):
             self.assertEqual(main.main(["--self-check"]), 0)
             check.assert_called_once_with()
-        with patch("app.self_check.print_self_check", return_value=0) as check:
-            self.assertEqual(developer_main.main(["--self-check"]), 0)
-            check.assert_called_once_with(developer=True)

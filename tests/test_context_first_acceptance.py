@@ -19,9 +19,9 @@ from app.context.policy.website import WebsitePolicy
 from app.context.store import ForegroundContextStore
 from app.service import LavocadoService, State
 from app.vision.decision import DecisionEngine
+from app.vision.detectors.base import to_violation_evidence
+from app.vision.violation_policy import ViolationEvidenceType
 from app.vision.visual_decision import VisualDecisionEngine
-from developer.benchmark.ground_truth import visual_policy_classification
-from developer.benchmark.ranking_metrics import ranking_quality
 from tests.test_decision import (
     FakeContextClassifier,
     FakeLocalDetector,
@@ -152,20 +152,16 @@ class ContextFirstAcceptanceTests(unittest.TestCase):
             FakeContextClassifier({"porn": 0.99}),
             FakeLocalDetector([False]),
         ).evaluate(empty_result(), rescue_frame())
-        ranking = ranking_quality([
-            {"index": 0, "scores": {"porn": 0.99}, "primary_hit": False},
-        ])
-
         from app.vision.violation_policy import VisualViolationClassification
 
         self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
-        self.assertIsNone(ranking["product_block"])
+        self.assertEqual(result.evidence, ())
 
     def test_medical_anatomy_remains_a_visual_violation(self) -> None:
-        self.assertEqual(
-            visual_policy_classification(MEDICAL_ANATOMY).value,
-            "violation",
+        evidence = to_violation_evidence(
+            MEDICAL_ANATOMY, model="nudenet_640m", frame_sequence=1,
         )
+        self.assertEqual(evidence[0].evidence_type, ViolationEvidenceType.GENITAL_EXPOSURE)
 
     def test_missing_context_store_still_runs_vision(self) -> None:
         detector = FakeDetector({1: [False]})

@@ -39,7 +39,7 @@ jobs:
         run: python -m pip install -r requirements.txt -r requirements-build.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q app developer lavocado_packaging scripts tests main.py developer_main.py
+        run: python -m compileall -q app lavocado_packaging scripts tests main.py
 
       - name: Check architecture contracts
         run: python -m unittest tests.test_architecture_contracts -v

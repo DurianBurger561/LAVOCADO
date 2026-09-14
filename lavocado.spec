@@ -7,7 +7,6 @@ sys.path.insert(0, SPECPATH)
 
 from lavocado_packaging.spec_common import (
     USER_APP_NAME,
-    USER_EXCLUDES,
     macos_plist,
     model_dependency_binaries,
     platform_hiddenimports,
@@ -24,12 +23,9 @@ analysis = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=list(USER_EXCLUDES),
+    excludes=[],
     noarchive=False,
     optimize=0,
-)
-analysis.pure = type(analysis.pure)(
-    [item for item in analysis.pure if not str(item[0]).startswith("developer")]
 )
 pyz = PYZ(analysis.pure)
 

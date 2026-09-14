@@ -190,7 +190,7 @@ NudeNet 320n; packaged builds require the verified 640m file.
 Set `LAVOCADO_NUDENET_MODEL` to use a local 640m file at another path.
 
 NudeNet 640m, YOLO11 NSFW Small, Viddexa Nano, and Viddexa Mini are all
-required in both User and Developer packages. `requirements.txt` installs the
+required in release packages. `requirements.txt` installs the
 YOLO/Transformers/PyTorch inference dependencies. The dashboard Download all
 button or `python scripts/download_models.py --model all` downloads the pinned
 assets. Download and packaging both verify file sizes and SHA-256 digests;
@@ -204,25 +204,6 @@ To re-download only YOLO:
 ```bash
 python scripts/download_models.py --model yolo11_nsfw_small
 ```
-
-All benchmarks now live in the Developer Dashboard's Benchmark Lab:
-
-```bash
-python -m pip install -r requirements.txt -r requirements-developer.txt
-python developer_main.py dashboard
-```
-
-The Lab contains the four dataset targets (Detector Only, Vision Pipeline,
-Context Policy, Full Protection Pipeline), NudeNet 320n/640m comparison,
-Viddexa signal and ranking diagnostics, high-recall case reports, a synthetic
-preprocessor microbenchmark, and real-display Capture performance and stability
-tests. Native and MSS Capture comparisons use isolated worker processes. Stop
-Protection before starting a Lab tool. Medical, education, art, and news tags
-never force Allow; visual-violation ground truth is annotated separately from
-product Block/Allow. No benchmark saves or uploads captured screen pixels.
-See the [Developer benchmark guide](docs/developer-benchmark.md),
-[capture benchmark guide](docs/capture-benchmark.md), and
-[capture stability guide](docs/capture-soak-testing.md).
 
 Viddexa only prioritizes tiles for the primary detector; its signal is never
 product Block accuracy. A missing optional runtime model does not prevent
@@ -312,18 +293,17 @@ python -m PyInstaller --noconfirm --clean lavocado.spec
 
 The output is written under `dist/`. PyInstaller applications must be built on
 each target operating system.
-On Windows or macOS, run `python main.py --self-check` (or
-`python developer_main.py --self-check`) after downloading all four models.
+On Windows or macOS, run `python main.py --self-check` after downloading all four models.
 The same flag works on a frozen executable without opening the dashboard,
 capturing a screen, or contacting a model host. It checks local assets, the
 settings schema, SQLite, the platform adapter, and offline initialization of
 all four required models. A failed check exits nonzero. The **Package** workflow
-runs it on every User and Developer artifact before upload.
+runs it on every artifact before upload.
 
 The **Package** workflow can build downloadable Windows and macOS artifacts
 without requiring both local machines. Open the repository's **Actions** tab,
-select **Package**, choose **Run workflow**, and download the four
-User/Developer platform artifacts when all matrix jobs finish. It also runs
+select **Package**, choose **Run workflow**, and download the two
+platform artifacts when both matrix jobs finish. It also runs
 automatically for tags beginning with `v`.
 
 Packaged applications open the dashboard when launched without arguments. The

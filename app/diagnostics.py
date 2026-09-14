@@ -26,7 +26,7 @@ from app.vision.violation_policy import (
 
 @dataclass(frozen=True, slots=True)
 class RuntimeDiagnosticsSnapshot:
-    """Typed, privacy-safe view shared by IPC, Dashboard and Developer Lab."""
+    """Typed, privacy-safe view shared by IPC and Dashboard."""
 
     protection_state: str
     context_state: str

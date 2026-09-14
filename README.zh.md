@@ -126,29 +126,15 @@ python main.py
 
 固定版本的 640m 模型约 99 MiB,从 NudeNet 官方 GitHub release 下载,并做字节大小和 SHA-256 校验。该模型不纳入 Git。源码运行时若缺少它,LAVOCADO 会记录一条警告并降级到 NudeNet 320n;而打包构建版本则要求必须有经校验的 640m 文件。设置 `LAVOCADO_NUDENET_MODEL` 可指定使用位于其他路径的本地 640m 文件。
 
-NudeNet 640m、YOLO11 NSFW Small、Viddexa Nano 和 Viddexa Mini 都是 User 与 Developer 发布包必须包含的本地模型。可在 Dashboard 点 Download all,或运行 `python scripts/download_models.py --model all`。下载及打包均校验固定文件的大小和 SHA-256;Viddexa 快照会被复制到发布包中,而不是仅留在构建机的缓存里。`requirements.txt` 包含 YOLO、Transformers 和 PyTorch 推理依赖,因此发布包较大。YOLO11 NSFW Small 把性行为和解剖标签映射到同一套视觉违规策略。损坏的本地安装仍可回退 NudeNet。单独重新下载 YOLO:
+NudeNet 640m、YOLO11 NSFW Small、Viddexa Nano 和 Viddexa Mini 都是发布包必须包含的本地模型。可在 Dashboard 点 Download all,或运行 `python scripts/download_models.py --model all`。下载及打包均校验固定文件的大小和 SHA-256;Viddexa 快照会被复制到发布包中,而不是仅留在构建机的缓存里。`requirements.txt` 包含 YOLO、Transformers 和 PyTorch 推理依赖,因此发布包较大。YOLO11 NSFW Small 把性行为和解剖标签映射到同一套视觉违规策略。损坏的本地安装仍可回退 NudeNet。单独重新下载 YOLO:
 
 ```bash
 python scripts/download_models.py --model yolo11_nsfw_small
 ```
 
-所有基准测试现已集中到 Developer Dashboard 的 Benchmark Lab:
-
-```bash
-python -m pip install -r requirements.txt -r requirements-developer.txt
-python developer_main.py dashboard
-```
-
-Lab 包含四类数据集测试、NudeNet 320n/640m 对比、Viddexa 信号与区域排序、
-High-recall 案例报告、合成图像预处理微基准,以及真实显示器上的 Capture 性能和稳定性测试。
-Native/MSS 对比在独立子进程中运行。运行工具前先停止 Protection。医学、教育、艺术等
-标签不会强制 Allow;“视觉违规”真值与产品 Block/Allow 分别标注和计分。所有捕获基准
-只保存标量指标,不保存或上传屏幕像素。详见 [开发者基准说明](docs/developer-benchmark.md)、
-[捕获基准指南](docs/capture-benchmark.md)及 [捕获稳定性指南](docs/capture-soak-testing.md)。
-
 Viddexa 只决定主检测器优先复检哪个区域,不能单独触发 Block。
 
-固定版本的模型文件从 Hugging Face 下载,推理则在本地运行。基准测试用的图片不会被上传或保存,该命令只打印编号结果,而非输入路径。若依赖或模型不可用,LAVOCADO 仍能以纯 NudeNet 模式运行。确认后的视觉违规仍需在 3 个新帧中命中 2 次才会保护。
+固定版本的模型文件从 Hugging Face 下载,推理则在本地运行。若依赖或模型不可用,LAVOCADO 仍能以纯 NudeNet 模式运行。确认后的视觉违规仍需在 3 个新帧中命中 2 次才会保护。
 
 对于小面积内容的救援机制,每块显示器被分为四块区域。Viddexa 按 porn/hentai 风险排序这些区域;高分只是让同一个 NudeNet 640m 实例复检该区域。被救援的区域会在接下来的两次检查中被锁定,以便时序验证器对同一区域做确认或排除。当只有 NudeNet 320n 降级方案可用时,救援机制会自动禁用。
 
@@ -197,13 +183,13 @@ python -m PyInstaller --noconfirm --clean lavocado.spec
 ```
 
 产物写入 `dist/` 目录。PyInstaller 应用必须在各自的目标操作系统上构建。
-在 Windows 或 macOS 下载全部四个模型后,可运行 `python main.py --self-check`
-或 `python developer_main.py --self-check`;打包后的可执行文件也支持相同参数。
+在 Windows 或 macOS 下载全部四个模型后,可运行 `python main.py --self-check`。
+打包后的可执行文件也支持相同参数。
 自检不打开仪表盘、不截屏、不访问模型网站,会检查本地资源、设置、SQLite、
 平台适配器和四个必需模型的离线加载;失败时返回非零退出码。**Package** 工作流
-在上传四种产物前均执行冻结包自检。
+在上传两种产物前均执行冻结包自检。
 
-**Package** 工作流可以构建可下载的 Windows 和 macOS 产物,无需同时拥有两台本地机器。打开仓库的 **Actions** 标签页,选择 **Package**,点击 **Run workflow**,待所有矩阵任务完成后即可下载四个 User/Developer 产物。以 `v` 开头的标签也会自动触发该工作流。
+**Package** 工作流可以构建可下载的 Windows 和 macOS 产物,无需同时拥有两台本地机器。打开仓库的 **Actions** 标签页,选择 **Package**,点击 **Run workflow**,待所有矩阵任务完成后即可下载 Windows 与 macOS 两个产物。以 `v` 开头的标签也会自动触发该工作流。
 
 打包后的应用在不带参数启动时会打开仪表盘。目前 Windows 和 macOS 产物尚未签名,因此开发机器可能会显示常见的"未知发布者"警告。在配置代码签名之前,请勿将它们作为可信版本分发。
 

@@ -138,7 +138,7 @@ class DashboardAPI:
                 "ok": True,
                 "settings": snapshot,
                 "restarted": restarted,
-                "message": "Preset applied. Values remain experimental until benchmarked.",
+                "message": "Preset applied. Values remain experimental until validated.",
             }
         except Exception as error:  # noqa: BLE001 - JSON API boundary
             return self._error_result("Could not apply detection preset", error)

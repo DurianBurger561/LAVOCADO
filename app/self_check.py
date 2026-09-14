@@ -63,14 +63,9 @@ def _runtime_available() -> bool:
     return True
 
 
-def _dashboard_available(root: Path, *, developer: bool) -> bool:
+def _dashboard_available(root: Path) -> bool:
     web = root / "app" / "ui" / "web"
-    if not all((web / name).is_file() for name in ("index.html", "styles.css", "app.js")):
-        return False
-    if developer:
-        lab = root / "developer" / "benchmark" / "ui"
-        return all((lab / name).is_file() for name in ("lab.html", "lab.css", "lab.js"))
-    return True
+    return all((web / name).is_file() for name in ("index.html", "styles.css", "app.js"))
 
 
 def _settings_available() -> bool:
@@ -87,16 +82,14 @@ def _platform_available() -> bool:
     return bool(create_platform_adapter().name)
 
 
-def perform_self_check(
-    *, root: Path | None = None, developer: bool = False
-) -> dict[str, bool]:
+def perform_self_check(*, root: Path | None = None) -> dict[str, bool]:
     """Return fixed, privacy-safe checks without opening GUI or using the network."""
 
     selected_root = resource_root() if root is None else Path(root)
     checks: dict[str, bool] = {}
     operations = (
         ("Runtime", _runtime_available),
-        ("Dashboard assets", lambda: _dashboard_available(selected_root, developer=developer)),
+        ("Dashboard assets", lambda: _dashboard_available(selected_root)),
         ("Settings schema", _settings_available),
         ("SQLite", _sqlite_available),
         ("Platform adapter", _platform_available),
@@ -118,8 +111,8 @@ def perform_self_check(
     return checks
 
 
-def print_self_check(*, developer: bool = False) -> int:
-    checks = perform_self_check(developer=developer)
+def print_self_check() -> int:
+    checks = perform_self_check()
     for name, healthy in checks.items():
         print(f"{name:.<24} {'OK' if healthy else 'FAIL'}")
     if not all(checks.values()):

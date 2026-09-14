@@ -1,4 +1,4 @@
-"""User and Developer specs stay separate and exclude the wrong tree."""
+"""The release spec bundles every required model and dashboard asset."""
 
 from __future__ import annotations
 
@@ -12,9 +12,6 @@ from unittest.mock import patch
 from lavocado_packaging.spec_common import (
     MODEL_HIDDENIMPORTS,
     MODEL_METADATA,
-    USER_EXCLUDES,
-    developer_datas,
-    developer_hiddenimports,
     model_dependency_binaries,
     required_model_datas,
     user_datas,
@@ -25,25 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackagingSpecTests(unittest.TestCase):
-    def test_lab_hardware_workers_are_developer_only(self) -> None:
-        hidden = developer_hiddenimports([])
-        for module in (
-            "developer.benchmark.capture_benchmark",
-            "developer.benchmark.capture_stability",
-            "developer.benchmark.diagnostic_worker",
-            "developer.benchmark.jobs",
-            "developer.benchmark.cli",
-            "developer.benchmark.contracts",
-            "developer.benchmark.failures",
-            "developer.benchmark.registry",
-            "psutil",
-        ):
-            self.assertIn(module, hidden)
-            if module != "psutil":
-                self.assertIn(module, USER_EXCLUDES)
-        self.assertIn("developer", USER_EXCLUDES)
-
-    def test_both_editions_collect_every_pinned_model_file(self) -> None:
+    def test_release_collects_every_pinned_model_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch(
             "lavocado_packaging.spec_common.is_expected_nudenet_model",
             return_value=True,
@@ -61,7 +40,6 @@ class PackagingSpecTests(unittest.TestCase):
             return_value=[],
         ):
             data = user_datas(Path(temp_dir))
-            developer_data = developer_datas(Path(temp_dir))
 
         bundled = {(Path(source).name, target) for source, target in data}
         self.assertIn(("640m.onnx", "models"), bundled)
@@ -70,8 +48,6 @@ class PackagingSpecTests(unittest.TestCase):
             for name in ("model.safetensors", "config.json", "preprocessor_config.json"):
                 self.assertIn((name, f"models/{model_id}"), bundled)
         self.assertEqual(len(data), 9)  # two weights, six Viddexa files, web UI
-        self.assertTrue(set(data).issubset(set(developer_data)))
-        self.assertIn("developer/benchmark/ui", {target for _, target in developer_data})
 
     def test_missing_required_model_stops_spec_before_build(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch(
@@ -109,10 +85,10 @@ class PackagingSpecTests(unittest.TestCase):
         self.assertIn("python scripts/verify_model_bundle.py", workflow)
         self.assertIn("python scripts/verify_model_runtime.py", workflow)
         self.assertIn("run: '\"${{ matrix.executable }}\" --self-check'", workflow)
-        self.assertEqual(workflow.count("            executable:"), 4)
-        self.assertEqual(workflow.count("os: windows-latest"), 2)
-        self.assertEqual(workflow.count("os: macos-latest"), 2)
-        self.assertEqual(workflow.count("          - os:"), 4)
+        self.assertEqual(workflow.count("            executable:"), 2)
+        self.assertEqual(workflow.count("os: windows-latest"), 1)
+        self.assertEqual(workflow.count("os: macos-latest"), 1)
+        self.assertEqual(workflow.count("          - os:"), 2)
         tests_workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(
             encoding="utf-8"
         )
@@ -140,7 +116,7 @@ class PackagingSpecTests(unittest.TestCase):
         self.assertIn("torch", MODEL_METADATA)
         self.assertIn("transformers", MODEL_METADATA)
 
-    def test_both_editions_bundle_transformers_runtime_metadata(self) -> None:
+    def test_release_bundles_transformers_runtime_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch(
             "lavocado_packaging.spec_common.required_model_datas",
             return_value=[],
@@ -152,15 +128,13 @@ class PackagingSpecTests(unittest.TestCase):
             side_effect=lambda name: [(f"/{name}.dist-info", f"{name}.dist-info")],
         ) as metadata:
             user_data = user_datas(Path(temp_dir))
-            developer_data = developer_datas(Path(temp_dir))
 
-        self.assertEqual(metadata.call_count, 2 * len(MODEL_METADATA))
+        self.assertEqual(metadata.call_count, len(MODEL_METADATA))
         for distribution in MODEL_METADATA:
             item = (f"/{distribution}.dist-info", f"{distribution}.dist-info")
             self.assertIn(item, user_data)
-            self.assertIn(item, developer_data)
 
-    def test_torchvision_dynamic_ops_enter_both_editions(self) -> None:
+    def test_torchvision_dynamic_ops_enter_release(self) -> None:
         with patch(
             "lavocado_packaging.spec_common.collect_dynamic_libs",
             return_value=[("/wheel/torchvision/_C_stable.so", "torchvision")],
@@ -171,9 +145,8 @@ class PackagingSpecTests(unittest.TestCase):
         self.assertEqual(collect.call_args.args, ("torchvision",))
         self.assertIn("*.so", collect.call_args.kwargs["search_patterns"])
         self.assertIn("*.pyd", collect.call_args.kwargs["search_patterns"])
-        for filename in ("lavocado.spec", "lavocado-developer.spec"):
-            source = (ROOT / filename).read_text(encoding="utf-8")
-            self.assertIn("binaries=model_dependency_binaries()", source)
+        source = (ROOT / "lavocado.spec").read_text(encoding="utf-8")
+        self.assertIn("binaries=model_dependency_binaries()", source)
 
         with patch(
             "lavocado_packaging.spec_common.collect_dynamic_libs",
@@ -203,20 +176,8 @@ class PackagingSpecTests(unittest.TestCase):
         )
         self.assertEqual(output[1], "1.2.3")
 
-    def test_user_spec_excludes_developer_and_uses_main(self) -> None:
+    def test_release_spec_uses_main(self) -> None:
         text = (ROOT / "lavocado.spec").read_text(encoding="utf-8")
         self.assertIn("from lavocado_packaging.spec_common import", text)
         self.assertNotIn("from packaging.spec_common import", text)
         self.assertIn('["main.py"]', text)
-        self.assertIn("USER_EXCLUDES", text)
-        self.assertNotIn("developer_main.py", text)
-        self.assertNotIn("lab.js", text)
-
-    def test_developer_spec_includes_lab_and_uses_developer_main(self) -> None:
-        text = (ROOT / "lavocado-developer.spec").read_text(encoding="utf-8")
-        self.assertIn("from lavocado_packaging.spec_common import", text)
-        self.assertNotIn("from packaging.spec_common import", text)
-        self.assertIn("developer_main.py", text)
-        self.assertIn("developer_datas", text)
-        self.assertIn("developer_hiddenimports", text)
-        self.assertNotIn("USER_EXCLUDES", text)

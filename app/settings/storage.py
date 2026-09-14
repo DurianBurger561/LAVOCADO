@@ -71,7 +71,7 @@ def public_settings_view(settings: VisionSettings) -> dict[str, Any]:
     payload["recommended_locked"] = True
     payload["disclaimer"] = (
         "Experimental Defaults. Reset to Recommended stays locked until "
-        "screen-domain benchmark selects values."
+        "validated calibration values are available."
     )
     payload["options"] = {
         "primary": ["nudenet_640m", "yolo11_nsfw_small"],

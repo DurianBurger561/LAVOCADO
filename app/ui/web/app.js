@@ -970,12 +970,10 @@ function initializeDashboard() {
     if (picker) picker.addEventListener("click", () => beginAppPick(form));
   });
 
-  if (!document.getElementById("benchmark-lab")) {
-    document.querySelectorAll("#app-nav .nav-button").forEach((button) => {
-      button.addEventListener("click", () => setAppView(button.dataset.view));
-    });
-    setAppView("home");
-  }
+  document.querySelectorAll("#app-nav .nav-button").forEach((button) => {
+    button.addEventListener("click", () => setAppView(button.dataset.view));
+  });
+  setAppView("home");
 
   void Promise.allSettled([
     refreshStatus(),

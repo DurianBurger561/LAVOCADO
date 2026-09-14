@@ -1,2 +1,0 @@
-# Developer-only process and resource sampling for Benchmark Lab tools.
-psutil>=6,<8

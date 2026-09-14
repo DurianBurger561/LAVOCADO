@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-PRODUCTION_ROOTS = (APP, ROOT / "developer", ROOT / "scripts", ROOT / "lavocado_packaging")
+PRODUCTION_ROOTS = (APP, ROOT / "scripts", ROOT / "lavocado_packaging")
 
 
 def _files(root: Path) -> list[Path]:
@@ -38,12 +38,6 @@ def _display(path: Path) -> str:
 
 
 class ArchitectureContractTests(unittest.TestCase):
-    def test_benchmarks_live_only_in_developer_lab(self) -> None:
-        for pattern in ("benchmark_*.py", "bench_*.py", "profile_*.py", "perf_*.py"):
-            self.assertEqual(list((ROOT / "scripts").glob(pattern)), [])
-        self.assertFalse((ROOT / "scripts" / "soak_capture.py").exists())
-        self.assertEqual(list((APP / "vision").glob("*benchmark*.py")), [])
-
     def test_model_metadata_has_one_owner(self) -> None:
         definitions = [
             _display(path)
@@ -107,12 +101,8 @@ class ArchitectureContractTests(unittest.TestCase):
         self.assertEqual(stale, [])
         self.assertFalse((APP / "vision" / "nudenet_adapter.py").exists())
 
-    def test_single_diagnostics_snapshot_and_benchmark_contracts(self) -> None:
+    def test_single_diagnostics_snapshot_contract(self) -> None:
         from app.diagnostics import DiagnosticsStore, RuntimeDiagnosticsSnapshot
-        from developer.benchmark.contracts import BenchmarkEnvironment, BenchmarkRequest
-        from developer.benchmark.failures import FailureCase
-        from developer.benchmark.metrics import Metric
-        from developer.benchmark.results import BenchmarkResult
 
         self.assertIsInstance(
             DiagnosticsStore(
@@ -123,14 +113,6 @@ class ArchitectureContractTests(unittest.TestCase):
             ).snapshot(),
             RuntimeDiagnosticsSnapshot,
         )
-        for contract in (
-            BenchmarkRequest,
-            BenchmarkResult,
-            BenchmarkEnvironment,
-            Metric,
-            FailureCase,
-        ):
-            self.assertTrue(hasattr(contract, "__dataclass_fields__"))
 
     def test_visual_decision_boundary_is_typed(self) -> None:
         from typing import get_type_hints

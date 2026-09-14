@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   package:
-    name: Package ${{ matrix.edition }} for ${{ matrix.label }}
+    name: Package for ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,36 +19,18 @@ jobs:
         include:
           - os: windows-latest
             label: Windows
-            edition: user
             spec: lavocado.spec
             dist: dist/LAVOCADO
             executable: dist/LAVOCADO/LAVOCADO.exe
             archive: LAVOCADO-Windows.zip
             artifact: LAVOCADO-Windows
-          - os: windows-latest
-            label: Windows
-            edition: developer
-            spec: lavocado-developer.spec
-            dist: dist/LAVOCADO-Developer
-            executable: dist/LAVOCADO-Developer/LAVOCADO-Developer.exe
-            archive: LAVOCADO-Developer-Windows.zip
-            artifact: LAVOCADO-Developer-Windows
           - os: macos-latest
             label: macOS
-            edition: user
             spec: lavocado.spec
             dist: dist/LAVOCADO.app
             executable: dist/LAVOCADO.app/Contents/MacOS/LAVOCADO
             archive: LAVOCADO-macOS.zip
             artifact: LAVOCADO-macOS
-          - os: macos-latest
-            label: macOS
-            edition: developer
-            spec: lavocado-developer.spec
-            dist: dist/LAVOCADO Developer.app
-            executable: dist/LAVOCADO Developer.app/Contents/MacOS/LAVOCADO-Developer
-            archive: LAVOCADO-Developer-macOS.zip
-            artifact: LAVOCADO-Developer-macOS
 
     steps:
       - name: Check out repository
@@ -62,7 +44,6 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-build.txt
-            requirements-developer.txt
 
       - name: Install user dependencies
         if: runner.os == 'macOS'
@@ -75,10 +56,6 @@ jobs:
       - name: Install Windows user dependencies with CPU PyTorch
         if: runner.os == 'Windows'
         run: python -m pip install -r requirements.txt -r requirements-build.txt
-
-      - name: Install developer dependencies
-        if: matrix.edition == 'developer'
-        run: python -m pip install -r requirements-developer.txt
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
@@ -110,14 +87,6 @@ jobs:
 
       - name: Verify all bundled model files and digests
         run: python scripts/verify_model_bundle.py "${{ matrix.dist }}"
-
-      - name: Verify User bundle excludes Benchmark Lab
-        if: matrix.edition == 'user'
-        run: python scripts/verify_user_bundle.py "${{ matrix.dist }}"
-
-      - name: Verify Developer bundle includes Benchmark Lab
-        if: matrix.edition == 'developer'
-        run: python scripts/verify_developer_bundle.py "${{ matrix.dist }}"
 
       - name: Archive Windows application
         if: runner.os == 'Windows'

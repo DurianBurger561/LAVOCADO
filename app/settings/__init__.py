@@ -1,1 +1,1 @@
-"""User-configurable vision settings. Experimental until benchmarked."""
+"""User-configurable vision settings with experimental defaults."""

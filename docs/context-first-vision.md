@@ -56,23 +56,6 @@ Strong evidence is confirmed on an original-resolution ROI when possible, then
 on 2 of 3 fresh frames. Full scan, ROI, and tile rechecks that share a frame
 sequence count as one temporal observation.
 
-## Benchmarks
-
-Keep these scoreboards separate within the Developer Dashboard's Benchmark Lab:
-
-| Lab | Question | Not the question |
-| --- | --- | --- |
-| Vision Pipeline | Does this image violate visual policy? | Is the site medical/art/education? |
-| Context Policy | Does the typed foreground fixture resolve to NORMAL, BYPASS, or BLOCK? | Do pixels violate visual policy? |
-| Viddexa ranking fixture (Tools & Hardware) | Did ranking put the right tile first? | Is Viddexa porn accuracy Block accuracy? |
-| Detector | Recall, precision, small-target, ROI/tile, latency | Viewing purpose |
-| Full Protection Pipeline | Context + Vision if NORMAL + Temporal + final action | A single raw detector hit |
-| Capture performance/stability (Tools & Hardware) | How does the real backend perform on this display? | Static image classification |
-
-Medical anatomy that matches visual policy is a Vision true positive. The
-same image on a whitelisted site is FULL_BYPASS: Vision is not called, and
-the product allows it.
-
 ## Privacy
 
 Context keeps only the identifiers needed for rules. Vision pixels stay in

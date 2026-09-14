@@ -1,4 +1,4 @@
-"""Named starting points. None of these are benchmark-proven Recommended values."""
+"""Named starting points. None of these are validated Recommended values."""
 
 from __future__ import annotations
 

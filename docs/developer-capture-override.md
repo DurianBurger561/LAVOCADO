@@ -10,7 +10,7 @@ Available modes:
 | --- | --- |
 | `auto` | Native backend first, with the existing policy-controlled MSS fallback |
 | `native` | Native backend only; technical failures are not hidden by MSS |
-| `mss` | MSS only, for debugging, A/B checks, and capture benchmarks |
+| `mss` | MSS only, for debugging and capture A/B checks |
 
 ## macOS
 

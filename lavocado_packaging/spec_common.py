@@ -19,43 +19,6 @@ from app.vision.model_assets import (
 from app.vision.model_manifest import CATALOG, ModelRole
 
 USER_APP_NAME = "LAVOCADO"
-DEVELOPER_APP_NAME = "LAVOCADO-Developer"
-DEVELOPER_BUNDLE_NAME = "LAVOCADO Developer"
-USER_EXCLUDES = (
-    "developer",
-    "developer.benchmark",
-    "developer.benchmark.dataset",
-    "developer.benchmark.annotations",
-    "developer.benchmark.configs",
-    "developer.benchmark.contracts",
-    "developer.benchmark.cli",
-    "developer.benchmark.engine",
-    "developer.benchmark.runner",
-    "developer.benchmark.inference_cache",
-    "developer.benchmark.metrics",
-    "developer.benchmark.comparison",
-    "developer.benchmark.failures",
-    "developer.benchmark.registry",
-    "developer.benchmark.exporter",
-    "developer.benchmark.results",
-    "developer.benchmark.ranking",
-    "developer.benchmark.session",
-    "developer.benchmark.sweep",
-    "developer.benchmark.tags",
-    "developer.benchmark.preview",
-    "developer.benchmark.ui",
-    "developer.benchmark.ui.api",
-    "developer.benchmark.ui.dashboard",
-    "developer.benchmark.capture_benchmark",
-    "developer.benchmark.capture_stability",
-    "developer.benchmark.diagnostic_worker",
-    "developer.benchmark.hardware_ipc",
-    "developer.benchmark.jobs",
-    "developer.benchmark.preprocessor_benchmark",
-    "developer.benchmark.high_recall",
-    "developer.benchmark.matrix",
-    "developer.benchmark.ranking_metrics",
-)
 MODEL_HIDDENIMPORTS = (
     "ultralytics",
     "transformers.pipelines",
@@ -98,7 +61,7 @@ def model_dependency_binaries() -> list[tuple[str, str]]:
 
 
 def required_model_datas(specpath: Path) -> list[tuple[str, str]]:
-    """Only verified pinned files enter either release edition."""
+    """Only verified pinned files enter the release bundle."""
 
     data: list[tuple[str, str]] = []
     for spec in CATALOG:
@@ -159,50 +122,6 @@ def user_datas(specpath: Path) -> list[tuple[str, str]]:
     model_data = required_model_datas(specpath)
     web_data = [(str(specpath / "app" / "ui" / "web"), "app/ui/web")]
     return nudenet_data + model_data + model_dependency_metadata() + web_data
-
-
-def developer_datas(specpath: Path) -> list[tuple[str, str]]:
-    lab_ui = specpath / "developer" / "benchmark" / "ui"
-    return user_datas(specpath) + [(str(lab_ui), "developer/benchmark/ui")]
-
-
-def developer_hiddenimports(platform_hidden: list[str]) -> list[str]:
-    return list(platform_hidden) + [
-        "developer",
-        "developer.benchmark",
-        "developer.benchmark.dataset",
-        "developer.benchmark.annotations",
-        "developer.benchmark.configs",
-        "developer.benchmark.contracts",
-        "developer.benchmark.cli",
-        "developer.benchmark.engine",
-        "developer.benchmark.runner",
-        "developer.benchmark.inference_cache",
-        "developer.benchmark.metrics",
-        "developer.benchmark.comparison",
-        "developer.benchmark.failures",
-        "developer.benchmark.registry",
-        "developer.benchmark.exporter",
-        "developer.benchmark.results",
-        "developer.benchmark.ranking",
-        "developer.benchmark.session",
-        "developer.benchmark.sweep",
-        "developer.benchmark.tags",
-        "developer.benchmark.preview",
-        "developer.benchmark.ui",
-        "developer.benchmark.ui.api",
-        "developer.benchmark.ui.dashboard",
-        "developer.benchmark.capture_benchmark",
-        "developer.benchmark.capture_stability",
-        "developer.benchmark.diagnostic_worker",
-        "developer.benchmark.hardware_ipc",
-        "developer.benchmark.jobs",
-        "developer.benchmark.preprocessor_benchmark",
-        "developer.benchmark.high_recall",
-        "developer.benchmark.matrix",
-        "developer.benchmark.ranking_metrics",
-        "psutil",
-    ]
 
 
 def macos_plist() -> dict[str, object]:
