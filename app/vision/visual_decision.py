@@ -25,6 +25,12 @@ class EvidenceAssessment:
     proposal: ViolationEvidence | None
 
 
+@dataclass(frozen=True, slots=True)
+class BorderlineCandidate:
+    evidence: ViolationEvidence
+    threshold: float
+
+
 class VisualDecisionEngine:
     """Classify typed evidence without running inference or changing state."""
 
@@ -58,37 +64,29 @@ class VisualDecisionEngine:
             proposal=strongest_evidence(proposal),
         )
 
-    def borderline_detection(
-        self, detections: object
-    ) -> dict[str, Any] | None:
-        """Select an unconfirmed proposal from raw detector rows."""
+    def borderline_candidate(
+        self, evidence: Iterable[ViolationEvidence]
+    ) -> BorderlineCandidate | None:
+        """Select a typed proposal, including the configured borderline band."""
 
-        if not isinstance(detections, list):
-            return None
-        candidates: list[dict[str, Any]] = []
-        for detection in detections:
-            if not isinstance(detection, dict):
-                continue
-            label = str(detection.get("class", ""))
-            score = float(detection.get("score", 0.0))
-            model = detection.get("model")
-            model_name = None if model is None else str(model)
-            threshold = self.threshold_policy.strong(label, model_name)
+        candidates: list[BorderlineCandidate] = []
+        for item in evidence:
+            threshold = self.threshold_policy.strong(item.label, item.model)
             if threshold is not None and (
-                self.threshold_policy.tier(score, label, model_name)
+                self.threshold_policy.tier(item.confidence, item.label, item.model)
                 is DetectionTier.PROPOSAL
-                or is_borderline_score(score, threshold, self.borderline_margin)
+                or is_borderline_score(
+                    item.confidence, threshold, self.borderline_margin
+                )
             ):
-                candidate = dict(detection)
-                candidate["threshold"] = threshold
-                candidates.append(candidate)
+                candidates.append(BorderlineCandidate(item, threshold))
         if not candidates:
             return None
         return max(
             candidates,
             key=lambda item: (
-                float(item["score"]) - float(item["threshold"]),
-                float(item["score"]),
+                item.evidence.confidence - item.threshold,
+                item.evidence.confidence,
             ),
         )
 

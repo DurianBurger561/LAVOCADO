@@ -41,13 +41,27 @@ class VisualDecisionEngineTests(unittest.TestCase):
         self.assertEqual(proposal.proposal, breast(0.60))
         self.assertIs(clear.classification, VisualViolationClassification.CLEAR)
 
-    def test_selects_borderline_without_mutating_raw_detections(self) -> None:
-        raw = [{"class": "FEMALE_BREAST_EXPOSED", "score": 0.60}]
+    def test_selects_borderline_without_mutating_evidence(self) -> None:
+        evidence = (breast(0.60),)
 
-        selected = self.engine.borderline_detection(raw)
+        selected = self.engine.borderline_candidate(evidence)
 
-        self.assertEqual(selected["threshold"], 0.65)
-        self.assertEqual(raw, [{"class": "FEMALE_BREAST_EXPOSED", "score": 0.60}])
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected.threshold, 0.65)
+        self.assertEqual(selected.evidence, breast(0.60))
+        self.assertEqual(evidence, (breast(0.60),))
+
+    def test_borderline_band_can_include_evidence_below_proposal(self) -> None:
+        engine = VisualDecisionEngine(
+            ThresholdPolicy.from_settings(default_vision_settings()),
+            borderline_margin=0.20,
+        )
+
+        selected = engine.borderline_candidate((breast(0.50), breast(0.20)))
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected.evidence, breast(0.50))
+        self.assertEqual(selected.threshold, 0.65)
 
     def test_finalize_does_not_mutate_payload(self) -> None:
         payload = {

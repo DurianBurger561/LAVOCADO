@@ -11,7 +11,6 @@ from app.platforms.capture.models import CaptureFrame
 from app.settings.schema import VisionSettings, default_vision_settings
 from app.vision.candidate_verifier import CandidateVerifier, LocalNudityDetector
 from app.vision.evidence import evidence_from_confidence
-from app.vision.nudenet_adapter import detections_to_evidence
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.regions import Region, map_box_to_original
@@ -30,6 +29,7 @@ from app.vision.violation_policy import (
     threshold_for_label,
     tier_for_score,
 )
+from app.vision.visual_decision import BorderlineCandidate
 from app.vision.visual_decision import VisualDecisionEngine as _VisualDecisionEngine
 
 
@@ -106,7 +106,7 @@ class DecisionEngine:
         prepared = prepared_frame or FramePreprocessor(captured_frame)
         prepared.require_frame(captured_frame)
         frame_sequence = captured_frame.sequence
-        result = self._initial_result(detection)
+        result, primary_hit = self._initial_result(detection)
 
         plan = scan_plan
         if plan is None:
@@ -144,11 +144,11 @@ class DecisionEngine:
                 focused, captured_frame, monitor_index, frame_sequence
             )
 
-        if result["classification"] is VisualViolationClassification.VIOLATION:
+        if primary_hit is not None:
             decided = self._confirm_primary_candidate(
                 result,
                 captured_frame,
-                None,
+                primary_hit,
                 confirmed_source="nudenet_roi",
                 candidate_source="anatomy_candidate",
                 fallback=self._strong_primary_result(result, captured_frame),
@@ -186,10 +186,10 @@ class DecisionEngine:
 
         borderline = assessment.proposal
         if borderline is None:
-            borderline_detection = self.visual_decision_engine.borderline_detection(
-                result.get("check_points", [])
+            borderline_candidate = self.visual_decision_engine.borderline_candidate(
+                detection.primary
             )
-            if borderline_detection is None:
+            if borderline_candidate is None:
                 base = self._with_metadata(
                     result,
                     source="nudenet_none",
@@ -197,22 +197,24 @@ class DecisionEngine:
                 )
             else:
                 base = self._evaluate_borderline(
-                    result, captured_frame, borderline_detection, prepared
+                    result, captured_frame, borderline_candidate, prepared
                 )
                 if base["classification"] is VisualViolationClassification.VIOLATION:
                     return self._finalize_decision(
                         base, captured_frame, monitor_index, frame_sequence
                     )
         else:
-            detection = {
-                "class": borderline.label,
-                "score": borderline.confidence,
-                "box": None if borderline.bbox is None else list(borderline.bbox),
-                "threshold": self.threshold_policy.strong(
-                    borderline.label, borderline.model
-                ),
-            }
-            base = self._evaluate_borderline(result, captured_frame, detection, prepared)
+            threshold = self.threshold_policy.strong(
+                borderline.label, borderline.model
+            )
+            if threshold is None:
+                raise RuntimeError("proposal evidence has no strong threshold")
+            base = self._evaluate_borderline(
+                result,
+                captured_frame,
+                BorderlineCandidate(borderline, threshold),
+                prepared,
+            )
             if base["classification"] is VisualViolationClassification.VIOLATION:
                 return self._finalize_decision(
                     base, captured_frame, monitor_index, frame_sequence
@@ -233,7 +235,9 @@ class DecisionEngine:
         )
 
     @staticmethod
-    def _initial_result(detection: PrimaryDetection) -> dict[str, Any]:
+    def _initial_result(
+        detection: PrimaryDetection,
+    ) -> tuple[dict[str, Any], ViolationEvidence | None]:
         """Seed working metadata from typed primary evidence only."""
 
         checkpoints = [
@@ -255,7 +259,7 @@ class DecisionEngine:
             if strong
             else (None, None)
         )
-        return {
+        result = {
             "classification": (
                 VisualViolationClassification.VIOLATION
                 if strongest is not None
@@ -273,12 +277,13 @@ class DecisionEngine:
             "check_points": checkpoints,
             "evidence": [evidence_to_dict(item) for item in detection.evidence],
         }
+        return result, strongest
 
     def _confirm_primary_candidate(
         self,
         result: dict[str, Any],
         captured_frame: CaptureFrame,
-        evidence: ViolationEvidence | None,
+        evidence: ViolationEvidence,
         *,
         confirmed_source: str,
         candidate_source: str,
@@ -291,27 +296,24 @@ class DecisionEngine:
         not consulted: this is visual evidence, not viewing purpose.
         """
 
-        if evidence is not None:
-            label = evidence.label
-            score = evidence.confidence
-            box: object = evidence.bbox
-        else:
-            label = result.get("label")
-            score = float(result.get("confidence", 0.0) or 0.0)
-            box = result.get("box")
+        label = evidence.label
+        score = evidence.confidence
+        box = evidence.bbox
         if (
             not self.candidate_verifier.enabled
             or self.candidate_verifier.detector is None
             or not isinstance(box, (list, tuple))
         ):
             return fallback
-        detection = {
-            "class": str(label),
-            "score": score,
-            "box": list(box),
-            "threshold": threshold_for_label(str(label)),
-        }
-        roi = self._evaluate_borderline(result, captured_frame, detection, prepared)
+        threshold = self.threshold_policy.strong(label, evidence.model)
+        if threshold is None:
+            return fallback
+        roi = self._evaluate_borderline(
+            result,
+            captured_frame,
+            BorderlineCandidate(evidence, threshold),
+            prepared,
+        )
         if roi["classification"] is VisualViolationClassification.VIOLATION:
             roi["source"] = confirmed_source
             roi["reason"] = (
@@ -330,15 +332,15 @@ class DecisionEngine:
         self,
         result: dict[str, Any],
         captured_frame: CaptureFrame,
-        borderline: dict[str, Any],
+        borderline: BorderlineCandidate,
         prepared: FramePreprocessor,
     ) -> dict[str, Any]:
         """Recheck a borderline box on the original-resolution crop."""
 
-        label = str(borderline["class"])
-        score = float(borderline["score"])
-        threshold = float(borderline["threshold"])
-        box = borderline.get("box")
+        label = borderline.evidence.label
+        score = borderline.evidence.confidence
+        threshold = borderline.threshold
+        box = borderline.evidence.bbox
         base = self._with_metadata(
             result,
             source="nudenet_borderline",
@@ -759,16 +761,6 @@ class DecisionEngine:
     ) -> dict[str, Any]:
         if classification is None:
             classification = result["classification"]
-        evidence_payload = result.get("evidence")
-        if not isinstance(evidence_payload, list):
-            evidence_payload = [
-                evidence_to_dict(item)
-                for item in detections_to_evidence(
-                    result.get("check_points", [])
-                    if isinstance(result.get("check_points"), list)
-                    else []
-                )
-            ]
         result.update(
             {
                 "source": source,
@@ -784,7 +776,7 @@ class DecisionEngine:
                 "local_check_points": None,
                 "local_box": None,
                 "classification": classification,
-                "evidence": evidence_payload,
+                "evidence": result["evidence"],
             }
         )
         return result
