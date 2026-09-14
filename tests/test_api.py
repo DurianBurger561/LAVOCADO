@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from app.intervention.recorder import RecordedEvent
 from app.ui.api import DashboardAPI
-from app.ui.controller import ProtectionStatus
+from app.ui.controller import ProtectionController, ProtectionStatus
 
 
 class FakeController:
@@ -57,13 +57,11 @@ class FakeRecorder:
 
 class FakeDiagnostics:
     def snapshot(self):
-        from types import SimpleNamespace
-
-        return SimpleNamespace(to_dict=lambda: {
+        return {
             "protection_state": "MONITORING",
             "last_scan_ms": 123.4,
             "temporal": [0, 1, 1],
-        })
+        }
 
 
 class BrokenController(FakeController):
@@ -115,6 +113,20 @@ class DashboardAPITests(unittest.TestCase):
         self.assertEqual(self.recorder.limit, 100)
         self.assertEqual(payloads[1]["events"][0]["label"], "TEST_LABEL")
         self.assertEqual(payloads[2]["diagnostics"]["temporal"], [0, 1, 1])
+
+    def test_dashboard_reads_serialized_controller_snapshot(self) -> None:
+        with TemporaryDirectory() as temporary:
+            controller = ProtectionController(
+                command=("protect",), data_dir=Path(temporary)
+            )
+            api = DashboardAPI(controller, self.recorder, controller)
+
+            response = api.get_diagnostics()
+
+        self.assertTrue(response["ok"])
+        self.assertIsInstance(response["diagnostics"], dict)
+        self.assertEqual(response["diagnostics"]["protection_state"], "STOPPED")
+        json.dumps(response)
 
     def test_model_status_excludes_filesystem_paths(self) -> None:
         payload = self.api.get_model_status()
