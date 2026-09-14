@@ -43,6 +43,17 @@ def frame() -> CaptureFrame:
 
 
 class VisionPipelineTests(unittest.TestCase):
+    def test_reset_clears_shadow_and_resets_decision_state_once(self) -> None:
+        engine = DecisionEngine()
+        pipeline = VisionPipeline(FakeDetector(), engine)
+        pipeline.last_shadow = {"hit": True}
+
+        with patch.object(engine, "reset", wraps=engine.reset) as reset:
+            pipeline.reset()
+
+        self.assertEqual(reset.call_count, 1)
+        self.assertIsNone(pipeline.last_shadow)
+
     def test_plans_per_monitor_and_skips_full_detector_for_focused_roi(self) -> None:
         captured = frame()
         prepared = FramePreprocessor(captured)

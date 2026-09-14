@@ -3,10 +3,10 @@
 import unittest
 
 from app.context.models import ContextPolicyAction
+from app.context.policy.resolver import allows_vision
 from app.context.store import ForegroundContextStore
 from app.service import LavocadoService, State
 from app.vision.nudenet_adapter import NudeNetAdapter
-from app.vision.runtime import VisionSession, allows_vision
 from app.vision.temporal import EvidenceAccumulator, TemporalEngine
 from app.vision.visual_decision import VisualDecisionEngine
 from tests.test_service import (
@@ -48,43 +48,6 @@ class VisionRuntimeTests(unittest.TestCase):
         accumulator.decay()
 
         self.assertEqual(accumulator.history(), ("sexual_act", None, None))
-
-    def test_vision_session_skips_pipeline_while_bypassed(self) -> None:
-        class Pipeline:
-            def __init__(self) -> None:
-                self.evaluate_calls = 0
-                self.reset_count = 0
-
-            def evaluate(self, _frame: object, *, monitor_index: int = 1):
-                self.evaluate_calls += 1
-                from app.vision.violation_policy import (
-                    VisualViolationClassification,
-                    VisualViolationDecision,
-                )
-
-                return VisualViolationDecision(
-                    classification=VisualViolationClassification.VIOLATION,
-                    evidence=(),
-                    reason_codes=(),
-                    primary_region=None,
-                    frame_sequence=1,
-                    monitor_index=monitor_index,
-                )
-
-            def reset(self) -> None:
-                self.reset_count += 1
-
-        session = VisionSession(Pipeline())  # type: ignore[arg-type]
-        session.enter_bypass()
-        result = session.evaluate(object())
-
-        from app.vision.violation_policy import VisualViolationClassification
-
-        self.assertEqual(result.reason_codes, ("full_bypass",))
-        self.assertIs(result.classification, VisualViolationClassification.CLEAR)
-        self.assertEqual(session.pipeline.evaluate_calls, 0)
-        session.exit_bypass_if_needed()
-        self.assertGreaterEqual(session.pipeline.reset_count, 2)
 
     def test_missing_context_still_runs_vision(self) -> None:
         detector = FakeDetector({1: [False]})

@@ -137,3 +137,4 @@ class VisionPipeline:
         """Clear tile ranking and ROI follow-up state."""
 
         self.decision_engine.reset()
+        self.last_shadow = None

@@ -17,7 +17,7 @@ from app.context.models import (
     ContextPolicyResult,
     ForegroundContext,
 )
-from app.context.policy.resolver import ContextPolicyService
+from app.context.policy.resolver import ContextPolicyService, allows_vision
 from app.context.store import ForegroundContextStore
 from app.context.worker import ForegroundContextWorker
 from app.intervention.intervene import InterventionGenerator
@@ -36,7 +36,6 @@ from app.vision.model_lifecycle import compact_model_status, inspect_models
 from app.vision.overlay import Overlay
 from app.vision.pipeline import VisionPipeline
 from app.vision.preprocessor import FramePreprocessor
-from app.vision.runtime import VisionSession, allows_vision
 from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import (
     ThresholdPolicy,
@@ -147,7 +146,6 @@ class LavocadoService:
             shadow_adapter=shadow_adapter,
             full_input_size=self.vision_settings.detector.full_input_size,
         )
-        self.vision_session = VisionSession(self.vision_pipeline)
         context_sensor = self.decision_engine.viddexa_ranker.classifier
         if self.vision_settings.context.model == "off":
             context_status = "disabled"
@@ -306,20 +304,19 @@ class LavocadoService:
             self.context_policy.evaluate(context) if context is not None else None
         )
         self.diagnostics.record_foreground_context(context, policy_result)
-        if policy_result is not None:
-            if not allows_vision(policy_result.action):
-                if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
-                    self._leave_bypass()
-                    monitor_index, trigger_type = self._context_rule_detection(
-                        context, policy_result
-                    )
-                    self._show_intervention(
-                        monitor_index=monitor_index,
-                        trigger_type=trigger_type,
-                    )
-                    return None
-                self._enter_bypass()
-                return []
+        if policy_result is not None and not allows_vision(policy_result.action):
+            if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
+                self._leave_bypass()
+                monitor_index, trigger_type = self._context_rule_detection(
+                    context, policy_result
+                )
+                self._show_intervention(
+                    monitor_index=monitor_index,
+                    trigger_type=trigger_type,
+                )
+                return None
+            self._enter_bypass()
+            return []
 
         self._leave_bypass()
 
@@ -352,7 +349,7 @@ class LavocadoService:
                 is_active_monitor=is_active_monitor,
                 prepared_frame=prepared_frame,
             )
-            decision = self.vision_session.evaluate(
+            decision = self.vision_pipeline.evaluate(
                 captured_frame,
                 monitor_index=monitor_index,
                 scan_plan=scan_plan,
@@ -453,28 +450,27 @@ class LavocadoService:
         self._last_frame_sequences[monitor_index] = identity
         return True
 
-    def _reset_verifiers(self) -> None:
+    def _reset_vision_state(self) -> None:
+        """Clear temporal and scan state once at a protection boundary."""
+
         for verifier in self._verifiers.values():
             verifier.reset()
-        self.decision_engine.reset()
         self.vision_pipeline.reset()
         self.change_scheduler.reset()
 
     def _enter_bypass(self) -> None:
-        self.vision_session.enter_bypass()
         if self._bypass_active:
             self._transition(State.BYPASSED)
             return
-        self._reset_verifiers()
+        self._reset_vision_state()
         self._last_frame_sequences.clear()
         self._bypass_active = True
         self._transition(State.BYPASSED)
 
     def _leave_bypass(self) -> None:
-        self.vision_session.exit_bypass_if_needed()
         if not self._bypass_active:
             return
-        self._reset_verifiers()
+        self._reset_vision_state()
         self._last_frame_sequences.clear()
         self._bypass_active = False
         self._transition(State.MONITORING)
@@ -561,7 +557,7 @@ class LavocadoService:
             support_message=support_message,
         )
         self._mark_intervention_shown_after_record(record_future)
-        self._reset_verifiers()
+        self._reset_vision_state()
         self._cooldown_until = self._clock() + self.cooldown_seconds
         self._transition(State.COOLDOWN)
 

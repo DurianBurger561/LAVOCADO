@@ -1,6 +1,7 @@
 """Context policy gates vision without changing the existing intervention path."""
 
 import unittest
+from unittest.mock import patch
 
 from app.context.browser_registry import BrowserDefinition
 from app.context.models import (
@@ -96,6 +97,58 @@ class ContextPlatform(FakePlatform):
 
 
 class ServiceContextPolicyTests(unittest.TestCase):
+    def test_bypass_skips_vision_and_resets_once_per_transition(self) -> None:
+        store = store_for(application())
+        capturer = FakeCapturer()
+        detector = FakeDetector({1: [False]})
+        scheduler = FakeChangeScheduler([True])
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=capturer,
+            detector=detector,
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            change_scheduler=scheduler,
+            context_store=store,
+            context_policy=policy(
+                application_rules=[
+                    ApplicationRule("chrome.exe", ContextPolicyAction.FULL_BYPASS)
+                ]
+            ),
+        )
+
+        with (
+            patch.object(
+                service.vision_pipeline,
+                "reset",
+                wraps=service.vision_pipeline.reset,
+            ) as pipeline_reset,
+            patch.object(
+                service.decision_engine,
+                "reset",
+                wraps=service.decision_engine.reset,
+            ) as engine_reset,
+        ):
+            self.assertEqual(service.check_once(), [])
+            self.assertEqual(service.check_once(), [])
+            self.assertEqual(pipeline_reset.call_count, 1)
+            self.assertEqual(engine_reset.call_count, 1)
+            self.assertEqual(scheduler.reset_count, 1)
+            self.assertEqual(capturer.grabbed_indexes, [])
+            self.assertEqual(detector.checked_indexes, [])
+            self.assertEqual(service.vision_pipeline.evaluate_calls, 0)
+
+            store.observe_application(application("steam.exe"), None)
+            resumed = service.check_once()
+
+            self.assertEqual(len(resumed), 1)
+            self.assertEqual(pipeline_reset.call_count, 2)
+            self.assertEqual(engine_reset.call_count, 2)
+            self.assertEqual(scheduler.reset_count, 2)
+            self.assertEqual(capturer.grabbed_indexes, [1])
+            self.assertEqual(detector.checked_indexes, [1])
+
     def test_default_worker_skips_site_for_application_force_block(self) -> None:
         platform = ContextPlatform("https://private.example/path")
         recorder = FakeRecorder()
