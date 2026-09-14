@@ -144,6 +144,33 @@ class WebDashboardTests(unittest.TestCase):
         self.assertNotIn("innerHTML", script)
         self.assertNotIn("eval(", script)
 
+    def test_navigation_hides_other_pages_and_starts_live_polling_independently(self) -> None:
+        html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+        styles = (WEB_ROOT / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('class="panel home-overview"', html)
+        for panel in (
+            'class="hero panel" aria-labelledby="protection-heading" hidden',
+            'class="dashboard-grid" hidden',
+            'class="panel rules" aria-labelledby="rules-heading" hidden',
+            'class="panel vision-settings" aria-labelledby="vision-settings-heading" hidden',
+            'class="panel history" aria-labelledby="history-heading" hidden',
+        ):
+            self.assertIn(panel, html)
+        self.assertIn("[hidden] {\n  display: none !important;", styles)
+        self.assertIn('node.hidden = view !== "home"', script)
+        self.assertIn('node.hidden = view !== "protection"', script)
+        self.assertIn('node.hidden = view !== "history"', script)
+        self.assertIn('node.hidden = view !== "settings"', script)
+        self.assertIn('text("home-last-scan", lastScan)', script)
+        self.assertIn('text("home-capture-mode", mode.label)', script)
+        self.assertIn('text("home-runtime-state", runtimeState)', script)
+        self.assertIn('text("protection-runtime-state", runtimeState)', script)
+        self.assertIn("void Promise.allSettled([", script)
+        self.assertNotIn("await Promise.all([", script)
+        self.assertIn("setInterval(refreshDiagnostics, 500)", script)
+
     def test_dashboard_has_four_rule_groups_and_whitelist_confirmation(self) -> None:
         html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")

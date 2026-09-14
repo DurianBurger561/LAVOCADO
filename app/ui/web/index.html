@@ -31,7 +31,20 @@
       </nav>
 
       <main>
-        <section class="hero panel" aria-labelledby="protection-heading">
+        <section class="panel home-overview" aria-labelledby="home-heading">
+          <p class="section-label">OVERVIEW</p>
+          <h2 id="home-heading">Protection at a glance</h2>
+          <p class="muted">Screen analysis stays on this device. Open Protection to control monitoring and view live diagnostics.</p>
+          <dl class="home-summary">
+            <div><dt>Status</dt><dd id="home-protection-state">Stopped</dd></div>
+            <div><dt>Live state</dt><dd id="home-runtime-state">Not started</dd></div>
+            <div><dt>Last scan</dt><dd id="home-last-scan">Waiting for first scan</dd></div>
+            <div><dt>Capture</dt><dd id="home-capture-mode">Not started</dd></div>
+          </dl>
+          <button id="open-protection-button" class="button primary" type="button">Open Protection</button>
+        </section>
+
+        <section class="hero panel" aria-labelledby="protection-heading" hidden>
           <div>
             <p class="section-label">PROTECTION</p>
             <div class="status-heading">
@@ -41,6 +54,7 @@
             <p id="status-detail" class="muted">
               Start monitoring when you are ready. Every connected display is checked locally.
             </p>
+            <p class="runtime-phase">Live state: <strong id="protection-runtime-state">Not started</strong></p>
           </div>
           <div class="actions">
             <button id="start-button" class="button primary" type="button">Start protection</button>
@@ -50,7 +64,7 @@
           <p id="action-message" class="action-message" aria-live="polite"></p>
         </section>
 
-        <div class="dashboard-grid">
+        <div class="dashboard-grid" hidden>
           <section class="panel diagnostics" aria-labelledby="diagnostics-heading">
             <div class="section-heading">
               <div>
@@ -292,7 +306,7 @@
           </aside>
         </div>
 
-        <section class="panel rules" aria-labelledby="rules-heading">
+        <section class="panel rules" aria-labelledby="rules-heading" hidden>
           <div class="section-heading">
             <div>
               <p class="section-label">LOCAL POLICY</p>
@@ -363,7 +377,7 @@
           </div>
         </section>
 
-        <section class="panel vision-settings" aria-labelledby="vision-settings-heading">
+        <section class="panel vision-settings" aria-labelledby="vision-settings-heading" hidden>
           <div class="section-heading">
             <div>
               <p class="section-label">VISUAL DETECTION</p>
@@ -615,7 +629,7 @@
           </dl>
         </section>
 
-        <section class="panel history" aria-labelledby="history-heading">
+        <section class="panel history" aria-labelledby="history-heading" hidden>
           <div class="section-heading history-heading">
             <div>
               <p class="section-label">LOCAL RECORD</p>

@@ -96,3 +96,13 @@ class DeveloperDashboardTests(unittest.TestCase):
         self.assertNotIn("Benchmark Lab", html)
         self.assertNotIn("lab_start_run", script)
         self.assertNotIn("developer.benchmark", script)
+
+    def test_developer_navigation_keeps_pages_separate(self) -> None:
+        script = (PROJECT_ROOT / "developer" / "benchmark" / "ui" / "lab.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('node.hidden = view !== "home"', script)
+        self.assertIn('node.hidden = view !== "protection"', script)
+        self.assertIn('node.hidden = !(view === "protection" || view === "diagnostics")', script)
+        self.assertIn('labPanel.hidden = view !== "developer"', script)

@@ -108,6 +108,7 @@ function renderStatus(response) {
   const status = response.status || "Stopped";
   const normalized = status.toLowerCase();
   text("protection-state", status);
+  text("home-protection-state", status);
   element("state-dot").className = `state-dot ${normalized}`;
   element("start-button").disabled = !response.can_start;
   element("stop-button").disabled = !response.can_stop;
@@ -148,6 +149,9 @@ function renderTemporal(values) {
 }
 
 function renderDiagnostics(data) {
+  const runtimeState = humanize(data.protection_state, "Not started");
+  text("home-runtime-state", runtimeState);
+  text("protection-runtime-state", runtimeState);
   text("diag-model", data.model || humanize(data.primary_detector, "NudeNet"));
   const contextStatus = humanize(data.context_status, "Unknown");
   text("diag-context-model", `${data.context_model || "Region ranker"} · ${contextStatus}`);
@@ -155,16 +159,18 @@ function renderDiagnostics(data) {
   text("diag-scan", data.last_scan_ms === null ? "—" : `${formatNumber(data.last_scan_ms, 0)} ms`);
   text("diag-monitor", data.monitor_index === null ? "—" : `Display ${data.monitor_index}`);
 
+  let lastScan = "Waiting for first scan";
   if (data.last_scan_at) {
     const updated = new Date(data.last_scan_at);
-    text("diag-updated", Number.isNaN(updated.getTime()) ? data.last_scan_at : updated.toLocaleTimeString());
-  } else {
-    text("diag-updated", "Waiting for first scan");
+    lastScan = Number.isNaN(updated.getTime()) ? data.last_scan_at : updated.toLocaleTimeString();
   }
+  text("diag-updated", lastScan);
+  text("home-last-scan", lastScan);
 
   const capture = data.capture || {};
   const mode = captureMode(capture);
   text("capture-mode", mode.label);
+  text("home-capture-mode", mode.label);
   element("capture-mode").className = `signal-tag ${mode.className}`;
   text("capture-preferred", captureBackendName(capture.preferred_backend));
   text("capture-active", captureBackendName(capture.active_backend));
@@ -922,13 +928,14 @@ function setAppView(view) {
   document.querySelectorAll("#app-nav .nav-button").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.view === view);
   });
-  const showHero = view === "home" || view === "protection";
-  const showLive = view === "home" || view === "protection";
+  document.querySelectorAll(".home-overview").forEach((node) => {
+    node.hidden = view !== "home";
+  });
   document.querySelectorAll(".hero").forEach((node) => {
-    node.hidden = !showHero;
+    node.hidden = view !== "protection";
   });
   document.querySelectorAll(".dashboard-grid").forEach((node) => {
-    node.hidden = !showLive;
+    node.hidden = view !== "protection";
   });
   document.querySelectorAll(".history").forEach((node) => {
     node.hidden = view !== "history";
@@ -938,7 +945,7 @@ function setAppView(view) {
   });
 }
 
-async function initializeDashboard() {
+function initializeDashboard() {
   element("start-button").addEventListener("click", () => runAction("start_protection"));
   element("stop-button").addEventListener("click", () => runAction("stop_protection"));
   element("test-button").addEventListener("click", () => runAction("test_intervention"));
@@ -951,6 +958,9 @@ async function initializeDashboard() {
   if (downloadAll) downloadAll.addEventListener("click", downloadAllRequiredModels);
   const presetSelect = element("vision-preset-select");
   if (presetSelect) presetSelect.addEventListener("change", applyVisionPreset);
+  element("open-protection-button").addEventListener("click", () => {
+    document.querySelector('#app-nav [data-view="protection"]').click();
+  });
   document.querySelectorAll(".rule-form").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -967,7 +977,7 @@ async function initializeDashboard() {
     setAppView("home");
   }
 
-  await Promise.all([
+  void Promise.allSettled([
     refreshStatus(),
     refreshDiagnostics(),
     refreshEvents(),

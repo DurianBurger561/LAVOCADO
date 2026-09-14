@@ -65,11 +65,14 @@ function setView(view) {
   }
   const labPanel = labEl("benchmark-lab");
   if (labPanel) labPanel.hidden = view !== "developer";
+  document.querySelectorAll(".home-overview").forEach((node) => {
+    node.hidden = view !== "home";
+  });
   document.querySelectorAll(".hero").forEach((node) => {
-    node.hidden = !(view === "home" || view === "protection");
+    node.hidden = view !== "protection";
   });
   document.querySelectorAll(".dashboard-grid").forEach((node) => {
-    node.hidden = !(view === "home" || view === "diagnostics");
+    node.hidden = !(view === "protection" || view === "diagnostics");
   });
   document.querySelectorAll(".history").forEach((node) => {
     node.hidden = view !== "history";

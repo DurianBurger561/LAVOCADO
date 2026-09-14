@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from app.intervention.recorder import RecordedEvent
 from app.ui.api import DashboardAPI
-from app.ui.controller import ProtectionController, ProtectionStatus
+from app.ui.controller import DIAGNOSTICS_PREFIX, ProtectionController, ProtectionStatus
 
 
 class FakeController:
@@ -127,6 +127,25 @@ class DashboardAPITests(unittest.TestCase):
         self.assertIsInstance(response["diagnostics"], dict)
         self.assertEqual(response["diagnostics"]["protection_state"], "STOPPED")
         json.dumps(response)
+
+    def test_dashboard_reads_fresh_ipc_diagnostics(self) -> None:
+        controller = ProtectionController(command=("protect",))
+        api = DashboardAPI(controller, self.recorder, controller)
+
+        for elapsed_ms in (40.0, 55.0):
+            payload = {
+                "protection_state": "MONITORING",
+                "last_scan_ms": elapsed_ms,
+                "last_scan_at": "2026-09-14T12:00:00+00:00",
+            }
+            self.assertTrue(
+                controller._handle_output_line(
+                    f"{DIAGNOSTICS_PREFIX}{json.dumps(payload)}\n"
+                )
+            )
+            response = api.get_diagnostics()
+            self.assertTrue(response["ok"])
+            self.assertEqual(response["diagnostics"]["last_scan_ms"], elapsed_ms)
 
     def test_model_status_excludes_filesystem_paths(self) -> None:
         payload = self.api.get_model_status()
