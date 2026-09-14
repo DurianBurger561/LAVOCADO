@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from app.diagnostics import DiagnosticsStore
 from app.platforms.capture import CaptureFrame
 from app.vision.change_scheduler import ChangeScheduler
 from app.vision.decision import DecisionEngine
-from app.vision.diagnostics import DiagnosticsStore
 from app.vision.pipeline import VisionPipeline
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.temporal import TemporalVerifier

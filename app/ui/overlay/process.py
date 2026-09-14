@@ -31,7 +31,7 @@ def overlay_process_command(monitor: MonitorInfo) -> list[str]:
     if getattr(sys, "frozen", False):
         command = [sys.executable]
     else:
-        project_root = Path(__file__).resolve().parents[2]
+        project_root = Path(__file__).resolve().parents[3]
         command = [sys.executable, str(project_root / "main.py")]
 
     command.append("--overlay-process")

@@ -6,7 +6,7 @@ from concurrent.futures import Future
 from threading import Event
 
 from app.platforms.capture import MonitorInfo
-from app.vision.overlay_process import show_overlay_process
+from app.ui.overlay.process import show_overlay_process
 
 
 class MacOSProcessOverlayBackend:

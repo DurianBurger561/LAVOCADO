@@ -1,4 +1,4 @@
-"""Thread-safe, privacy-safe in-memory protection diagnostics."""
+"""Application-level, privacy-safe in-memory protection diagnostics."""
 
 from __future__ import annotations
 

@@ -10,8 +10,8 @@ from enum import Enum
 from pathlib import Path
 from threading import Condition, Lock, Thread
 
+from app.diagnostics import DiagnosticsStore
 from app.settings.storage import load_vision_settings
-from app.vision.diagnostics import DiagnosticsStore
 
 DIAGNOSTICS_PREFIX = "LAVOCADO_DIAGNOSTICS "
 

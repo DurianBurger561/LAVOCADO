@@ -20,6 +20,7 @@ from app.context.models import (
 from app.context.policy.resolver import ContextPolicyService, allows_vision
 from app.context.store import ForegroundContextStore
 from app.context.worker import ForegroundContextWorker
+from app.diagnostics import DiagnosticsStore
 from app.intervention.intervene import InterventionGenerator
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platforms import PlatformAdapter
@@ -32,7 +33,6 @@ from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import PrimaryDetector
 from app.vision.detectors.factory import load_primary_bundle
-from app.vision.diagnostics import DiagnosticsStore
 from app.vision.model_lifecycle import compact_model_status, inspect_models
 from app.vision.pipeline import VisionPipeline
 from app.vision.temporal import TemporalVerifier

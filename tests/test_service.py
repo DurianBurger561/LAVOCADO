@@ -10,12 +10,12 @@ from unittest.mock import patch
 
 import numpy as np
 
+from app.diagnostics import DiagnosticsStore
 from app.intervention.recorder import ProtectionEvent
 from app.platforms.capture import CaptureBackendStatus, CaptureFrame, MonitorInfo, Rect
 from app.service import LavocadoService, State
 from app.ui.api import DashboardAPI
 from app.vision.change_scheduler import ChangeDecision
-from app.vision.diagnostics import DiagnosticsStore
 from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.scheduler import ScanPlan
 from app.vision.temporal import TemporalVerifier

@@ -193,7 +193,7 @@ def run_protection(
 def run_overlay(monitor: MonitorInfo) -> None:
     """Run the isolated macOS overlay process."""
 
-    from app.vision.overlay_process import run_overlay_process_child
+    from app.ui.overlay.process import run_overlay_process_child
 
     control_input = _standard_stream(sys.stdin, 0, "r")
     if control_input is None:

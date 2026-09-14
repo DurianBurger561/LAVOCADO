@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image
 
 from app.context.models import ContextPolicyAction, ContextPolicyResult
+from app.diagnostics import DiagnosticsStore
 from app.platforms.capture.models import CaptureFrame, Rect
 from app.protection_runtime import ProtectionRuntime
 from app.settings.schema import VisionSettings
@@ -20,7 +21,6 @@ from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import to_violation_evidence
 from app.vision.detectors.factory import load_primary_bundle
-from app.vision.diagnostics import DiagnosticsStore
 from app.vision.model_assets import (
     NUDENET_640M_SHA256,
     YOLO11_NSFW_SMALL_REVISION,

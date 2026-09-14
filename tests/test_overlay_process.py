@@ -14,7 +14,7 @@ from unittest.mock import patch
 from app.intervention.intervene import LOCAL_FALLBACK_MESSAGE
 from app.platforms.capture import MonitorInfo
 from app.ui.overlay.monitor_payload import encode_monitor
-from app.vision.overlay_process import (
+from app.ui.overlay.process import (
     HEARTBEAT_TOKEN,
     _consume_heartbeat,
     _read_heartbeat_stream,
@@ -64,7 +64,7 @@ class OverlayProcessTests(unittest.TestCase):
             command = overlay_process_command(self.monitor)
 
         self.assertEqual(command[0], "/python")
-        self.assertEqual(Path(command[1]).name, "main.py")
+        self.assertEqual(Path(command[1]), Path(__file__).resolve().parents[1] / "main.py")
         self.assertEqual(
             command[2:],
             ["--overlay-process", "--overlay-monitor", encode_monitor(self.monitor)],
@@ -102,7 +102,7 @@ class OverlayProcessTests(unittest.TestCase):
     def test_child_shows_passed_monitor_without_rediscovery(self) -> None:
         with (
             patch("app.ui.overlay.tk_backend.TkOverlayBackend") as backend_class,
-            patch("app.vision.overlay_process.Thread"),
+            patch("app.ui.overlay.process.Thread"),
         ):
             run_overlay_process_child(self.monitor, io.StringIO(""))
 

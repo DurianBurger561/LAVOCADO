@@ -11,9 +11,9 @@ from app.context.models import (
     WebsiteContext,
     WebsiteContextState,
 )
+from app.diagnostics import DiagnosticsStore
 from app.platforms.capture import CaptureBackendStatus
 from app.settings.schema import default_vision_settings, merge_vision_settings
-from app.vision.diagnostics import DiagnosticsStore
 from app.vision.violation_policy import (
     ThresholdPolicy,
     VisualViolationClassification,
