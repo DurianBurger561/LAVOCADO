@@ -1,4 +1,4 @@
-"""Local Viddexa tile-ranking adapter.
+"""Local Viddexa region-ranking adapter.
 
 Viddexa scores tiles so the primary detector can check the highest-risk
 region first. Its porn/hentai scores never trigger protection on their own
@@ -15,7 +15,7 @@ from typing import Any, Protocol
 import numpy as np
 from PIL import Image
 
-from app import config
+from app.vision.model_manifest import VIDDEXA_MINI_REPO
 from app.vision.preprocessor import FramePreprocessor
 
 LOGGER = logging.getLogger(__name__)
@@ -47,13 +47,13 @@ def _create_transformers_pipeline(
 
 
 class ContextClassifier:
-    """Normalize Viddexa's five-class image-classification output."""
+    """Normalize Viddexa's five-class region-ranking signal."""
 
     def __init__(
         self,
         classifier: ClassificationPipeline,
         *,
-        model_name: str = config.CONTEXT_MODEL_NAME,
+        model_name: str = VIDDEXA_MINI_REPO,
     ) -> None:
         self._classifier = classifier
         self.model_name = model_name
@@ -66,17 +66,17 @@ class ContextClassifier:
             predictions = self._classifier(image, top_k=None)
             return self._normalize_predictions(predictions)
         except Exception:
-            LOGGER.exception("Viddexa context inference failed; ignoring context")
+            LOGGER.exception("Viddexa region-ranking inference failed; ignoring scores")
             return None
 
     @staticmethod
     def _to_rgb_image(bgr_image: np.ndarray) -> Image.Image:
         if not isinstance(bgr_image, np.ndarray):
-            raise TypeError("context image must be a NumPy array")
+            raise TypeError("ranker image must be a NumPy array")
         if bgr_image.ndim != 3 or bgr_image.shape[2] != 3:
-            raise ValueError("context image must have shape (height, width, 3)")
+            raise ValueError("ranker image must have shape (height, width, 3)")
         if bgr_image.size == 0:
-            raise ValueError("context image cannot be empty")
+            raise ValueError("ranker image cannot be empty")
         rgb_image = FramePreprocessor.to_rgb(bgr_image)
         return Image.fromarray(rgb_image, mode="RGB")
 
@@ -98,36 +98,37 @@ class ContextClassifier:
 def load_context_classifier(
     *,
     enabled: bool | None = None,
-    model_name: str = config.CONTEXT_MODEL_NAME,
-    revision: str = config.CONTEXT_MODEL_REVISION,
+    model_name: str = VIDDEXA_MINI_REPO,
     local_model_path: Path | None = None,
     pipeline_factory: Callable[..., ClassificationPipeline] | None = None,
 ) -> ContextClassifier | None:
     """Load the pinned local classifier or return None without crashing."""
 
     if enabled is False:
-        LOGGER.info("Viddexa context model is disabled")
+        LOGGER.info("Viddexa region ranker is disabled")
+        return None
+    if local_model_path is None or not Path(local_model_path).is_dir():
+        LOGGER.warning("Local Viddexa region-ranker files are unavailable")
         return None
 
     factory = pipeline_factory or _create_transformers_pipeline
     try:
-        source = str(local_model_path) if local_model_path is not None else model_name
         classifier = factory(
             "image-classification",
-            model=source,
-            revision=None if local_model_path is not None else revision,
+            model=str(local_model_path),
             framework="pt",
             device=-1,
             use_fast=False,
+            model_kwargs={"local_files_only": True},
         )
     except ImportError:
         LOGGER.warning(
-            "Viddexa dependencies are unavailable; continuing NudeNet-only"
+            "Viddexa dependencies are unavailable; continuing without region ranking"
         )
         return None
     except Exception:
         LOGGER.exception(
-            "Viddexa context model is unavailable; continuing NudeNet-only"
+            "Viddexa region ranker is unavailable; continuing without region ranking"
         )
         return None
     return ContextClassifier(classifier, model_name=model_name)

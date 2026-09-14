@@ -64,6 +64,9 @@ class PackagingSpecTests(unittest.TestCase):
 
     def test_missing_required_model_stops_spec_before_build(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "lavocado_packaging.spec_common.is_expected_nudenet_model",
+            return_value=True,
+        ), patch(
             "lavocado_packaging.spec_common.is_expected_yolo_model",
             return_value=False,
         ), self.assertRaisesRegex(SystemExit, "yolo11.pt"):
@@ -94,6 +97,8 @@ class PackagingSpecTests(unittest.TestCase):
         )
         self.assertIn("python scripts/verify_model_bundle.py", workflow)
         self.assertIn("python scripts/verify_model_runtime.py", workflow)
+        self.assertIn("run: '\"${{ matrix.executable }}\" --self-check'", workflow)
+        self.assertEqual(workflow.count("            executable:"), 4)
         self.assertEqual(workflow.count("os: windows-latest"), 2)
         self.assertEqual(workflow.count("os: macos-latest"), 2)
         self.assertEqual(workflow.count("          - os:"), 4)

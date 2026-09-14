@@ -8,11 +8,11 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files
 
 from app.vision.model_assets import (
-    VIDDEXA_MODEL_FILES,
     is_expected_nudenet_model,
     is_expected_viddexa_model,
     is_expected_yolo_model,
 )
+from app.vision.model_manifest import CATALOG, ModelRole
 
 USER_APP_NAME = "LAVOCADO"
 DEVELOPER_APP_NAME = "LAVOCADO-Developer"
@@ -57,37 +57,31 @@ MODEL_HIDDENIMPORTS = (
 )
 
 
-def require_nudenet_model(specpath: Path) -> Path:
-    model_path = specpath / "models" / "640m.onnx"
-    if not is_expected_nudenet_model(model_path):
-        raise SystemExit(
-            "Verified models/640m.onnx is required for packaging; "
-            "run: python scripts/download_models.py --model all"
-        )
-    return model_path
-
-
 def required_model_datas(specpath: Path) -> list[tuple[str, str]]:
     """Only verified pinned files enter either release edition."""
 
-    yolo_path = specpath / "models" / "yolo11.pt"
-    if not is_expected_yolo_model(yolo_path):
-        raise SystemExit(
-            "Verified models/yolo11.pt is required for packaging; "
-            "run: python scripts/download_models.py --model all"
-        )
-    data = [
-        (str(require_nudenet_model(specpath)), "models"),
-        (str(yolo_path), "models"),
-    ]
-    for model_id, files in VIDDEXA_MODEL_FILES.items():
-        model_dir = specpath / "models" / model_id
-        if not is_expected_viddexa_model(model_dir, model_id):
+    data: list[tuple[str, str]] = []
+    for spec in CATALOG:
+        if not spec.required:
+            continue
+        bundled = specpath / spec.bundled_path
+        if spec.id == "nudenet_640m":
+            valid = is_expected_nudenet_model(bundled)
+        elif spec.id == "yolo11_nsfw_small":
+            valid = is_expected_yolo_model(bundled)
+        elif spec.role is ModelRole.REGION_RANKER:
+            valid = is_expected_viddexa_model(bundled, spec.id)
+        else:
+            raise RuntimeError(f"Unknown required model: {spec.id}")
+        if not valid:
             raise SystemExit(
-                f"Verified models/{model_id} is required for packaging; "
+                f"Verified {spec.bundled_path} is required for packaging; "
                 "run: python scripts/download_models.py --model all"
             )
-        data.extend((str(model_dir / item.name), f"models/{model_id}") for item in files)
+        if spec.role is ModelRole.REGION_RANKER:
+            data.extend((str(bundled / item.name), spec.bundled_path) for item in spec.required_files)
+        else:
+            data.append((str(bundled), "models"))
     return data
 
 

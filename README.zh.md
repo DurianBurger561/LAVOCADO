@@ -197,6 +197,11 @@ python -m PyInstaller --noconfirm --clean lavocado.spec
 ```
 
 产物写入 `dist/` 目录。PyInstaller 应用必须在各自的目标操作系统上构建。
+在 Windows 或 macOS 下载全部四个模型后,可运行 `python main.py --self-check`
+或 `python developer_main.py --self-check`;打包后的可执行文件也支持相同参数。
+自检不打开仪表盘、不截屏、不访问模型网站,会检查本地资源、设置、SQLite、
+平台适配器和四个必需模型的离线加载;失败时返回非零退出码。**Package** 工作流
+在上传四种产物前均执行冻结包自检。
 
 **Package** 工作流可以构建可下载的 Windows 和 macOS 产物,无需同时拥有两台本地机器。打开仓库的 **Actions** 标签页,选择 **Package**,点击 **Run workflow**,待所有矩阵任务完成后即可下载四个 User/Developer 产物。以 `v` 开头的标签也会自动触发该工作流。
 

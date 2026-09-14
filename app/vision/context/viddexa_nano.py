@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from app import config
 from app.vision.context.viddexa import ViddexaContextRanker
 from app.vision.context_classifier import (
     ClassificationPipeline,
     load_context_classifier,
 )
 from app.vision.model_assets import resolve_viddexa_model_path
+from app.vision.model_manifest import VIDDEXA_NANO_REPO
 
 
 def load_viddexa_nano(
@@ -22,8 +22,7 @@ def load_viddexa_nano(
 ) -> ViddexaContextRanker | None:
     classifier = load_context_classifier(
         enabled=enabled,
-        model_name=config.CONTEXT_NANO_MODEL_NAME,
-        revision=config.CONTEXT_NANO_MODEL_REVISION,
+        model_name=VIDDEXA_NANO_REPO,
         local_model_path=resolve_viddexa_model_path(
             "viddexa_nano", data_dir=data_dir
         ),

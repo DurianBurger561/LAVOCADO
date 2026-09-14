@@ -8,7 +8,7 @@ import main as user_main
 from app.build_edition import DEVELOPER_EDITION, set_build_edition
 
 
-def main(argv=None) -> None:
+def main(argv=None) -> int | None:
     """Run the full user app, replacing only the dashboard with Developer Lab."""
 
     arguments = list(sys.argv[1:] if argv is None else argv)
@@ -26,6 +26,10 @@ def main(argv=None) -> None:
             raise SystemExit(f"Unknown benchmark worker: {arguments[1]}")
         raise SystemExit(worker_main(arguments[2:]))
     args = user_main.build_parser().parse_args(arguments)
+    if args.self_check:
+        from app.self_check import print_self_check
+
+        return print_self_check(developer=True)
     if getattr(args, "overlay_process", False):
         user_main.main(arguments)
         return
@@ -42,4 +46,4 @@ def main(argv=None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

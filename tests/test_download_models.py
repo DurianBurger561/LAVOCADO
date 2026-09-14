@@ -5,8 +5,7 @@ from contextlib import redirect_stderr
 from io import StringIO
 from unittest.mock import patch
 
-from app.vision.model_assets import NUDENET_640M_DOWNLOAD_URL
-from app.vision.model_lifecycle import REQUIRED_MODEL_IDS
+from app.vision.model_manifest import NUDENET_640M_DOWNLOAD_URL, REQUIRED_MODEL_IDS
 from scripts.download_models import build_download_request, build_parser, main
 
 

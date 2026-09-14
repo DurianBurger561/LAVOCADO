@@ -568,6 +568,23 @@ class ServiceTests(unittest.TestCase):
 
         self.assertEqual(overlay.shown_on, [1])
 
+    def test_older_capture_sequence_is_dropped_without_backlog(self) -> None:
+        detector = FakeDetector({1: [False, False]})
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(sequences={1: [7, 6, 8]}),
+            detector=detector,
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            change_scheduler=FakeChangeScheduler([True, True]),
+        )
+
+        service.check_once()
+        self.assertEqual(service.check_once(), [])
+        service.check_once()
+        self.assertEqual(detector.checked_indexes, [1, 1])
+
     def test_runtime_clears_frame_identity_only_at_context_boundary(self) -> None:
         detector = FakeDetector({1: [False, False]})
         service = LavocadoService(

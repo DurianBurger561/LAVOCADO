@@ -21,7 +21,7 @@ from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import to_violation_evidence
 from app.vision.detectors.factory import load_primary_bundle
-from app.vision.model_assets import (
+from app.vision.model_manifest import (
     NUDENET_640M_SHA256,
     YOLO11_NSFW_SMALL_REVISION,
 )

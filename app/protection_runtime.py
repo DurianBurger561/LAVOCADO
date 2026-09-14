@@ -141,7 +141,8 @@ class ProtectionRuntime:
         if frame.sequence < 1:
             return True
         identity = (frame.backend, frame.sequence)
-        if self._last_frame_sequences.get(monitor_index) == identity:
+        previous = self._last_frame_sequences.get(monitor_index)
+        if previous is not None and previous[0] == frame.backend and frame.sequence <= previous[1]:
             return False
         self._last_frame_sequences[monitor_index] = identity
         return True

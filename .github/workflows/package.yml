@@ -22,6 +22,7 @@ jobs:
             edition: user
             spec: lavocado.spec
             dist: dist/LAVOCADO
+            executable: dist/LAVOCADO/LAVOCADO.exe
             archive: LAVOCADO-Windows.zip
             artifact: LAVOCADO-Windows
           - os: windows-latest
@@ -29,6 +30,7 @@ jobs:
             edition: developer
             spec: lavocado-developer.spec
             dist: dist/LAVOCADO-Developer
+            executable: dist/LAVOCADO-Developer/LAVOCADO-Developer.exe
             archive: LAVOCADO-Developer-Windows.zip
             artifact: LAVOCADO-Developer-Windows
           - os: macos-latest
@@ -36,6 +38,7 @@ jobs:
             edition: user
             spec: lavocado.spec
             dist: dist/LAVOCADO.app
+            executable: dist/LAVOCADO.app/Contents/MacOS/LAVOCADO
             archive: LAVOCADO-macOS.zip
             artifact: LAVOCADO-macOS
           - os: macos-latest
@@ -43,6 +46,7 @@ jobs:
             edition: developer
             spec: lavocado-developer.spec
             dist: dist/LAVOCADO Developer.app
+            executable: dist/LAVOCADO Developer.app/Contents/MacOS/LAVOCADO-Developer
             archive: LAVOCADO-Developer-macOS.zip
             artifact: LAVOCADO-Developer-macOS
 
@@ -91,6 +95,10 @@ jobs:
 
       - name: Build native application
         run: python -m PyInstaller --noconfirm --clean ${{ matrix.spec }}
+
+      - name: Run frozen offline self-check
+        shell: bash
+        run: '"${{ matrix.executable }}" --self-check'
 
       - name: Verify bundled dashboard resources
         run: >-

@@ -5,6 +5,7 @@ import unittest
 
 from app import config
 from app.settings.schema import default_vision_settings
+from app.vision.model_manifest import VIDDEXA_MINI_REPO, VIDDEXA_MINI_REVISION
 
 
 class ConfigTests(unittest.TestCase):
@@ -14,10 +15,10 @@ class ConfigTests(unittest.TestCase):
 
     def test_context_model_is_revision_pinned(self) -> None:
         self.assertEqual(
-            config.CONTEXT_MODEL_NAME,
+            VIDDEXA_MINI_REPO,
             "viddexa/nsfw-detection-2-mini",
         )
-        self.assertRegex(config.CONTEXT_MODEL_REVISION, re.compile(r"^[0-9a-f]{40}$"))
+        self.assertRegex(VIDDEXA_MINI_REVISION, re.compile(r"^[0-9a-f]{40}$"))
 
     def test_context_fusion_defaults_are_conservative(self) -> None:
         settings = default_vision_settings()

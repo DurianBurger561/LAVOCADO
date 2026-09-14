@@ -39,9 +39,33 @@ def _display(path: Path) -> str:
 
 class ArchitectureContractTests(unittest.TestCase):
     def test_benchmarks_live_only_in_developer_lab(self) -> None:
-        self.assertEqual(list((ROOT / "scripts").glob("benchmark_*.py")), [])
+        for pattern in ("benchmark_*.py", "bench_*.py", "profile_*.py", "perf_*.py"):
+            self.assertEqual(list((ROOT / "scripts").glob(pattern)), [])
         self.assertFalse((ROOT / "scripts" / "soak_capture.py").exists())
         self.assertEqual(list((APP / "vision").glob("*benchmark*.py")), [])
+
+    def test_model_metadata_has_one_owner(self) -> None:
+        definitions = [
+            _display(path)
+            for path in _files(APP)
+            for node in ast.walk(_tree(path))
+            if isinstance(node, ast.ClassDef) and node.name == "ModelSpec"
+        ]
+        self.assertEqual(definitions, ["app/vision/model_manifest.py"])
+        self.assertNotIn("CONTEXT_MODEL_REVISION", (APP / "config.py").read_text(encoding="utf-8"))
+        self.assertNotIn("VIDDEXA_MODEL_FILES =", (APP / "vision" / "model_assets.py").read_text(encoding="utf-8"))
+
+    def test_no_project_package_shadows_pypi_packaging(self) -> None:
+        self.assertFalse((ROOT / "packaging").exists())
+
+    def test_single_primary_detector_contract(self) -> None:
+        definitions = [
+            _display(path)
+            for path in _files(APP)
+            for node in ast.walk(_tree(path))
+            if isinstance(node, ast.ClassDef) and node.name == "PrimaryDetector"
+        ]
+        self.assertEqual(definitions, ["app/vision/detectors/base.py"])
 
     def test_display_uses_platform_independent_paths(self) -> None:
         self.assertEqual(

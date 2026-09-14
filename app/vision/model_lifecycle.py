@@ -10,22 +10,10 @@ import os
 import threading
 import urllib.request
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app import config
 from app.vision.model_assets import (
-    NUDENET_640M_DOWNLOAD_URL,
-    NUDENET_640M_FILENAME,
-    NUDENET_640M_SHA256,
-    NUDENET_640M_SIZE,
-    VIDDEXA_MODEL_FILES,
-    YOLO11_NSFW_SMALL_DOWNLOAD_URL,
-    YOLO11_NSFW_SMALL_FILENAME,
-    YOLO11_NSFW_SMALL_REVISION,
-    YOLO11_NSFW_SMALL_SHA256,
-    YOLO11_NSFW_SMALL_SIZE,
     bundled_nudenet_model_path,
     bundled_yolo_model_path,
     is_expected_nudenet_model,
@@ -36,67 +24,25 @@ from app.vision.model_assets import (
     resolve_yolo_model_path,
     resource_root,
 )
+from app.vision.model_manifest import (
+    CATALOG,
+    NUDENET_640M_DOWNLOAD_URL,
+    NUDENET_640M_FILENAME,
+    NUDENET_640M_SHA256,
+    NUDENET_640M_SIZE,
+    REQUIRED_MODEL_IDS,
+    VIDDEXA_MODEL_FILES,
+    YOLO11_NSFW_SMALL_DOWNLOAD_URL,
+    YOLO11_NSFW_SMALL_FILENAME,
+    YOLO11_NSFW_SMALL_SHA256,
+    YOLO11_NSFW_SMALL_SIZE,
+    ModelRole,
+    ModelSpec,
+    spec_by_id,
+)
 
 USER_AGENT = "LAVOCADO-model-downloader"
 
-
-@dataclass(frozen=True, slots=True)
-class ModelSpec:
-    id: str
-    label: str
-    role: str
-    source: str
-    required: bool
-    downloadable: bool = True
-    revision: str | None = None
-    huggingface_id: str | None = None
-
-
-CATALOG: tuple[ModelSpec, ...] = (
-    ModelSpec(
-        id="nudenet_640m",
-        label="NudeNet 640m",
-        role="primary",
-        source="github:notAI-tech/NudeNet@v3.4-weights",
-        required=True,
-        revision=NUDENET_640M_SHA256[:12],
-    ),
-    ModelSpec(
-        id="yolo11_nsfw_small",
-        label="YOLO11 NSFW Small",
-        role="primary",
-        source="huggingface:erax-ai/EraX-NSFW-V1.0",
-        required=True,
-        revision=YOLO11_NSFW_SMALL_REVISION[:12],
-        huggingface_id="erax-ai/EraX-NSFW-V1.0",
-    ),
-    ModelSpec(
-        id="viddexa_nano",
-        label="Viddexa Nano",
-        role="context",
-        source=f"huggingface:{config.CONTEXT_NANO_MODEL_NAME}",
-        required=True,
-        revision=config.CONTEXT_NANO_MODEL_REVISION,
-        huggingface_id=config.CONTEXT_NANO_MODEL_NAME,
-    ),
-    ModelSpec(
-        id="viddexa_mini",
-        label="Viddexa Mini",
-        role="context",
-        source=f"huggingface:{config.CONTEXT_MINI_MODEL_NAME}",
-        required=True,
-        revision=config.CONTEXT_MINI_MODEL_REVISION,
-        huggingface_id=config.CONTEXT_MINI_MODEL_NAME,
-    ),
-)
-CATALOG_MODEL_IDS = tuple(spec.id for spec in CATALOG)
-
-
-def required_model_ids(catalog: tuple[ModelSpec, ...]) -> tuple[str, ...]:
-    return tuple(spec.id for spec in catalog if spec.required)
-
-
-REQUIRED_MODEL_IDS = required_model_ids(CATALOG)
 
 _LOCK = threading.Lock()
 _RUNTIME: dict[str, dict[str, Any]] = {}
@@ -106,13 +52,6 @@ def models_dir(data_dir: Path | None = None, root: Path | None = None) -> Path:
     if data_dir is not None:
         return Path(data_dir) / "models"
     return (root if root is not None else resource_root()) / "models"
-
-
-def spec_by_id(model_id: str) -> ModelSpec | None:
-    for spec in CATALOG:
-        if spec.id == model_id:
-            return spec
-    return None
 
 
 def _nudenet_status(
@@ -178,7 +117,7 @@ def _public_row(
     return {
         "id": spec.id,
         "label": spec.label,
-        "role": spec.role,
+        "role": spec.role.value,
         "source": spec.source,
         "revision": spec.revision,
         "status": status,
@@ -203,7 +142,7 @@ def inspect_models(
         _yolo_status(data_dir=data_dir, root=root, environ=environ),
     ]
     for spec in CATALOG:
-        if spec.role == "context":
+        if spec.role is ModelRole.REGION_RANKER:
             rows.append(_viddexa_status(spec, data_dir=data_dir, root=root))
     return rows
 

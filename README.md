@@ -312,6 +312,13 @@ python -m PyInstaller --noconfirm --clean lavocado.spec
 
 The output is written under `dist/`. PyInstaller applications must be built on
 each target operating system.
+On Windows or macOS, run `python main.py --self-check` (or
+`python developer_main.py --self-check`) after downloading all four models.
+The same flag works on a frozen executable without opening the dashboard,
+capturing a screen, or contacting a model host. It checks local assets, the
+settings schema, SQLite, the platform adapter, and offline initialization of
+all four required models. A failed check exits nonzero. The **Package** workflow
+runs it on every User and Developer artifact before upload.
 
 The **Package** workflow can build downloadable Windows and macOS artifacts
 without requiring both local machines. Open the repository's **Actions** tab,

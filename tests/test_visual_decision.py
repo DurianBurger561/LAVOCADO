@@ -120,6 +120,21 @@ class VisualDecisionEngineTests(unittest.TestCase):
                 monitor_index=1,
             )
 
+    def test_finalize_preserves_typed_evidence_without_dict_roundtrip(self) -> None:
+        evidence = breast(0.8)
+        result = self.engine.finalize(
+            {"classification": VisualViolationClassification.VIOLATION, "evidence": [evidence]},
+            frame_sequence=2,
+            monitor_index=1,
+        )
+        self.assertIs(result.evidence[0], evidence)
+        with self.assertRaisesRegex(TypeError, "evidence must remain typed"):
+            self.engine.finalize(
+                {"classification": VisualViolationClassification.CLEAR, "evidence": [{}]},
+                frame_sequence=2,
+                monitor_index=1,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

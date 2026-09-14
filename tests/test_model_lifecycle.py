@@ -10,17 +10,20 @@ from unittest.mock import patch
 
 from app.vision.model_assets import resolve_nudenet_model_path
 from app.vision.model_lifecycle import (
-    CATALOG,
-    REQUIRED_MODEL_IDS,
-    ModelSpec,
     compact_model_status,
     download_huggingface,
     download_model,
     inspect_models,
-    required_model_ids,
     reset_runtime_for_tests,
     start_download,
     start_download_all,
+)
+from app.vision.model_manifest import (
+    CATALOG,
+    REQUIRED_MODEL_IDS,
+    ModelRole,
+    ModelSpec,
+    required_model_ids,
 )
 
 
@@ -34,7 +37,13 @@ class ModelLifecycleTests(unittest.TestCase):
             {"nudenet_640m", "yolo11_nsfw_small", "viddexa_nano", "viddexa_mini"},
         )
         self.assertTrue(all(spec.required for spec in CATALOG))
-        optional = ModelSpec("optional", "Optional", "context", "test", required=False)
+        self.assertTrue(all(spec.bundled_path.startswith("models/") for spec in CATALOG))
+        self.assertTrue(all(spec.required_files for spec in CATALOG))
+        self.assertEqual(
+            {spec.id for spec in CATALOG if spec.role is ModelRole.REGION_RANKER},
+            {"viddexa_nano", "viddexa_mini"},
+        )
+        optional = ModelSpec("optional", "Optional", ModelRole.REGION_RANKER, "test", required=False)
         self.assertEqual(required_model_ids(CATALOG + (optional,)), REQUIRED_MODEL_IDS)
 
     def test_status_has_no_filesystem_paths(self) -> None:
@@ -157,13 +166,12 @@ class ModelLifecycleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir, patch(
             "app.vision.model_lifecycle.is_expected_viddexa_model",
             return_value=False,
-        ):
-            with self.assertRaisesRegex(RuntimeError, "pinned-file verification"):
-                download_model(
-                    "viddexa_nano",
-                    data_dir=Path(temp_dir),
-                    huggingface_downloader=lambda *_args, **_kwargs: None,
-                )
+        ), self.assertRaisesRegex(RuntimeError, "pinned-file verification"):
+            download_model(
+                "viddexa_nano",
+                data_dir=Path(temp_dir),
+                huggingface_downloader=lambda *_args, **_kwargs: None,
+            )
 
     def test_download_all_skips_future_non_required_models(self) -> None:
         rows = [

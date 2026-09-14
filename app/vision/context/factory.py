@@ -57,7 +57,7 @@ def load_context_ranker(
     if ranker is not None:
         return ranker
     LOGGER.warning(
-        "Context model %s is unavailable; tile ranking will use change + age",
+        "Region ranker %s is unavailable; tile ranking will use change + age",
         requested,
     )
     return OffContextRanker()

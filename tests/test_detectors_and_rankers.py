@@ -1,5 +1,6 @@
 """Tests for selectable primary detectors and context rankers."""
 
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -107,16 +108,17 @@ class ContextRankerTests(unittest.TestCase):
 
     def test_context_ranker_uses_bundled_model_path(self) -> None:
         factory = Mock(return_value=Mock())
-        local_path = Path("/bundled/models/viddexa_nano")
-        with patch(
-            "app.vision.context.viddexa_nano.resolve_viddexa_model_path",
-            return_value=local_path,
-        ):
-            ranker = load_context_ranker("viddexa_nano", pipeline_factory=factory)
+        with tempfile.TemporaryDirectory() as temporary:
+            local_path = Path(temporary)
+            with patch(
+                "app.vision.context.viddexa_nano.resolve_viddexa_model_path",
+                return_value=local_path,
+            ):
+                ranker = load_context_ranker("viddexa_nano", pipeline_factory=factory)
 
         self.assertEqual(ranker.name, "viddexa_nano")
         self.assertEqual(factory.call_args.kwargs["model"], str(local_path))
-        self.assertIsNone(factory.call_args.kwargs["revision"])
+        self.assertEqual(factory.call_args.kwargs["model_kwargs"], {"local_files_only": True})
 
     def test_nano_and_mini_names(self) -> None:
         self.assertEqual(normalize_context_name("nano"), "viddexa_nano")

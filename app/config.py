@@ -7,14 +7,6 @@ import os
 NUDENET_INFERENCE_RESOLUTION = 640
 NUDENET_FALLBACK_INFERENCE_RESOLUTION = 320
 
-# Pinned local context model asset identifiers.
-CONTEXT_MODEL_NAME = "viddexa/nsfw-detection-2-mini"
-CONTEXT_MODEL_REVISION = "15f61cddc0a1a2a9176f018fb6838ef92c8163cc"
-CONTEXT_MINI_MODEL_NAME = CONTEXT_MODEL_NAME
-CONTEXT_MINI_MODEL_REVISION = CONTEXT_MODEL_REVISION
-CONTEXT_NANO_MODEL_NAME = "viddexa/nsfw-detection-2-nano"
-CONTEXT_NANO_MODEL_REVISION = "12e57200346246b37382f746e4d94d10b014f6a1"
-
 # Conservative screen-change scheduling. Native dirty-region metadata is used
 # when available; otherwise a small grayscale map avoids retaining full frames.
 CHANGE_MAP_MAX_EDGE = 64

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app import config
 from app.settings.schema import VisionSettings, default_vision_settings
+from app.vision.model_manifest import ModelRole, spec_by_id
 
 
 def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str, Any]:
@@ -19,6 +19,7 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
         and current.context.model != "off"
         and current.context.tile_ranking
     )
+    ranker_spec = spec_by_id(current.context.model)
     return {
         "primary_detector": primary,
         "primary_detectors": [primary],
@@ -29,10 +30,8 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
         "context_model": {
             "name": current.context.model,
             "huggingface_id": (
-                config.CONTEXT_NANO_MODEL_NAME
-                if current.context.model == "viddexa_nano"
-                else config.CONTEXT_MINI_MODEL_NAME
-                if current.context.model == "viddexa_mini"
+                ranker_spec.huggingface_id
+                if ranker_spec is not None and ranker_spec.role is ModelRole.REGION_RANKER
                 else "off"
             ),
             "enabled": tile_ranking,

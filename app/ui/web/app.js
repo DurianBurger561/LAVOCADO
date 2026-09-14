@@ -150,7 +150,7 @@ function renderTemporal(values) {
 function renderDiagnostics(data) {
   text("diag-model", data.model || humanize(data.primary_detector, "NudeNet"));
   const contextStatus = humanize(data.context_status, "Unknown");
-  text("diag-context-model", `${data.context_model || "Context model"} · ${contextStatus}`);
+  text("diag-context-model", `${data.context_model || "Region ranker"} · ${contextStatus}`);
   text("diag-yolo", humanize(data.yolo_status, "Disabled"));
   text("diag-scan", data.last_scan_ms === null ? "—" : `${formatNumber(data.last_scan_ms, 0)} ms`);
   text("diag-monitor", data.monitor_index === null ? "—" : `Display ${data.monitor_index}`);

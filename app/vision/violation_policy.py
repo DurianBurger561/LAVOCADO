@@ -325,39 +325,6 @@ def evidence_to_dict(item: ViolationEvidence) -> dict[str, Any]:
     }
 
 
-def evidence_from_mapping(item: object) -> ViolationEvidence | None:
-    if isinstance(item, ViolationEvidence):
-        return item
-    if not isinstance(item, dict) or item.get("evidence_type") is None:
-        return None
-    try:
-        evidence_type = ViolationEvidenceType(str(item["evidence_type"]))
-        confidence = float(item.get("confidence") or 0.0)
-        frame_sequence = int(item.get("frame_sequence") or 0)
-    except (TypeError, ValueError):
-        return None
-    bbox = item.get("bbox")
-    parsed_bbox: tuple[float, float, float, float] | None = None
-    if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
-        try:
-            parsed_bbox = (
-                float(bbox[0]),
-                float(bbox[1]),
-                float(bbox[2]),
-                float(bbox[3]),
-            )
-        except (TypeError, ValueError):
-            parsed_bbox = None
-    return ViolationEvidence(
-        evidence_type=evidence_type,
-        label=str(item.get("label") or ""),
-        confidence=confidence,
-        bbox=parsed_bbox,
-        model=str(item.get("model") or ""),
-        frame_sequence=frame_sequence,
-    )
-
-
 def _region_from_payload(value: object) -> tuple[int, int, int, int] | None:
     if not isinstance(value, (list, tuple)) or len(value) != 4:
         return None
@@ -378,13 +345,12 @@ def visual_decision_from_engine_payload(
     classification = payload["classification"]
     if not isinstance(classification, VisualViolationClassification):
         raise TypeError("Vision decision classification must be typed")
-    evidence_items: list[ViolationEvidence] = []
-    raw_evidence = payload.get("evidence")
-    if isinstance(raw_evidence, list):
-        for item in raw_evidence:
-            mapped = evidence_from_mapping(item)
-            if mapped is not None:
-                evidence_items.append(mapped)
+    raw_evidence = payload.get("evidence") or ()
+    if not isinstance(raw_evidence, (list, tuple)) or not all(
+        isinstance(item, ViolationEvidence) for item in raw_evidence
+    ):
+        raise TypeError("Vision evidence must remain typed")
+    evidence_items = tuple(raw_evidence)
     source = str(payload.get("source") or "").strip()
     reason_codes = (source,) if source else ()
     label = payload.get("label")
@@ -422,7 +388,7 @@ def visual_decision_from_engine_payload(
     shadow = payload.get("shadow")
     return VisualViolationDecision(
         classification=classification,
-        evidence=tuple(evidence_items),
+        evidence=evidence_items,
         reason_codes=reason_codes,
         primary_region=_region_from_payload(payload.get("region")),
         frame_sequence=int(frame_sequence),

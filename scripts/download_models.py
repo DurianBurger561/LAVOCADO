@@ -11,18 +11,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.vision.model_assets import (
+from app.vision.model_assets import is_expected_nudenet_model
+from app.vision.model_lifecycle import build_nudenet_request, download_nudenet
+from app.vision.model_lifecycle import download_model as download_catalog_model
+from app.vision.model_manifest import (
+    CATALOG_MODEL_IDS,
     NUDENET_640M_FILENAME,
     NUDENET_640M_SIZE,
-    is_expected_nudenet_model,
-)
-from app.vision.model_lifecycle import (
-    CATALOG_MODEL_IDS,
     REQUIRED_MODEL_IDS,
-    build_nudenet_request,
-    download_nudenet,
 )
-from app.vision.model_lifecycle import download_model as download_catalog_model
 
 DEFAULT_DESTINATION = PROJECT_ROOT / "models" / NUDENET_640M_FILENAME
 

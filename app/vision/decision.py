@@ -25,7 +25,6 @@ from app.vision.violation_policy import (
     ViolationEvidenceType,
     VisualViolationClassification,
     VisualViolationDecision,
-    evidence_to_dict,
     threshold_for_label,
     tier_for_score,
 )
@@ -289,7 +288,7 @@ class DecisionEngine:
             "confidence": 0.0 if strongest is None else strongest.confidence,
             "box": None if strongest is None or strongest.bbox is None else list(strongest.bbox),
             "check_points": checkpoints,
-            "evidence": [evidence_to_dict(item) for item in detection.evidence],
+            "evidence": list(detection.evidence),
         }
         return result
 
@@ -619,8 +618,8 @@ class DecisionEngine:
         if label and "tier" not in decided:
             model = None
             payload = decided.get("evidence")
-            if isinstance(payload, list) and payload and isinstance(payload[0], dict):
-                model = payload[0].get("model")
+            if isinstance(payload, list) and payload and isinstance(payload[0], ViolationEvidence):
+                model = payload[0].model
             decided["tier"] = self.threshold_policy.tier(
                 score, str(label), None if model is None else str(model)
             ).value
@@ -719,8 +718,7 @@ class DecisionEngine:
                     f"{evidence.label} "
                     f"(score {evidence.confidence:.2f}, {evidence.model})"
                 ),
-                "evidence": list(result.get("evidence") or [])
-                or [evidence_to_dict(evidence)],
+                "evidence": list(result.get("evidence") or []) or [evidence],
             }
         )
         decided = self._strong_primary_result(payload, captured_frame)

@@ -81,11 +81,7 @@ class ModelAssetTests(unittest.TestCase):
             model_path = Path(temp_dir) / "640m.onnx"
             model_path.write_bytes(b"not an ONNX model")
 
-            with patch(
-                "app.vision.model_assets.NUDENET_640M_SIZE",
-                model_path.stat().st_size,
-            ):
-                self.assertFalse(is_expected_nudenet_model(model_path))
+            self.assertFalse(is_expected_nudenet_model(model_path))
             self.assertFalse(is_expected_yolo_model(model_path))
 
 

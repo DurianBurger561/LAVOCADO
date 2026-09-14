@@ -32,6 +32,7 @@ def overlay_monitor_arg(value: str) -> MonitorInfo:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Local, private screen intervention")
+    parser.add_argument("--self-check", action="store_true", help="verify the local build without opening a window")
     subparsers = parser.add_subparsers(dest="command")
 
     protect = subparsers.add_parser("protect", help="start screen protection")
@@ -232,9 +233,13 @@ def show_events(limit: int, platform_adapter: PlatformAdapter) -> None:
         print(format_event(event))
 
 
-def main(argv=None) -> None:
+def main(argv=None) -> int | None:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.self_check:
+        from app.self_check import print_self_check
+
+        return print_self_check()
     platform_adapter = create_platform_adapter()
     if args.overlay_process:
         if args.overlay_monitor is None:
@@ -260,4 +265,4 @@ def main(argv=None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

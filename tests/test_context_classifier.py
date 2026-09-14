@@ -2,6 +2,7 @@
 
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import Mock
 
@@ -83,35 +84,28 @@ class ContextClassifierTests(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    def test_loads_pinned_model_with_pytorch(self) -> None:
-        pipeline = FakePipeline()
-        factory = Mock(return_value=pipeline)
+    def test_missing_local_model_never_uses_hub_or_cache(self) -> None:
+        factory = Mock()
 
-        classifier = load_context_classifier(pipeline_factory=factory)
+        with self.assertLogs("app.vision.context_classifier", level="WARNING"):
+            classifier = load_context_classifier(pipeline_factory=factory)
 
-        self.assertIsNotNone(classifier)
-        factory.assert_called_once_with(
-            "image-classification",
-            model="viddexa/nsfw-detection-2-mini",
-            revision="15f61cddc0a1a2a9176f018fb6838ef92c8163cc",
-            framework="pt",
-            device=-1,
-            use_fast=False,
-        )
+        self.assertIsNone(classifier)
+        factory.assert_not_called()
 
     def test_local_bundle_is_loaded_without_hub_lookup(self) -> None:
         factory = Mock(return_value=FakePipeline())
-        local_path = Path("/bundled/models/viddexa_mini")
-
-        classifier = load_context_classifier(
-            local_model_path=local_path,
-            pipeline_factory=factory,
-        )
+        with TemporaryDirectory() as temporary:
+            local_path = Path(temporary)
+            classifier = load_context_classifier(
+                local_model_path=local_path,
+                pipeline_factory=factory,
+            )
 
         self.assertIsNotNone(classifier)
         self.assertEqual(factory.call_args.kwargs["model"], str(local_path))
-        self.assertIsNone(factory.call_args.kwargs["revision"])
-        self.assertNotIn("local_files_only", factory.call_args.kwargs)
+        self.assertEqual(factory.call_args.kwargs["model_kwargs"], {"local_files_only": True})
+        self.assertNotIn("revision", factory.call_args.kwargs)
 
     def test_disabled_context_does_not_load_dependencies(self) -> None:
         factory = Mock()
@@ -127,8 +121,12 @@ class ContextClassifierTests(unittest.TestCase):
     def test_load_failure_returns_none_for_nudenet_only_mode(self) -> None:
         factory = Mock(side_effect=ImportError("transformers missing"))
 
-        with self.assertLogs("app.vision.context_classifier", level="WARNING"):
-            classifier = load_context_classifier(pipeline_factory=factory)
+        with TemporaryDirectory() as temporary, self.assertLogs(
+            "app.vision.context_classifier", level="WARNING"
+        ):
+            classifier = load_context_classifier(
+                local_model_path=Path(temporary), pipeline_factory=factory
+            )
 
         self.assertIsNone(classifier)
 
