@@ -14,6 +14,7 @@ from app.vision.evidence import evidence_from_confidence
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.regions import Region, map_box_to_original
+from app.vision.scan_planner import ScanPlanner
 from app.vision.scheduler import ScanPlan, TileScheduler
 from app.vision.tiles import TileState
 from app.vision.tracking import CandidateTracker, box_to_region
@@ -89,6 +90,12 @@ class DecisionEngine:
             overlap=resolved_overlap,
             max_skip=resolved_max_skip,
             pin_followup_checks=pin_followup_checks,
+        )
+        self.scan_planner = ScanPlanner(
+            self.scheduler,
+            self.tracker,
+            self.viddexa_ranker,
+            crop_expansion=self.crop_expansion,
         )
 
     def evaluate(
@@ -226,7 +233,7 @@ class DecisionEngine:
                 )
 
         if plan is None:
-            plan = self.prepare_scan(
+            plan = self.scan_planner.prepare_scan(
                 captured_frame,
                 monitor_index,
                 is_active_monitor=is_active_monitor,
@@ -494,39 +501,6 @@ class DecisionEngine:
 
         self.tracker.reset()
         self.scheduler.reset()
-
-    def prepare_scan(
-        self,
-        captured_frame: CaptureFrame,
-        monitor_index: int,
-        *,
-        is_active_monitor: bool = True,
-        prepared_frame: FramePreprocessor | None = None,
-    ) -> ScanPlan:
-        """Refresh tile scores and ask the scheduler what to inspect next."""
-
-        prepared = prepared_frame or FramePreprocessor(captured_frame)
-        prepared.require_frame(captured_frame)
-        original = prepared.original
-        tiles, change_map = self.scheduler.refresh_frame(
-            monitor_index, prepared, self.viddexa_ranker
-        )
-        active = self.tracker.active_track(monitor_index)
-        if active is not None:
-            predicted = self.tracker.predicted_roi(
-                active, original.shape, self.crop_expansion
-            )
-            if predicted is not None:
-                active.box = predicted
-        plan = self.scheduler.plan(
-            monitor_index=monitor_index,
-            tiles=tiles,
-            change_map=change_map,
-            active_track=active,
-            is_active_monitor=is_active_monitor,
-        )
-        self.scheduler.remember_plan(monitor_index, plan)
-        return plan
 
     def _evaluate_focused(
         self,

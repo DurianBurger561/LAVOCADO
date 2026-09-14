@@ -78,6 +78,23 @@ class VisionPipeline:
             decided = self._with_shadow(captured_frame, decided)
         return decided
 
+    def prepare_scan(
+        self,
+        captured_frame: CaptureFrame,
+        monitor_index: int,
+        *,
+        is_active_monitor: bool = True,
+        prepared_frame: FramePreprocessor | None = None,
+    ) -> ScanPlan:
+        """Plan a fresh frame before selecting full detection or focused ROI."""
+
+        return self.decision_engine.scan_planner.prepare_scan(
+            captured_frame,
+            monitor_index,
+            is_active_monitor=is_active_monitor,
+            prepared_frame=prepared_frame,
+        )
+
     def _with_shadow(
         self,
         captured_frame: CaptureFrame,

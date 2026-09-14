@@ -253,6 +253,7 @@ def _decision_from_detection(
 
 class FakeDecisionEngine:
     def __init__(self) -> None:
+        self.scan_planner = self
         self.viddexa_ranker = ViddexaRanker(None)
         self.original_frames: list[int] = []
         self.prepared_for_scan: object | None = None
@@ -298,6 +299,7 @@ class FakeDecisionEngine:
 
 class SequenceDecisionEngine:
     def __init__(self, candidates: list[bool]) -> None:
+        self.scan_planner = self
         self.viddexa_ranker = ViddexaRanker(None)
         self._candidates = iter(candidates)
 

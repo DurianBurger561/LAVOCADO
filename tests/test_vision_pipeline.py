@@ -1,12 +1,14 @@
 """Tests for the NORMAL-only vision pipeline wrapper."""
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
 from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
 from app.vision.pipeline import VisionPipeline
+from app.vision.preprocessor import FramePreprocessor
 from app.vision.violation_policy import (
     ViolationEvidence,
     ViolationEvidenceType,
@@ -41,6 +43,46 @@ def frame() -> CaptureFrame:
 
 
 class VisionPipelineTests(unittest.TestCase):
+    def test_plans_per_monitor_and_skips_full_detector_for_focused_roi(self) -> None:
+        captured = frame()
+        prepared = FramePreprocessor(captured)
+        detector = FakeDetector()
+        local_detector = FakeDetector()
+        decision_engine = DecisionEngine(local_detector=local_detector)
+        decision_engine.tracker.match_or_create(
+            monitor_index=1,
+            box=(1, 1, 4, 4),
+            label="FEMALE_BREAST_EXPOSED",
+            confidence=0.9,
+            source="nudenet_full",
+            frame_sequence=2,
+            evidence_delta=1.0,
+        )
+        pipeline = VisionPipeline(detector, decision_engine)
+
+        with patch.object(
+            decision_engine.scan_planner,
+            "prepare_scan",
+            wraps=decision_engine.scan_planner.prepare_scan,
+        ) as plan_scan:
+            focused = pipeline.prepare_scan(
+                captured, 1, prepared_frame=prepared
+            )
+            normal = pipeline.prepare_scan(captured, 2, prepared_frame=prepared)
+            result = pipeline.evaluate(
+                captured, monitor_index=1, scan_plan=focused,
+                prepared_frame=prepared,
+            )
+
+        self.assertEqual(focused.mode, "focused")
+        self.assertNotEqual(normal.mode, "focused")
+        self.assertEqual(plan_scan.call_count, 2)
+        self.assertEqual(detector.checked, 0)
+        self.assertEqual(local_detector.checked, 1)
+        self.assertEqual(result.scan_mode, "focused")
+        self.assertEqual(decision_engine.scheduler.last_plan(1), focused)
+        self.assertEqual(decision_engine.scheduler.last_plan(2), normal)
+
     def test_nudenet_only_pipeline_classifies_clear_without_yolo(self) -> None:
         detector = FakeDetector()
         pipeline = VisionPipeline(detector, DecisionEngine())

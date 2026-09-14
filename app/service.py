@@ -346,7 +346,7 @@ class LavocadoService:
                 active_index is None or int(active_index) == int(monitor_index)
             )
             prepared_frame = FramePreprocessor(captured_frame)
-            scan_plan = self.decision_engine.prepare_scan(
+            scan_plan = self.vision_pipeline.prepare_scan(
                 captured_frame,
                 monitor_index,
                 is_active_monitor=is_active_monitor,
