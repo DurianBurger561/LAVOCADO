@@ -10,7 +10,6 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from app import config
 from app.vision.model_assets import resolve_yolo_model_path
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.violation_policy import (
@@ -33,10 +32,10 @@ def yolo_is_requested(
     enabled: bool | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> bool:
-    """Return whether YOLO11 NSFW Small should load as the primary detector."""
+    """Return whether the standalone optional YOLO adapter should load."""
 
     if enabled is None:
-        enabled = config.YOLO_ENABLED
+        enabled = False
     if enabled:
         return True
     environ = os.environ if environ is None else environ

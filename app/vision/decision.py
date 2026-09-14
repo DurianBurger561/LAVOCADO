@@ -6,7 +6,6 @@ from typing import Any
 
 import numpy as np
 
-from app import config
 from app.platforms.capture.models import CaptureFrame
 from app.settings.schema import VisionSettings, default_vision_settings
 from app.vision.candidate_verifier import CandidateVerifier, LocalNudityDetector
@@ -46,31 +45,40 @@ class DecisionEngine:
         context_classifier: ContextSensor | None = None,
         local_detector: LocalNudityDetector | None = None,
         *,
-        borderline_margin: float = config.NUDENET_BORDERLINE_MARGIN,
-        crop_expansion: float = config.CONTEXT_CROP_EXPANSION,
-        rescue_enabled: bool = config.RESCUE_ENABLED,
-        rescue_rows: int = config.RESCUE_TILE_ROWS,
-        rescue_columns: int = config.RESCUE_TILE_COLUMNS,
-        pin_followup_checks: int = config.CONFIRMATION_WINDOW_SIZE - 1,
+        borderline_margin: float | None = None,
+        crop_expansion: float | None = None,
+        rescue_enabled: bool | None = None,
+        rescue_rows: int | None = None,
+        rescue_columns: int | None = None,
+        pin_followup_checks: int | None = None,
         settings: VisionSettings | None = None,
         tracker: CandidateTracker | None = None,
         tile_overlap: float | None = None,
         max_tile_skip: int | None = None,
         checks_per_scan: int | None = None,
     ) -> None:
-        self.viddexa_ranker = ViddexaRanker(context_classifier)
-        self.borderline_margin = borderline_margin
-        self.crop_expansion = crop_expansion
-        self.rescue_enabled = rescue_enabled
         self.settings = settings or default_vision_settings()
+        self.viddexa_ranker = ViddexaRanker(context_classifier)
+        self.borderline_margin = (
+            self.settings.recheck.proposal_margin
+            if borderline_margin is None else borderline_margin
+        )
+        self.crop_expansion = (
+            self.settings.recheck.crop_expansion
+            if crop_expansion is None else crop_expansion
+        )
+        self.rescue_enabled = (
+            self.settings.tiles.enabled if rescue_enabled is None else rescue_enabled
+        )
         resolved_overlap = (
-            float(config.RESCUE_TILE_OVERLAP) if tile_overlap is None else tile_overlap
+            self.settings.tiles.overlap if tile_overlap is None else tile_overlap
         )
         resolved_max_skip = (
-            int(config.RESCUE_MAX_TILE_SKIP) if max_tile_skip is None else max_tile_skip
+            self.settings.tiles.max_skip if max_tile_skip is None else max_tile_skip
         )
         self.checks_per_scan = (
-            int(config.RESCUE_CHECKS_PER_SCAN) if checks_per_scan is None else checks_per_scan
+            self.settings.tiles.checks_per_scan
+            if checks_per_scan is None else checks_per_scan
         )
         self.tracker = tracker or CandidateTracker()
         self.threshold_policy = ThresholdPolicy.from_settings(self.settings)
@@ -85,11 +93,17 @@ class DecisionEngine:
         )
         self.scheduler = TileScheduler(
             self.settings,
-            rows=rescue_rows,
-            columns=rescue_columns,
+            rows=self.settings.tiles.rows if rescue_rows is None else rescue_rows,
+            columns=(
+                self.settings.tiles.columns
+                if rescue_columns is None else rescue_columns
+            ),
             overlap=resolved_overlap,
             max_skip=resolved_max_skip,
-            pin_followup_checks=pin_followup_checks,
+            pin_followup_checks=(
+                max(0, self.settings.temporal.window_size - 1)
+                if pin_followup_checks is None else pin_followup_checks
+            ),
         )
         self.scan_planner = ScanPlanner(
             self.scheduler,

@@ -2,15 +2,19 @@
 
 import unittest
 
+from app.settings.schema import default_vision_settings, merge_vision_settings
 from app.vision.nudenet_adapter import detections_to_evidence
 from app.vision.violation_policy import (
+    ThresholdPolicy,
     ViolationEvidenceType,
     evidence_type_for_label,
     is_borderline_score,
     strongest_evidence,
     threshold_for_label,
 )
-from app.vision.yolo_adapter import detections_to_evidence as yolo_detections_to_evidence
+from app.vision.yolo_adapter import (
+    detections_to_evidence as yolo_detections_to_evidence,
+)
 
 
 class ViolationPolicyTests(unittest.TestCase):
@@ -91,7 +95,20 @@ class ViolationPolicyTests(unittest.TestCase):
     def test_thresholds_come_from_shared_policy(self) -> None:
         self.assertEqual(threshold_for_label("FEMALE_BREAST_EXPOSED"), 0.65)
         self.assertEqual(threshold_for_label("blowjob"), 0.45)
+        self.assertEqual(threshold_for_label("sexual-contact", "yolo11"), 0.45)
         self.assertIsNone(threshold_for_label("FACE_FEMALE"))
+
+    def test_yolo_aliases_share_persisted_canonical_threshold(self) -> None:
+        settings = merge_vision_settings(
+            default_vision_settings(),
+            {"thresholds": {"yolo11_nsfw_small": {
+                "sex": {"proposal": 0.70, "strong": 0.75}
+            }}},
+        )
+        policy = ThresholdPolicy.from_settings(settings)
+
+        self.assertEqual(policy.strong("sexual-contact", "yolo11"), 0.75)
+        self.assertEqual(policy.proposal("sexual-contact", "yolo11"), 0.70)
 
     def test_borderline_band_is_below_threshold(self) -> None:
         self.assertTrue(is_borderline_score(0.60, 0.65, 0.10))

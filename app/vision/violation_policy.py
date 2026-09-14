@@ -82,14 +82,6 @@ _YOLO_LABEL_TYPES: dict[str, ViolationEvidenceType] = {
     "buttocks-exposed": ViolationEvidenceType.BUTTOCKS_EXPOSURE,
 }
 
-YOLO_DEFAULT_THRESHOLDS: dict[ViolationEvidenceType, float] = {
-    ViolationEvidenceType.SEXUAL_ACT: 0.45,
-    ViolationEvidenceType.GENITAL_EXPOSURE: 0.45,
-    ViolationEvidenceType.ANUS_EXPOSURE: 0.50,
-    ViolationEvidenceType.BREAST_EXPOSURE: 0.65,
-    ViolationEvidenceType.BUTTOCKS_EXPOSURE: 0.70,
-}
-
 _ACTIVE_POLICY: ThresholdPolicy | None = None
 
 
@@ -167,6 +159,22 @@ class ThresholdPolicy:
             return _pair_from_dict(yolo[normalized])
         if label in yolo:
             return _pair_from_dict(yolo[label])
+        evidence_type = _YOLO_LABEL_TYPES.get(normalized)
+        if evidence_type is None:
+            return None
+        canonical = {
+            ViolationEvidenceType.SEXUAL_ACT: "sex",
+            ViolationEvidenceType.GENITAL_EXPOSURE: (
+                "vagina"
+                if "female" in normalized or "vagin" in normalized
+                else "vulva" if "vulva" in normalized else "penis"
+            ),
+            ViolationEvidenceType.ANUS_EXPOSURE: "anus",
+            ViolationEvidenceType.BREAST_EXPOSURE: "breast",
+            ViolationEvidenceType.BUTTOCKS_EXPOSURE: "buttocks",
+        }[evidence_type]
+        if canonical in yolo:
+            return _pair_from_dict(yolo[canonical])
         return None
 
 
@@ -243,20 +251,7 @@ def evidence_type_for_label(label: str) -> ViolationEvidenceType | None:
 
 
 def threshold_for_label(label: str, model: str | None = None) -> float | None:
-    from app import config
-
-    policy = _ACTIVE_POLICY
-    if policy is not None:
-        strong = policy.strong(label, model)
-        if strong is not None:
-            return strong
-    raw = str(label).strip()
-    if raw in config.BLOCK_THRESHOLDS:
-        return float(config.BLOCK_THRESHOLDS[raw])
-    evidence_type = evidence_type_for_label(raw)
-    if evidence_type is None:
-        return None
-    return YOLO_DEFAULT_THRESHOLDS[evidence_type]
+    return active_threshold_policy().strong(label, model)
 
 
 def severity_for(evidence_type: ViolationEvidenceType) -> int:

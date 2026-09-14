@@ -34,6 +34,7 @@ class VisionSettingsTests(unittest.TestCase):
             snapshot["thresholds"]["nudenet_640m"],
         )
         self.assertIn("breast", snapshot["thresholds"]["yolo11_nsfw_small"])
+        self.assertNotIn("legacy_strong", snapshot["thresholds"])
         self.assertIn("proposal", snapshot["thresholds"]["nudenet_640m"]["FEMALE_BREAST_EXPOSED"])
         self.assertIn("strong", snapshot["thresholds"]["yolo11_nsfw_small"]["breast"])
         self.assertEqual(snapshot["tile"]["rows"] * snapshot["tile"]["columns"], 4)

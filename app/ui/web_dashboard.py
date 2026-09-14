@@ -44,7 +44,9 @@ def run_web_dashboard(
                 "pywebview is required; install requirements.txt"
             ) from error
 
-    controller = controller or ProtectionController()
+    controller = controller or ProtectionController(
+        data_dir=platform_adapter.default_data_dir()
+    )
     recorder = recorder or EventRecorder(
         platform_adapter.default_data_dir() / "events.db"
     )

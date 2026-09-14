@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Any
 
-from app import config
 from app.context.models import (
     ContextPolicyAction,
     ContextPolicyResult,
@@ -15,7 +14,12 @@ from app.context.models import (
     WebsiteContextState,
 )
 from app.platforms.capture.models import CaptureBackendStatus
-from app.vision.violation_policy import VisualViolationDecision, evidence_to_dict
+from app.settings.schema import RecheckSettings
+from app.vision.violation_policy import (
+    ThresholdPolicy,
+    VisualViolationDecision,
+    evidence_to_dict,
+)
 
 
 def _friendly_model_name(variant: str) -> str:
@@ -82,8 +86,12 @@ class DiagnosticsStore:
         yolo_status: str = "disabled",
         primary_detector: str | None = None,
         models: dict[str, str] | None = None,
+        threshold_policy: ThresholdPolicy | None = None,
+        borderline_margin: float = RecheckSettings().proposal_margin,
     ) -> None:
         self._lock = Lock()
+        self._threshold_policy = threshold_policy or ThresholdPolicy.from_settings()
+        self._borderline_margin = borderline_margin
         primary = primary_detector or model_variant
         self._snapshot: dict[str, Any] = {
             "protection_state": "STOPPED",
@@ -302,11 +310,10 @@ class DiagnosticsStore:
         number = cls._optional_float(value)
         return None if number is None else round(max(0.0, number), 1)
 
-    @classmethod
-    def _nudenet_summary(cls, decision: dict[str, Any]) -> dict[str, Any]:
-        label = cls._optional_string(decision.get("nudenet_label"))
-        score = cls._optional_float(decision.get("nudenet_score"))
-        threshold = cls._optional_float(decision.get("threshold"))
+    def _nudenet_summary(self, decision: dict[str, Any]) -> dict[str, Any]:
+        label = self._optional_string(decision.get("nudenet_label"))
+        score = self._optional_float(decision.get("nudenet_score"))
+        threshold = self._optional_float(decision.get("threshold"))
 
         if label is None:
             checkpoints = decision.get("check_points")
@@ -322,8 +329,11 @@ class DiagnosticsStore:
                         key=lambda item: float(item.get("score", 0.0)),
                     )
                     label = str(strongest["class"])
-                    score = cls._optional_float(strongest.get("score"))
-                    threshold = config.BLOCK_THRESHOLDS.get(label)
+                    score = self._optional_float(strongest.get("score"))
+                    threshold = self._threshold_policy.strong(label)
+
+        if label is not None and threshold is None:
+            threshold = self._threshold_policy.strong(label)
 
         score = 0.0 if score is None else score
         source = str(decision.get("source", ""))
@@ -347,7 +357,7 @@ class DiagnosticsStore:
             status = "observed"
         elif score >= threshold:
             status = "strong"
-        elif score >= threshold - config.NUDENET_BORDERLINE_MARGIN:
+        elif score >= threshold - self._borderline_margin:
             status = "borderline"
         else:
             status = "below_threshold"

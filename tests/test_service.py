@@ -33,6 +33,14 @@ class FakePlatform:
         return None
 
 
+class SettingsPlatform(FakePlatform):
+    def __init__(self, directory: Path) -> None:
+        self.directory = directory
+
+    def default_data_dir(self) -> Path:
+        return self.directory
+
+
 class FakeCapturer:
     def __init__(
         self,
@@ -364,13 +372,6 @@ class ServiceTests(unittest.TestCase):
                     primary == "yolo11_nsfw_small",
                 )
 
-                class SettingsPlatform(FakePlatform):
-                    def __init__(self, directory: Path) -> None:
-                        self.directory = directory
-
-                    def default_data_dir(self) -> Path:
-                        return self.directory
-
                 bundle = SimpleNamespace(
                     primary=FakeDetector({1: [False]}),
                     yolo_status="disabled",
@@ -403,6 +404,90 @@ class ServiceTests(unittest.TestCase):
                 self.assertEqual(service.vision_settings.detector.primary, primary)
                 self.assertIs(service.detector, bundle.primary)
                 self.assertEqual(load.call_args.args[0], primary)
+
+    def test_dashboard_scan_and_temporal_settings_reach_runtime_components(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            saved = DashboardAPI(None, None, data_dir=data_dir).save_vision_settings(
+                {
+                    "context": {"model": "off"},
+                    "scan": {
+                        "normal_interval_ms": 1000,
+                        "candidate_interval_ms": 250,
+                        "adaptive": False,
+                        "change_sensitivity": 0.05,
+                        "vision_budget_ms": 150,
+                    },
+                    "temporal": {"window_size": 5, "min_fresh_hits": 3},
+                    "tiles": {"rows": 3, "columns": 3, "max_skip": 5},
+                    "recheck": {"proposal_margin": 0.20},
+                }
+            )
+            self.assertTrue(saved["ok"])
+            bundle = SimpleNamespace(
+                primary=FakeDetector({1: [False]}), yolo_status="disabled"
+            )
+            with patch("app.service.load_primary_bundle", return_value=bundle):
+                service = LavocadoService(
+                    SettingsPlatform(data_dir),
+                    capturer=FakeCapturer(),
+                    overlay=FakeOverlay(),
+                    recorder=FakeRecorder(),
+                    intervention=FakeIntervention(),
+                    diagnostics=DiagnosticsStore(
+                        model_variant="test",
+                        inference_resolution=640,
+                        context_model="off",
+                        context_status="disabled",
+                    ),
+                )
+
+            self.assertEqual(service.check_interval, 1.0)
+            self.assertEqual(service._next_interval(), 1.0)
+            service._transition(State.CANDIDATE)
+            self.assertEqual(service._next_interval(), 0.25)
+            self.assertFalse(service.change_scheduler.adaptive)
+            self.assertEqual(service.change_scheduler.change_ratio_threshold, 0.05)
+            self.assertEqual(service.change_scheduler.candidate_followup_checks, 4)
+            self.assertEqual(service.decision_engine.scheduler.pin_followup_checks, 4)
+            self.assertEqual(service.decision_engine.scheduler.tile_spec.rows, 3)
+            self.assertEqual(service.decision_engine.scheduler.max_skip, 5)
+            self.assertEqual(service.decision_engine.borderline_margin, 0.20)
+            verifier = service._verifier_factory()
+            self.assertEqual(verifier._window_size, 5)
+            self.assertEqual(verifier._required_hits, 3)
+
+    def test_disabled_context_ranking_does_not_load_context_model(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            saved = DashboardAPI(None, None, data_dir=data_dir).save_vision_settings(
+                {"context": {"model": "viddexa_mini", "tile_ranking": False}}
+            )
+            self.assertTrue(saved["ok"])
+            self.assertFalse(saved["settings"]["context_model"]["enabled"])
+            bundle = SimpleNamespace(
+                primary=FakeDetector({1: [False]}), yolo_status="disabled"
+            )
+            with (
+                patch("app.service.load_primary_bundle", return_value=bundle),
+                patch("app.service.load_context_ranker") as load_context,
+            ):
+                service = LavocadoService(
+                    SettingsPlatform(data_dir),
+                    capturer=FakeCapturer(),
+                    overlay=FakeOverlay(),
+                    recorder=FakeRecorder(),
+                    intervention=FakeIntervention(),
+                    diagnostics=DiagnosticsStore(
+                        model_variant="test",
+                        inference_resolution=640,
+                        context_model="off",
+                        context_status="disabled",
+                    ),
+                )
+
+            load_context.assert_not_called()
+            self.assertIsNone(service.decision_engine.viddexa_ranker.classifier)
 
     def test_change_scheduler_skips_detector_until_scan_is_due(self) -> None:
         detector = FakeDetector({1: [False]})

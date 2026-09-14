@@ -5,12 +5,14 @@ import unittest
 import numpy as np
 
 from app.platforms.capture.models import CaptureFrame
-from app.settings.schema import default_vision_settings
+from app.settings.schema import default_vision_settings, merge_vision_settings
 from app.vision.candidate_verifier import CandidateVerifier
 from app.vision.context.base import ContextResult
 from app.vision.preprocessor import FramePreprocessor
+from app.vision.scan_planner import ScanPlanner
 from app.vision.scheduler import ScanPlan, TileScheduler
 from app.vision.tiles import TileState
+from app.vision.tracking import CandidateTracker
 from app.vision.viddexa_ranker import ViddexaRanker
 from app.vision.violation_policy import (
     ThresholdPolicy,
@@ -49,6 +51,27 @@ def prepared(image: np.ndarray, sequence: int = 1) -> FramePreprocessor:
 
 
 class VisionComponentTests(unittest.TestCase):
+    def test_scan_planner_applies_elapsed_ranking_time_to_vision_budget(self) -> None:
+        settings = merge_vision_settings(
+            default_vision_settings(), {"scan": {"vision_budget_ms": 50}}
+        )
+        frame = CaptureFrame(image=np.zeros((8, 8, 3), dtype=np.uint8), sequence=1)
+
+        def plan(elapsed: float) -> ScanPlan:
+            times = iter((0.0, elapsed))
+            ranker = ViddexaRanker(None)
+            planner = ScanPlanner(
+                TileScheduler(settings),
+                CandidateTracker(),
+                ranker,
+                crop_expansion=settings.recheck.crop_expansion,
+                clock=lambda: next(times),
+            )
+            return planner.prepare_scan(frame, 1)
+
+        self.assertEqual(len(plan(0.0).tile_indexes), 1)
+        self.assertEqual(plan(0.045).tile_indexes, ())
+
     def test_candidate_verifier_rechecks_original_resolution_roi(self) -> None:
         model = LocalModel()
         verifier = CandidateVerifier(

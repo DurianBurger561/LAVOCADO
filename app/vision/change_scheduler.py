@@ -9,6 +9,7 @@ import numpy as np
 from app import config
 from app.platforms.capture import Rect
 from app.platforms.capture.models import CaptureFrame
+from app.settings.schema import ScanSettings, TemporalSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,9 +36,9 @@ class ChangeScheduler:
         *,
         map_max_edge: int = config.CHANGE_MAP_MAX_EDGE,
         pixel_delta: int = config.CHANGE_PIXEL_DELTA,
-        change_ratio_threshold: float = config.CHANGE_RATIO_THRESHOLD,
+        change_ratio_threshold: float = ScanSettings().change_sensitivity,
         periodic_scan_interval: int = config.CHANGE_PERIODIC_SCAN_INTERVAL,
-        candidate_followup_checks: int = config.CONFIRMATION_WINDOW_SIZE - 1,
+        candidate_followup_checks: int = TemporalSettings().window_size - 1,
         adaptive: bool = True,
     ) -> None:
         if map_max_edge < 1:

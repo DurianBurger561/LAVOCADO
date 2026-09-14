@@ -14,7 +14,11 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
     current = settings or default_vision_settings()
     yolo_requested = current.detector.primary == "yolo11_nsfw_small"
     primary = current.detector.primary
-    tile_ranking = bool(current.tiles.enabled and current.context.model != "off")
+    tile_ranking = bool(
+        current.tiles.enabled
+        and current.context.model != "off"
+        and current.context.tile_ranking
+    )
     return {
         "primary_detector": primary,
         "primary_detectors": [primary],
@@ -31,7 +35,7 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
                 if current.context.model == "viddexa_mini"
                 else "off"
             ),
-            "enabled": current.context.model != "off",
+            "enabled": tile_ranking,
             "role": "tile_ranking",
             "can_block": False,
         },
@@ -44,9 +48,6 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
             "tile_ranking": tile_ranking,
         },
         "thresholds": {
-            "legacy_strong": {
-                label: float(score) for label, score in config.BLOCK_THRESHOLDS.items()
-            },
             "nudenet_640m": dict(current.thresholds.nudenet_640m),
             "yolo11_nsfw_small": dict(current.thresholds.yolo11_nsfw_small),
         },

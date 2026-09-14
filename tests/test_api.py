@@ -2,6 +2,8 @@
 
 import json
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from app.intervention.recorder import RecordedEvent
@@ -65,6 +67,18 @@ class FakeDiagnostics:
 class BrokenController(FakeController):
     def start(self) -> bool:
         raise OSError("private system detail")
+
+
+class RestartingController(FakeController):
+    def __init__(self, result: bool) -> None:
+        super().__init__()
+        self.status = ProtectionStatus.RUNNING
+        self.result = result
+        self.restart_calls = 0
+
+    def restart(self) -> bool:
+        self.restart_calls += 1
+        return self.result
 
 
 class DashboardAPITests(unittest.TestCase):
@@ -144,6 +158,25 @@ class DashboardAPITests(unittest.TestCase):
         self.assertEqual(payload["settings"]["detection_mode"]["id"], "visual_violation")
         self.assertEqual(payload["settings"]["intent_modes"], [])
         self.assertFalse(payload["settings"]["context_model"]["can_block"])
+
+    def test_save_reports_restart_only_after_controller_confirms_it(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            for restarted in (True, False):
+                controller = RestartingController(restarted)
+                api = DashboardAPI(controller, self.recorder, data_dir=data_dir)
+
+                result = api.save_vision_settings(
+                    {"scan": {"normal_interval_ms": 1000}}
+                )
+
+                self.assertTrue(result["ok"])
+                self.assertEqual(result["restarted"], restarted)
+                self.assertEqual(controller.restart_calls, 1)
+                self.assertEqual(
+                    api.get_vision_settings()["settings"]["scan"]["normal_interval_ms"],
+                    1000,
+                )
 
     def test_errors_are_returned_without_exposing_exception_text(self) -> None:
         api = DashboardAPI(BrokenController(), self.recorder, FakeDiagnostics())

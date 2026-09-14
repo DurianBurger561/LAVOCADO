@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from app import config
-
 SCHEMA_VERSION = 1
 
 PRIMARY_DETECTORS = ("nudenet_640m", "yolo11_nsfw_small")
@@ -36,6 +34,13 @@ YOLO_LABEL_DEFAULTS: dict[str, tuple[float, float]] = {
     "handjob": (0.35, 0.45),
     "sex": (0.35, 0.45),
     "make_love": (0.35, 0.45),
+}
+NUDENET_LABEL_DEFAULTS: dict[str, float] = {
+    "FEMALE_GENITALIA_EXPOSED": 0.45,
+    "MALE_GENITALIA_EXPOSED": 0.45,
+    "ANUS_EXPOSED": 0.50,
+    "FEMALE_BREAST_EXPOSED": 0.65,
+    "BUTTOCKS_EXPOSED": 0.70,
 }
 SCAN_SPEEDS = {
     "slow": (1000, 250),
@@ -71,6 +76,10 @@ def _choice(value: object, choices: tuple[str, ...], default: str) -> str:
     return raw if raw in choices else default
 
 
+def _bool(value: object, default: bool) -> bool:
+    return value if isinstance(value, bool) else default
+
+
 @dataclass(frozen=True, slots=True)
 class DetectorSettings:
     primary: str = "nudenet_640m"
@@ -82,7 +91,6 @@ class DetectorSettings:
 class ContextSettings:
     model: str = "viddexa_mini"
     tile_ranking: bool = True
-    borderline_assistance: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +132,6 @@ class TemporalSettings:
 @dataclass(frozen=True, slots=True)
 class ShadowSettings:
     enabled: bool = False
-    detector: str = "yolo11_nsfw_small"
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,7 +175,7 @@ def default_threshold_tables() -> ThresholdSettings:
 
     nudenet = {
         label: _pair_from_strong(strong)
-        for label, strong in config.BLOCK_THRESHOLDS.items()
+        for label, strong in NUDENET_LABEL_DEFAULTS.items()
     }
     yolo = {
         label: {"proposal": proposal, "strong": strong}
@@ -219,38 +226,9 @@ def _sanitize_label_table(
 
 
 def default_vision_settings() -> VisionSettings:
-    """Experimental defaults matching current main behavior where possible."""
+    """Return the typed product defaults without a second config source."""
 
-    context_enabled = bool(config.CONTEXT_MODEL_ENABLED)
-    return VisionSettings(
-        detector=DetectorSettings(
-            primary="nudenet_640m",
-            full_input_size=int(config.MODEL_FRAME_MAX_EDGE),
-            tile_input_size=int(config.NUDENET_INFERENCE_RESOLUTION),
-        ),
-        context=ContextSettings(
-            model="viddexa_mini" if context_enabled else "off",
-            tile_ranking=bool(config.RESCUE_ENABLED and context_enabled),
-        ),
-        tiles=TileSettings(
-            enabled=bool(config.RESCUE_ENABLED),
-            rows=int(config.RESCUE_TILE_ROWS),
-            columns=int(config.RESCUE_TILE_COLUMNS),
-        ),
-        recheck=RecheckSettings(
-            crop_expansion=float(config.CONTEXT_CROP_EXPANSION),
-            proposal_margin=float(config.NUDENET_BORDERLINE_MARGIN),
-        ),
-        scan=ScanSettings(
-            normal_interval_ms=round(float(config.CHECK_INTERVAL) * 1000),
-            change_sensitivity=float(config.CHANGE_RATIO_THRESHOLD),
-        ),
-        thresholds=default_threshold_tables(),
-        temporal=TemporalSettings(
-            min_fresh_hits=int(config.CONFIRMATION_REQUIRED_HITS),
-            window_size=int(config.CONFIRMATION_WINDOW_SIZE),
-        ),
-    )
+    return VisionSettings(thresholds=default_threshold_tables())
 
 
 def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
@@ -307,10 +285,8 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
         PROPOSAL_MARGINS,
     )
     preset = _choice(payload.get("preset", base.preset), PRESETS, base.preset)
-    shadow_detector = _choice(
-        shadow_raw.get("detector", base.shadow.detector),
-        PRIMARY_DETECTORS,
-        base.shadow.detector,
+    temporal_window = _clamp_int(
+        temporal_raw.get("window_size"), 2, 8, base.temporal.window_size
     )
 
     return VisionSettings(
@@ -323,13 +299,12 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
         ),
         context=ContextSettings(
             model=context_model,
-            tile_ranking=bool(context_raw.get("tile_ranking", base.context.tile_ranking)),
-            borderline_assistance=bool(
-                context_raw.get("borderline_assistance", base.context.borderline_assistance)
+            tile_ranking=_bool(
+                context_raw.get("tile_ranking"), base.context.tile_ranking
             ),
         ),
         tiles=TileSettings(
-            enabled=bool(tiles_raw.get("enabled", base.tiles.enabled)),
+            enabled=_bool(tiles_raw.get("enabled"), base.tiles.enabled),
             rows=rows,
             columns=columns,
             overlap=overlap,
@@ -339,7 +314,7 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
             max_skip=_clamp_int(tiles_raw.get("max_skip"), 1, 8, base.tiles.max_skip),
         ),
         recheck=RecheckSettings(
-            enabled=bool(recheck_raw.get("enabled", base.recheck.enabled)),
+            enabled=_bool(recheck_raw.get("enabled"), base.recheck.enabled),
             crop_expansion=crop,
             proposal_margin=proposal_margin,
         ),
@@ -350,9 +325,9 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
             candidate_interval_ms=_clamp_int(
                 scan_raw.get("candidate_interval_ms"), 50, 500, base.scan.candidate_interval_ms
             ),
-            adaptive=bool(scan_raw.get("adaptive", base.scan.adaptive)),
-            active_monitor_priority=bool(
-                scan_raw.get("active_monitor_priority", base.scan.active_monitor_priority)
+            adaptive=_bool(scan_raw.get("adaptive"), base.scan.adaptive),
+            active_monitor_priority=_bool(
+                scan_raw.get("active_monitor_priority"), base.scan.active_monitor_priority
             ),
             vision_budget_ms=_clamp_int(
                 scan_raw.get("vision_budget_ms"), 50, 1000, base.scan.vision_budget_ms
@@ -369,11 +344,12 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
         ),
         temporal=TemporalSettings(
             min_fresh_hits=_clamp_int(
-                temporal_raw.get("min_fresh_hits"), 1, 3, base.temporal.min_fresh_hits
+                temporal_raw.get("min_fresh_hits"),
+                1,
+                min(3, temporal_window),
+                base.temporal.min_fresh_hits,
             ),
-            window_size=_clamp_int(
-                temporal_raw.get("window_size"), 2, 8, base.temporal.window_size
-            ),
+            window_size=temporal_window,
             evidence_threshold=_closest(
                 _clamp_float(
                     temporal_raw.get("evidence_threshold"),
@@ -394,8 +370,7 @@ def sanitize_vision_settings(payload: dict[str, Any] | None) -> VisionSettings:
             ),
         ),
         shadow=ShadowSettings(
-            enabled=bool(shadow_raw.get("enabled", False)),
-            detector=shadow_detector,
+            enabled=_bool(shadow_raw.get("enabled"), base.shadow.enabled),
         ),
         thresholds=thresholds,
     )

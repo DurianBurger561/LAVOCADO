@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from app import config
 from app.context.models import ContextPolicyAction
 from app.context.policy.resolver import resolve_context_policy
+from app.settings.schema import TemporalSettings
 from app.vision.nudenet_adapter import detections_to_evidence
 from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import (
@@ -145,8 +145,8 @@ def evaluate_product_pipeline(
     vision_frames: list[str] | None = None,
     detections: list[dict[str, Any]] | None = None,
     scenario_tag: str | None = None,
-    window_size: int = config.CONFIRMATION_WINDOW_SIZE,
-    required_hits: int = config.CONFIRMATION_REQUIRED_HITS,
+    window_size: int = TemporalSettings().window_size,
+    required_hits: int = TemporalSettings().min_fresh_hits,
 ) -> dict[str, Any]:
     """Full Product Benchmark: Context Policy + Vision + Temporal + Protection.
 

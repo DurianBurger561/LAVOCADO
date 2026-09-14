@@ -669,7 +669,7 @@ function renderVisionSettings(settings) {
   const mode = settings.detection_mode || {};
   text("vision-detection-mode", mode.label || "Visual violation only");
   const thresholdTables = settings.thresholds || {};
-  const nudenetTable = thresholdTables.nudenet_640m || thresholdTables.legacy_strong || {};
+  const nudenetTable = thresholdTables.nudenet_640m || {};
   const thresholds = typeof nudenetTable === "object"
     ? Object.entries(nudenetTable)
       .map(([label, pair]) => {

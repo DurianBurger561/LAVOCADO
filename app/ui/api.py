@@ -210,13 +210,8 @@ class DashboardAPI:
         running = status is _Status.RUNNING if status is not None else False
         if not running:
             return False
-        stop = getattr(self.controller, "stop", None)
-        start = getattr(self.controller, "start", None)
-        if not callable(stop) or not callable(start):
-            return False
-        stop()
-        start()
-        return True
+        restart = getattr(self.controller, "restart", None)
+        return bool(restart()) if callable(restart) else False
 
     def test_intervention(self) -> dict[str, Any]:
         try:

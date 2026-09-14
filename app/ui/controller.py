@@ -10,7 +10,7 @@ from enum import Enum
 from pathlib import Path
 from threading import Condition, Lock, Thread
 
-from app import config
+from app.settings.storage import load_vision_settings
 from app.vision.diagnostics import DiagnosticsStore
 
 DIAGNOSTICS_PREFIX = "LAVOCADO_DIAGNOSTICS "
@@ -43,8 +43,11 @@ def default_protection_command() -> tuple[str, ...]:
 class ProtectionController:
     """Start and gracefully stop one dashboard-owned protection process."""
 
-    def __init__(self, command=None, process_factory=subprocess.Popen) -> None:
+    def __init__(
+        self, command=None, process_factory=subprocess.Popen, *, data_dir: Path | None = None
+    ) -> None:
         self.command = tuple(command or default_protection_command())
+        self._data_dir = data_dir
         self._process_factory = process_factory
         self._process = None
         self._stop_requested = False
@@ -114,6 +117,21 @@ class ProtectionController:
 
         self._stop_requested = True
         return True
+
+    def restart(self, timeout: float = 2.0) -> bool:
+        """Restart only after the old child has exited; never overlap protection."""
+
+        if not self.stop():
+            return False
+        process = self._process
+        if process is None:
+            return False
+        try:
+            process.wait(timeout=max(0.0, timeout))
+        except subprocess.TimeoutExpired:
+            return False
+        self.refresh()
+        return self.start()
 
     def test_intervention(self) -> bool:
         """Ask the child to show a test overlay on its main thread."""
@@ -237,12 +255,13 @@ class ProtectionController:
         if not getattr(stream, "closed", False):
             stream.close()
 
-    @staticmethod
-    def _new_diagnostics() -> dict[str, object]:
+    def _new_diagnostics(self) -> dict[str, object]:
+        settings = load_vision_settings(self._data_dir)
         return DiagnosticsStore(
-            model_variant="640m",
-            inference_resolution=config.NUDENET_INFERENCE_RESOLUTION,
-            context_model=config.CONTEXT_MODEL_NAME,
+            model_variant=settings.detector.primary,
+            inference_resolution=settings.detector.full_input_size,
+            context_model=settings.context.model,
             context_status="not_started",
             yolo_status="not_started",
+            primary_detector=settings.detector.primary,
         ).snapshot()

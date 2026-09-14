@@ -12,8 +12,10 @@ from app.context.models import (
     WebsiteContextState,
 )
 from app.platforms.capture import CaptureBackendStatus
+from app.settings.schema import default_vision_settings, merge_vision_settings
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.violation_policy import (
+    ThresholdPolicy,
     VisualViolationClassification,
     VisualViolationDecision,
 )
@@ -29,6 +31,40 @@ def make_store() -> DiagnosticsStore:
 
 
 class DiagnosticsStoreTests(unittest.TestCase):
+    def test_threshold_summary_uses_persisted_policy_not_fixed_config(self) -> None:
+        settings = merge_vision_settings(
+            default_vision_settings(),
+            {"thresholds": {"nudenet_640m": {
+                "FEMALE_BREAST_EXPOSED": {"proposal": 0.70, "strong": 0.75}
+            }}},
+        )
+        store = DiagnosticsStore(
+            model_variant="640m",
+            inference_resolution=640,
+            context_model="off",
+            context_status="disabled",
+            threshold_policy=ThresholdPolicy.from_settings(settings),
+            borderline_margin=0.05,
+        )
+        store.record_scan(
+            monitor_index=1,
+            elapsed_ms=1,
+            decision=VisualViolationDecision(
+                classification=VisualViolationClassification.UNCERTAIN,
+                evidence=(),
+                reason_codes=("nudenet_none",),
+                primary_region=None,
+                frame_sequence=1,
+                label="FEMALE_BREAST_EXPOSED",
+                confidence=0.72,
+            ),
+            temporal=(),
+        )
+
+        summary = store.snapshot()["nudenet"]
+        self.assertEqual(summary["threshold"], 0.75)
+        self.assertEqual(summary["status"], "borderline")
+
     def test_foreground_diagnostics_are_coarse_and_clear_when_unavailable(self) -> None:
         store = make_store()
         context = ForegroundContext(

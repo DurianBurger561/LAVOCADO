@@ -1,21 +1,13 @@
-"""Central configuration for LAVOCADO."""
+"""Fixed application resources, deployment controls, and overlay copy."""
 
 import os
-
-# Seconds between screen checks.
-CHECK_INTERVAL = 0.75
-
-# Maximum width/height retained for the whole-screen NudeNet pass.
-MODEL_FRAME_MAX_EDGE = 640
 
 # NudeNet model input sizes. The 320 value is used only when the required
 # 640m model asset is unavailable or cannot be loaded.
 NUDENET_INFERENCE_RESOLUTION = 640
 NUDENET_FALLBACK_INFERENCE_RESOLUTION = 320
 
-# Required local context classifier. Weights are downloaded from Hugging Face
-# with a pinned revision and never receive screenshots over the network.
-CONTEXT_MODEL_ENABLED = True
+# Pinned local context model asset identifiers.
 CONTEXT_MODEL_NAME = "viddexa/nsfw-detection-2-mini"
 CONTEXT_MODEL_REVISION = "15f61cddc0a1a2a9176f018fb6838ef92c8163cc"
 CONTEXT_MINI_MODEL_NAME = CONTEXT_MODEL_NAME
@@ -23,54 +15,14 @@ CONTEXT_MINI_MODEL_REVISION = CONTEXT_MODEL_REVISION
 CONTEXT_NANO_MODEL_NAME = "viddexa/nsfw-detection-2-nano"
 CONTEXT_NANO_MODEL_REVISION = "12e57200346246b37382f746e4d94d10b014f6a1"
 
-YOLO_FULL_INPUT_SIZE = 640
-YOLO_TILE_INPUT_SIZE = 640
-
-# Conservative starting values for benchmark calibration, not scientifically
-# validated optimal thresholds.
-NUDENET_BORDERLINE_MARGIN = 0.10
-CONTEXT_CROP_EXPANSION = 1.75
-# Viddexa ranks tiles by porn/hentai risk. It cannot confirm or block.
-CONTEXT_PORN_CONFIRM_THRESHOLD = 0.90
-CONTEXT_PORN_RESCUE_THRESHOLD = 0.97
-CONTEXT_SEXY_CAN_BLOCK = False
-CONTEXT_HENTAI_CAN_BLOCK = False
-YOLO_ENABLED = False
-# Required YOLO11 NSFW Small weights are downloaded from a pinned Hugging Face
-# file. Set LAVOCADO_YOLO_MODEL to override the local path.
-RESCUE_ENABLED = True
-RESCUE_TILE_ROWS = 2
-RESCUE_TILE_COLUMNS = 2
-RESCUE_TILE_OVERLAP = 0.15
-RESCUE_CHECKS_PER_SCAN = 1
-RESCUE_MAX_TILE_SKIP = 3
-
 # Conservative screen-change scheduling. Native dirty-region metadata is used
 # when available; otherwise a small grayscale map avoids retaining full frames.
 CHANGE_MAP_MAX_EDGE = 64
 CHANGE_PIXEL_DELTA = 12
-CHANGE_RATIO_THRESHOLD = 0.01
 CHANGE_PERIODIC_SCAN_INTERVAL = 8
 
 # None selects the primary monitor automatically. Set an integer to override it.
 MONITOR_INDEX: int | None = None
-
-# Starting thresholds for NudeNet visual-violation labels.
-# These are product defaults, not scientifically validated values.
-# Mapping onto ViolationEvidenceType lives in app.vision.violation_policy.
-BLOCK_THRESHOLDS = {
-    "FEMALE_GENITALIA_EXPOSED": 0.45,
-    "MALE_GENITALIA_EXPOSED": 0.45,
-    "ANUS_EXPOSED": 0.50,
-    "FEMALE_BREAST_EXPOSED": 0.65,
-    "BUTTOCKS_EXPOSED": 0.70,
-}
-
-BLOCK_LABELS = frozenset(BLOCK_THRESHOLDS)
-
-# Require two candidate frames within the latest three checks before blocking.
-CONFIRMATION_WINDOW_SIZE = 3
-CONFIRMATION_REQUIRED_HITS = 2
 
 # Time given to close the triggering content after dismissing the overlay.
 COOLDOWN_SECONDS = 8.0

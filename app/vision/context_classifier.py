@@ -105,9 +105,7 @@ def load_context_classifier(
 ) -> ContextClassifier | None:
     """Load the pinned local classifier or return None without crashing."""
 
-    if enabled is None:
-        enabled = config.CONTEXT_MODEL_ENABLED
-    if not enabled:
+    if enabled is False:
         LOGGER.info("Viddexa context model is disabled")
         return None
 

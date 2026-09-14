@@ -76,7 +76,7 @@ class LavocadoService:
         context_policy: ContextPolicyService | None = None,
         context_worker: ForegroundContextWorker | None = None,
         verifier_factory: Callable[[], TemporalVerifier] | None = None,
-        check_interval: float = config.CHECK_INTERVAL,
+        check_interval: float | None = None,
         cooldown_seconds: float = config.COOLDOWN_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         scan_clock: Callable[[], float] = time.perf_counter,
@@ -112,13 +112,18 @@ class LavocadoService:
         if decision_engine is not None:
             self.decision_engine = decision_engine
         else:
+            use_context_ranking = (
+                self.vision_settings.context.model != "off"
+                and self.vision_settings.context.tile_ranking
+                and self.vision_settings.tiles.enabled
+            )
             ranker = (
                 load_context_ranker(
                     self.vision_settings.context.model,
-                    enabled=self.vision_settings.context.model != "off",
+                    enabled=use_context_ranking,
                     data_dir=data_dir,
                 )
-                if uses_default_detector
+                if uses_default_detector and use_context_ranking
                 else None
             )
             context_sensor = None if ranker is None or ranker.name == "off" else ranker
@@ -135,6 +140,7 @@ class LavocadoService:
                 max_tile_skip=self.vision_settings.tiles.max_skip,
                 checks_per_scan=self.vision_settings.tiles.checks_per_scan,
                 borderline_margin=self.vision_settings.recheck.proposal_margin,
+                pin_followup_checks=max(0, self.vision_settings.temporal.window_size - 1),
             )
         self.vision_pipeline = VisionPipeline(
             self.detector,
@@ -144,7 +150,11 @@ class LavocadoService:
             full_input_size=self.vision_settings.detector.full_input_size,
         )
         context_sensor = self.decision_engine.viddexa_ranker.classifier
-        if self.vision_settings.context.model == "off":
+        if (
+            self.vision_settings.context.model == "off"
+            or not self.vision_settings.context.tile_ranking
+            or not self.vision_settings.tiles.enabled
+        ):
             context_status = "disabled"
         elif context_sensor is None:
             context_status = "unavailable"
@@ -173,6 +183,8 @@ class LavocadoService:
             models=compact_model_status(
                 inspect_models(data_dir=data_dir)
             ),
+            threshold_policy=ThresholdPolicy.from_settings(self.vision_settings),
+            borderline_margin=self.vision_settings.recheck.proposal_margin,
         )
         self.overlay = (
             overlay if overlay is not None else Overlay(platform_adapter)
@@ -199,6 +211,7 @@ class LavocadoService:
         self.change_scheduler = change_scheduler or ChangeScheduler(
             change_ratio_threshold=self.vision_settings.scan.change_sensitivity,
             adaptive=self.vision_settings.scan.adaptive,
+            candidate_followup_checks=max(0, self.vision_settings.temporal.window_size - 1),
         )
         self.context_store = context_store or ForegroundContextStore()
         self.context_policy = context_policy or ContextPolicyService()
@@ -210,7 +223,11 @@ class LavocadoService:
         self._verifiers: dict[int, TemporalVerifier] = {}
         self._last_frame_sequences: dict[int, tuple[str, int]] = {}
         self._bypass_active = False
-        self.check_interval = check_interval
+        self.check_interval = (
+            float(self.vision_settings.scan.normal_interval_ms) / 1000.0
+            if check_interval is None
+            else check_interval
+        )
         self.cooldown_seconds = cooldown_seconds
         self._clock = clock
         self._scan_clock = scan_clock

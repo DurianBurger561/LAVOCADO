@@ -1,11 +1,15 @@
 """Tests for dashboard-owned protection process control."""
 
 import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from app.settings.schema import default_vision_settings, merge_vision_settings
+from app.settings.storage import save_vision_settings
 from app.ui.controller import (
     DIAGNOSTICS_PREFIX,
     ProtectionController,
@@ -127,6 +131,56 @@ class ProtectionControllerTests(unittest.TestCase):
         self.assertEqual(self.factory.process.wait_timeouts, [1.5])
         self.assertEqual(self.controller.status, ProtectionStatus.STOPPED)
 
+    def test_restart_waits_for_old_child_before_starting_new_one(self) -> None:
+        processes = []
+
+        def factory(_command, **_options):
+            process = FakeProcess()
+            processes.append(process)
+            return process
+
+        controller = ProtectionController(command=("protect",), process_factory=factory)
+        self.assertTrue(controller.start())
+
+        self.assertTrue(controller.restart(timeout=1.5))
+
+        self.assertEqual(len(processes), 2)
+        self.assertEqual(processes[0].stdin.content, "stop\n")
+        self.assertEqual(processes[0].wait_timeouts, [1.5])
+        self.assertTrue(processes[0].stdin.closed)
+        self.assertIs(controller._process, processes[1])
+        self.assertEqual(controller.status, ProtectionStatus.RUNNING)
+
+    def test_restart_timeout_does_not_start_overlapping_child(self) -> None:
+        self.controller.start()
+        with patch.object(
+            self.factory.process,
+            "wait",
+            side_effect=subprocess.TimeoutExpired("protect", 0.01),
+        ):
+            self.assertFalse(self.controller.restart(timeout=0.01))
+
+        self.assertEqual(len(self.factory.calls), 1)
+        self.assertEqual(self.controller.status, ProtectionStatus.STOPPING)
+
+    def test_initial_diagnostics_use_persisted_detector_selection(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            settings = merge_vision_settings(
+                default_vision_settings(),
+                {"detector": {"primary": "yolo11_nsfw_small"},
+                 "context": {"model": "off"}},
+            )
+            save_vision_settings(settings, data_dir)
+            controller = ProtectionController(
+                command=("protect",), data_dir=data_dir,
+            )
+
+            snapshot = controller.snapshot(timeout=0)
+
+        self.assertEqual(snapshot["primary_detector"], "yolo11_nsfw_small")
+        self.assertEqual(snapshot["context_model"], "off")
+
     def test_default_command_uses_absolute_main_path(self) -> None:
         command = default_protection_command()
 
@@ -165,6 +219,8 @@ class ProtectionControllerTests(unittest.TestCase):
             snapshot = controller.snapshot(timeout=2.0)
             self.assertEqual(snapshot["protection_state"], "MONITORING")
             self.assertEqual(snapshot["last_scan_ms"], 42.5)
+            self.assertTrue(controller.restart(timeout=2.0))
+            self.assertEqual(controller.status, ProtectionStatus.RUNNING)
             self.assertTrue(controller.stop())
             controller._process.wait(timeout=2.0)
             self.assertEqual(controller.status, ProtectionStatus.STOPPED)
