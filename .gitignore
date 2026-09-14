@@ -9,3 +9,6 @@ __pycache__/
 /dist/
 /models/*.onnx
 /models/*.part
+/models/yolo11.pt
+/models/viddexa_nano/
+/models/viddexa_mini/

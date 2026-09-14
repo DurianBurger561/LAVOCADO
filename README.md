@@ -245,14 +245,19 @@ If it is absent during a source run, LAVOCADO logs a warning and falls back to
 NudeNet 320n; packaged builds require the verified 640m file.
 Set `LAVOCADO_NUDENET_MODEL` to use a local 640m file at another path.
 
-NudeNet 640m, YOLO11 NSFW Small, Viddexa Nano, and Viddexa Mini are required
-local downloads from pinned sources. The dashboard Download all button or
-`python scripts/download_models.py` fetches them and verifies hash or revision.
-YOLO11 NSFW Small maps sexual-act and anatomy labels onto the same visual-violation
-policy. Missing ultralytics or weights still fall back to NudeNet:
+NudeNet 640m, YOLO11 NSFW Small, Viddexa Nano, and Viddexa Mini are all
+required in both User and Developer packages. `requirements.txt` installs the
+YOLO/Transformers/PyTorch inference dependencies. The dashboard Download all
+button or `python scripts/download_models.py --model all` downloads the pinned
+assets. Download and packaging both verify file sizes and SHA-256 digests;
+packaging fails if any model is missing or invalid. The Viddexa snapshots are
+copied into the artifact and loaded from the bundle offline, not from the
+build runner's Hugging Face cache. This makes release artifacts substantially
+larger. YOLO11 NSFW Small maps sexual-act and anatomy labels onto the same
+visual-violation policy. A damaged local install still falls back to NudeNet.
+To re-download only YOLO:
 
 ```bash
-python -m pip install -r requirements-yolo.txt
 python scripts/download_models.py --model yolo11_nsfw_small
 ```
 
@@ -307,15 +312,12 @@ command, failure thresholds, and platform matrix.
 
 ### Optional tile-ranking benchmark
 
-The Viddexa five-class model is currently an optional development dependency
-and is not yet included in release packages. When installed, it only ranks
+Viddexa Nano and Mini are included in release packages. The selected model only ranks
 tiles so the primary detector can recheck the highest porn/hentai-risk region
 first. Viddexa never confirms viewing purpose, never blocks on its own, and
-never promotes a borderline NudeNet result to a violation. Install and
-benchmark ranking latency with:
+never promotes a borderline NudeNet result to a violation. Benchmark ranking latency with:
 
 ```bash
-python -m pip install -r requirements-context.txt
 python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 python scripts/benchmark_ranking.py --tiles '[{"index":0,"scores":{"porn":0.99},"primary_hit":false},{"index":1,"scores":{"porn":0.2},"primary_hit":true}]' --baseline-hits 6 --with-tile-hits 8 --positives 10
 ```
@@ -408,7 +410,7 @@ Install the separate build dependency and build on the target operating system:
 
 ```bash
 python -m pip install -r requirements.txt -r requirements-build.txt
-python scripts/download_models.py
+python scripts/download_models.py --model all
 python -m PyInstaller --noconfirm --clean lavocado.spec
 ```
 
@@ -419,7 +421,7 @@ be produced directly from WSL/Linux.
 The **Package** workflow can build downloadable Windows, macOS, and Linux
 artifacts without requiring three local machines. Open the repository's
 **Actions** tab, select **Package**, choose **Run workflow**, and download the
-three artifacts when all matrix jobs finish. It also runs automatically for
+six User/Developer platform artifacts when all matrix jobs finish. It also runs automatically for
 tags beginning with `v`.
 
 Packaged applications open the dashboard when launched without arguments. The

@@ -7,6 +7,13 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
 
+from app.vision.model_assets import (
+    VIDDEXA_MODEL_FILES,
+    is_expected_nudenet_model,
+    is_expected_viddexa_model,
+    is_expected_yolo_model,
+)
+
 USER_APP_NAME = "LAVOCADO"
 DEVELOPER_APP_NAME = "LAVOCADO-Developer"
 DEVELOPER_BUNDLE_NAME = "LAVOCADO Developer"
@@ -32,16 +39,47 @@ USER_EXCLUDES = (
     "developer.benchmark.ui.api",
     "developer.benchmark.ui.dashboard",
 )
+MODEL_HIDDENIMPORTS = (
+    "ultralytics",
+    "transformers.pipelines.image_classification",
+    "transformers.models.efficientnet.configuration_efficientnet",
+    "transformers.models.efficientnet.modeling_efficientnet",
+    "transformers.models.efficientnet.image_processing_efficientnet",
+)
 
 
 def require_nudenet_model(specpath: Path) -> Path:
     model_path = specpath / "models" / "640m.onnx"
-    if not model_path.is_file():
+    if not is_expected_nudenet_model(model_path):
         raise SystemExit(
-            "models/640m.onnx is required for packaging; "
-            "run: python scripts/download_models.py"
+            "Verified models/640m.onnx is required for packaging; "
+            "run: python scripts/download_models.py --model all"
         )
     return model_path
+
+
+def required_model_datas(specpath: Path) -> list[tuple[str, str]]:
+    """Only verified pinned files enter either release edition."""
+
+    yolo_path = specpath / "models" / "yolo11.pt"
+    if not is_expected_yolo_model(yolo_path):
+        raise SystemExit(
+            "Verified models/yolo11.pt is required for packaging; "
+            "run: python scripts/download_models.py --model all"
+        )
+    data = [
+        (str(require_nudenet_model(specpath)), "models"),
+        (str(yolo_path), "models"),
+    ]
+    for model_id, files in VIDDEXA_MODEL_FILES.items():
+        model_dir = specpath / "models" / model_id
+        if not is_expected_viddexa_model(model_dir, model_id):
+            raise SystemExit(
+                f"Verified models/{model_id} is required for packaging; "
+                "run: python scripts/download_models.py --model all"
+            )
+        data.extend((str(model_dir / item.name), f"models/{model_id}") for item in files)
+    return data
 
 
 def platform_collect() -> tuple[list, list, list[str]]:
@@ -84,12 +122,12 @@ def platform_collect() -> tuple[list, list, list[str]]:
             "mss.linux.xgetimage",
             "mss.linux.xshmgetimage",
         ] + atspi_hidden_imports
-    return platform_binaries, platform_data, hidden
+    return platform_binaries, platform_data, hidden + list(MODEL_HIDDENIMPORTS)
 
 
 def user_datas(specpath: Path) -> list[tuple[str, str]]:
     nudenet_data = collect_data_files("nudenet", includes=["*.onnx"])
-    model_data = [(str(require_nudenet_model(specpath)), "models")]
+    model_data = required_model_datas(specpath)
     web_data = [(str(specpath / "app" / "ui" / "web"), "app/ui/web")]
     return nudenet_data + model_data + web_data
 

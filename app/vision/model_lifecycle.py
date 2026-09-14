@@ -1,7 +1,7 @@
 """Pinned required-model catalog, status, and local downloads.
 
-Every catalog model must be downloaded from a fixed source. Diagnostics and
-API payloads never include filesystem paths, page URLs, or pixels.
+Every catalog model is required in release bundles. Diagnostics and API payloads
+never include filesystem paths, page URLs, or pixels.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from app.vision.model_assets import (
     NUDENET_640M_FILENAME,
     NUDENET_640M_SHA256,
     NUDENET_640M_SIZE,
+    VIDDEXA_MODEL_FILES,
     YOLO11_NSFW_SMALL_DOWNLOAD_URL,
     YOLO11_NSFW_SMALL_FILENAME,
     YOLO11_NSFW_SMALL_REVISION,
@@ -28,8 +29,10 @@ from app.vision.model_assets import (
     bundled_nudenet_model_path,
     bundled_yolo_model_path,
     is_expected_nudenet_model,
+    is_expected_viddexa_model,
     is_expected_yolo_model,
     resolve_nudenet_model_path,
+    resolve_viddexa_model_path,
     resolve_yolo_model_path,
     resource_root,
 )
@@ -43,8 +46,8 @@ class ModelSpec:
     label: str
     role: str
     source: str
+    required: bool
     downloadable: bool = True
-    required: bool = True
     revision: str | None = None
     huggingface_id: str | None = None
 
@@ -55,6 +58,7 @@ CATALOG: tuple[ModelSpec, ...] = (
         label="NudeNet 640m",
         role="primary",
         source="github:notAI-tech/NudeNet@v3.4-weights",
+        required=True,
         revision=NUDENET_640M_SHA256[:12],
     ),
     ModelSpec(
@@ -62,6 +66,7 @@ CATALOG: tuple[ModelSpec, ...] = (
         label="YOLO11 NSFW Small",
         role="primary",
         source="huggingface:erax-ai/EraX-NSFW-V1.0",
+        required=True,
         revision=YOLO11_NSFW_SMALL_REVISION[:12],
         huggingface_id="erax-ai/EraX-NSFW-V1.0",
     ),
@@ -70,6 +75,7 @@ CATALOG: tuple[ModelSpec, ...] = (
         label="Viddexa Nano",
         role="context",
         source=f"huggingface:{config.CONTEXT_NANO_MODEL_NAME}",
+        required=True,
         revision=config.CONTEXT_NANO_MODEL_REVISION,
         huggingface_id=config.CONTEXT_NANO_MODEL_NAME,
     ),
@@ -78,11 +84,19 @@ CATALOG: tuple[ModelSpec, ...] = (
         label="Viddexa Mini",
         role="context",
         source=f"huggingface:{config.CONTEXT_MINI_MODEL_NAME}",
+        required=True,
         revision=config.CONTEXT_MINI_MODEL_REVISION,
         huggingface_id=config.CONTEXT_MINI_MODEL_NAME,
     ),
 )
-REQUIRED_MODEL_IDS = tuple(spec.id for spec in CATALOG)
+CATALOG_MODEL_IDS = tuple(spec.id for spec in CATALOG)
+
+
+def required_model_ids(catalog: tuple[ModelSpec, ...]) -> tuple[str, ...]:
+    return tuple(spec.id for spec in catalog if spec.required)
+
+
+REQUIRED_MODEL_IDS = required_model_ids(CATALOG)
 
 _LOCK = threading.Lock()
 _RUNTIME: dict[str, dict[str, Any]] = {}
@@ -141,37 +155,16 @@ def _yolo_status(
     return _public_row(spec, "invalid")
 
 
-def _huggingface_cached(repo_id: str, revision: str) -> bool:
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError:
-        return False
-    try:
-        snapshot_download(
-            repo_id,
-            revision=revision,
-            local_files_only=True,
-        )
-    except Exception:  # noqa: BLE001 - missing cache is a status, not a crash
-        return False
-    return True
-
-
-def _viddexa_status(spec: ModelSpec) -> dict[str, Any]:
+def _viddexa_status(
+    spec: ModelSpec, *, data_dir: Path | None, root: Path | None
+) -> dict[str, Any]:
     runtime = _RUNTIME.get(spec.id, {})
     if runtime.get("status") == "downloading":
         return _public_row(spec, "downloading", error=runtime.get("error"))
-    if runtime.get("status") == "failed":
-        cached = _huggingface_cached(spec.huggingface_id or "", spec.revision or "")
-        return _public_row(
-            spec,
-            "available" if cached else "failed",
-            error=None if cached else runtime.get("error"),
-        )
-    if spec.huggingface_id is None or spec.revision is None:
-        return _public_row(spec, "missing")
-    if _huggingface_cached(spec.huggingface_id, spec.revision):
+    if resolve_viddexa_model_path(spec.id, data_dir=data_dir, root=root) is not None:
         return _public_row(spec, "available")
+    if runtime.get("status") == "failed":
+        return _public_row(spec, "failed", error=runtime.get("error"))
     return _public_row(spec, "missing")
 
 
@@ -211,7 +204,7 @@ def inspect_models(
     ]
     for spec in CATALOG:
         if spec.role == "context":
-            rows.append(_viddexa_status(spec))
+            rows.append(_viddexa_status(spec, data_dir=data_dir, root=root))
     return rows
 
 
@@ -267,14 +260,27 @@ def build_nudenet_request(environ: Mapping[str, str] | None = None) -> urllib.re
     return urllib.request.Request(NUDENET_640M_DOWNLOAD_URL, headers=headers)
 
 
-def download_huggingface(repo_id: str, revision: str) -> None:
+def download_huggingface(
+    repo_id: str,
+    revision: str,
+    destination: Path,
+    *,
+    model_id: str,
+    force: bool = False,
+) -> None:
     try:
         from huggingface_hub import snapshot_download
     except ImportError as error:
         raise RuntimeError(
             "Viddexa download needs the context dependencies."
         ) from error
-    snapshot_download(repo_id, revision=revision)
+    snapshot_download(
+        repo_id,
+        revision=revision,
+        local_dir=destination,
+        allow_patterns=[item.name for item in VIDDEXA_MODEL_FILES[model_id]],
+        force_download=force,
+    )
 
 
 def download_verified_file(
@@ -356,9 +362,9 @@ def download_model(
     force: bool = False,
     opener: Callable[..., object] | None = None,
     environ: Mapping[str, str] | None = None,
-    huggingface_downloader: Callable[[str, str], None] | None = None,
+    huggingface_downloader: Callable[..., None] | None = None,
 ) -> dict[str, Any]:
-    """Synchronously download one required catalog model. Raises on failure."""
+    """Synchronously download one catalog model. Raises on failure."""
 
     spec = spec_by_id(model_id)
     if spec is None:
@@ -383,9 +389,20 @@ def download_model(
         return _yolo_status(data_dir=data_dir, root=root, environ=env)
     if spec.huggingface_id is None or spec.revision is None:
         raise RuntimeError("Model source is not configured.")
+    destination = directory / spec.id
+    if not force and is_expected_viddexa_model(destination, spec.id):
+        return _viddexa_status(spec, data_dir=data_dir, root=root)
     downloader = huggingface_downloader or download_huggingface
-    downloader(spec.huggingface_id, spec.revision)
-    return _viddexa_status(spec)
+    downloader(
+        spec.huggingface_id,
+        spec.revision,
+        destination,
+        model_id=spec.id,
+        force=force or destination.exists(),
+    )
+    if not is_expected_viddexa_model(destination, spec.id):
+        raise RuntimeError(f"Downloaded {spec.label} failed pinned-file verification.")
+    return _viddexa_status(spec, data_dir=data_dir, root=root)
 
 
 def download_required_models(
@@ -394,7 +411,7 @@ def download_required_models(
     root: Path | None = None,
     force: bool = False,
 ) -> list[dict[str, Any]]:
-    """Download every catalog model. Failures are recorded per model."""
+    """Download required models. Failures are recorded per model."""
 
     rows: list[dict[str, Any]] = []
     for model_id in REQUIRED_MODEL_IDS:
@@ -421,6 +438,9 @@ def start_download_all(
     rows = inspect_models(data_dir=data_dir, root=root)
     started: list[dict[str, Any]] = []
     for row in rows:
+        if not row["required"]:
+            started.append(row)
+            continue
         if row["status"] in {"available", "downloading"}:
             started.append(row)
             continue

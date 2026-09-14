@@ -1,6 +1,7 @@
 """Tests for the optional Viddexa context adapter."""
 
 import unittest
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
@@ -97,6 +98,20 @@ class ContextClassifierTests(unittest.TestCase):
             device=-1,
             use_fast=False,
         )
+
+    def test_local_bundle_is_loaded_without_hub_lookup(self) -> None:
+        factory = Mock(return_value=FakePipeline())
+        local_path = Path("/bundled/models/viddexa_mini")
+
+        classifier = load_context_classifier(
+            local_model_path=local_path,
+            pipeline_factory=factory,
+        )
+
+        self.assertIsNotNone(classifier)
+        self.assertEqual(factory.call_args.kwargs["model"], str(local_path))
+        self.assertIsNone(factory.call_args.kwargs["revision"])
+        self.assertNotIn("local_files_only", factory.call_args.kwargs)
 
     def test_disabled_context_does_not_load_dependencies(self) -> None:
         factory = Mock()

@@ -1,7 +1,8 @@
 """Tests for selectable primary detectors and context rankers."""
 
 import unittest
-from unittest.mock import Mock
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 import numpy as np
 
@@ -107,6 +108,19 @@ class ContextRankerTests(unittest.TestCase):
         with self.assertLogs("app.vision.context_classifier", level="WARNING"):
             ranker = load_context_ranker("viddexa_nano", pipeline_factory=factory)
         self.assertEqual(ranker.name, "off")
+
+    def test_context_ranker_uses_bundled_model_path(self) -> None:
+        factory = Mock(return_value=Mock())
+        local_path = Path("/bundled/models/viddexa_nano")
+        with patch(
+            "app.vision.context.viddexa_nano.resolve_viddexa_model_path",
+            return_value=local_path,
+        ):
+            ranker = load_context_ranker("viddexa_nano", pipeline_factory=factory)
+
+        self.assertEqual(ranker.name, "viddexa_nano")
+        self.assertEqual(factory.call_args.kwargs["model"], str(local_path))
+        self.assertIsNone(factory.call_args.kwargs["revision"])
 
     def test_nano_and_mini_names(self) -> None:
         self.assertEqual(normalize_context_name("nano"), "viddexa_nano")

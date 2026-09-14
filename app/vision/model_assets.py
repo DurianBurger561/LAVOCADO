@@ -6,6 +6,7 @@ import hashlib
 import os
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 NUDENET_640M_FILENAME = "640m.onnx"
@@ -31,6 +32,53 @@ YOLO11_NSFW_SMALL_DOWNLOAD_URL = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class PinnedModelFile:
+    name: str
+    size: int
+    sha256: str
+
+
+# Files at the pinned Viddexa commits. The weight digests are the Hub LFS SHA-256
+# values; the JSON digests are from the same immutable revisions.
+VIDDEXA_MODEL_FILES: dict[str, tuple[PinnedModelFile, ...]] = {
+    "viddexa_nano": (
+        PinnedModelFile(
+            "model.safetensors",
+            16_270_500,
+            "011ef883033b5908994a06d3b6dcfbf55498206afc1cb55849f918588c7dfcba",
+        ),
+        PinnedModelFile(
+            "config.json",
+            1_577,
+            "29983c0fe447a47372b5a931eaeae085002855b98a32f9ecffd5572dd03d818f",
+        ),
+        PinnedModelFile(
+            "preprocessor_config.json",
+            495,
+            "f678895d3b0b6d95f32b0ab9d683c127c69b5f45939f82932cb90eb58bffa51e",
+        ),
+    ),
+    "viddexa_mini": (
+        PinnedModelFile(
+            "model.safetensors",
+            70_823_532,
+            "b77f531d1d90bc8268f6ec18bd6dee7b2ba19277f53267f17cfebc12626f49a4",
+        ),
+        PinnedModelFile(
+            "config.json",
+            1_384,
+            "3248bae9dae0230a7bac5878322b637dc26dd427cf17b8224aaeeb8fc9c62903",
+        ),
+        PinnedModelFile(
+            "preprocessor_config.json",
+            495,
+            "249d72557e900bad1ce5ed790e3aa628cbbe96484ee6ec67991a03d29609b392",
+        ),
+    ),
+}
+
+
 def resource_root() -> Path:
     """Return the source tree or PyInstaller extraction root."""
 
@@ -53,6 +101,45 @@ def bundled_yolo_model_path(root: Path | None = None) -> Path:
         (resource_root() if root is None else root)
         / "models"
         / YOLO11_NSFW_SMALL_FILENAME
+    )
+
+
+def bundled_viddexa_model_path(model_id: str, root: Path | None = None) -> Path:
+    if model_id not in VIDDEXA_MODEL_FILES:
+        raise ValueError(f"Unknown Viddexa model: {model_id}")
+    return (resource_root() if root is None else root) / "models" / model_id
+
+
+def has_complete_viddexa_model(directory: Path, model_id: str) -> bool:
+    """Cheap runtime presence check; build/download paths also verify SHA-256."""
+
+    return all(
+        (directory / item.name).is_file()
+        and (directory / item.name).stat().st_size == item.size
+        for item in VIDDEXA_MODEL_FILES[model_id]
+    )
+
+
+def is_expected_viddexa_model(directory: Path, model_id: str) -> bool:
+    return all(
+        _matches_pinned_file(directory / item.name, item.size, item.sha256)
+        for item in VIDDEXA_MODEL_FILES[model_id]
+    )
+
+
+def resolve_viddexa_model_path(
+    model_id: str,
+    *,
+    root: Path | None = None,
+    data_dir: Path | None = None,
+) -> Path | None:
+    candidates = []
+    if data_dir is not None:
+        candidates.append(Path(data_dir) / "models" / model_id)
+    candidates.append(bundled_viddexa_model_path(model_id, root))
+    return next(
+        (path for path in candidates if has_complete_viddexa_model(path, model_id)),
+        None,
     )
 
 

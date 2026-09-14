@@ -119,6 +119,7 @@ class LavocadoService:
                 load_context_ranker(
                     self.vision_settings.context.model,
                     enabled=self.vision_settings.context.model != "off",
+                    data_dir=data_dir,
                 )
                 if uses_default_detector
                 else None

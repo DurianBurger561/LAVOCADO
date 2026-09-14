@@ -1,4 +1,4 @@
-# Optional development dependencies for validating the Viddexa context model.
-# They are not yet part of release packaging; install only for Phase 2 benchmarks.
+# Required for the bundled Viddexa Nano and Mini context models.
+huggingface_hub>=0.34,<1
 transformers>=4.56.1,<5
 torch>=2.4,<3

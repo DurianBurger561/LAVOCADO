@@ -10,17 +10,32 @@ from unittest.mock import patch
 
 from app.vision.model_assets import resolve_nudenet_model_path
 from app.vision.model_lifecycle import (
+    CATALOG,
+    REQUIRED_MODEL_IDS,
+    ModelSpec,
     compact_model_status,
+    download_huggingface,
     download_model,
     inspect_models,
+    required_model_ids,
     reset_runtime_for_tests,
     start_download,
+    start_download_all,
 )
 
 
 class ModelLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
         reset_runtime_for_tests()
+
+    def test_all_four_release_models_are_required(self) -> None:
+        self.assertEqual(
+            set(REQUIRED_MODEL_IDS),
+            {"nudenet_640m", "yolo11_nsfw_small", "viddexa_nano", "viddexa_mini"},
+        )
+        self.assertTrue(all(spec.required for spec in CATALOG))
+        optional = ModelSpec("optional", "Optional", "context", "test", required=False)
+        self.assertEqual(required_model_ids(CATALOG + (optional,)), REQUIRED_MODEL_IDS)
 
     def test_status_has_no_filesystem_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -90,23 +105,78 @@ class ModelLifecycleTests(unittest.TestCase):
         self.assertEqual(row["status"], "available")
         self.assertNotIn("yolo11.pt", json.dumps(row))
 
-    def test_viddexa_download_uses_pinned_revision(self) -> None:
-        calls: list[tuple[str, str]] = []
+    def test_viddexa_download_uses_pinned_revision_and_local_bundle_path(self) -> None:
+        calls: list[tuple[str, str, Path, str]] = []
 
-        def fake_hf(repo_id: str, revision: str) -> None:
-            calls.append((repo_id, revision))
+        def fake_hf(
+            repo_id: str,
+            revision: str,
+            destination: Path,
+            *,
+            model_id: str,
+            force: bool,
+        ) -> None:
+            del force
+            calls.append((repo_id, revision, destination, model_id))
 
-        with patch(
-            "app.vision.model_lifecycle._huggingface_cached",
-            return_value=True,
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "app.vision.model_lifecycle.is_expected_viddexa_model",
+            side_effect=[False, True],
+        ), patch(
+            "app.vision.model_lifecycle.resolve_viddexa_model_path",
+            return_value=Path(temp_dir) / "models" / "viddexa_nano",
         ):
             row = download_model(
                 "viddexa_nano",
+                data_dir=Path(temp_dir),
                 huggingface_downloader=fake_hf,
             )
+            self.assertEqual(calls[0][2], Path(temp_dir) / "models" / "viddexa_nano")
         self.assertEqual(calls[0][0], "viddexa/nsfw-detection-2-nano")
+        self.assertEqual(calls[0][1], "12e57200346246b37382f746e4d94d10b014f6a1")
+        self.assertEqual(calls[0][3], "viddexa_nano")
         self.assertEqual(row["status"], "available")
         self.assertEqual(compact_model_status([row])["viddexa_nano"], "available")
+
+    def test_hub_snapshot_contains_only_pinned_bundle_files(self) -> None:
+        destination = Path("/build/models/viddexa_nano")
+        with patch("huggingface_hub.snapshot_download") as snapshot:
+            download_huggingface(
+                "viddexa/nsfw-detection-2-nano",
+                "12e57200346246b37382f746e4d94d10b014f6a1",
+                destination,
+                model_id="viddexa_nano",
+            )
+        self.assertEqual(snapshot.call_args.kwargs["local_dir"], destination)
+        self.assertEqual(
+            set(snapshot.call_args.kwargs["allow_patterns"]),
+            {"model.safetensors", "config.json", "preprocessor_config.json"},
+        )
+
+    def test_incomplete_viddexa_snapshot_is_not_verified(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "app.vision.model_lifecycle.is_expected_viddexa_model",
+            return_value=False,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "pinned-file verification"):
+                download_model(
+                    "viddexa_nano",
+                    data_dir=Path(temp_dir),
+                    huggingface_downloader=lambda *_args, **_kwargs: None,
+                )
+
+    def test_download_all_skips_future_non_required_models(self) -> None:
+        rows = [
+            {"id": "nudenet_640m", "status": "missing", "required": True},
+            {"id": "optional", "status": "missing", "required": False},
+        ]
+        with patch("app.vision.model_lifecycle.inspect_models", return_value=rows), patch(
+            "app.vision.model_lifecycle.start_download",
+            return_value={"id": "nudenet_640m", "status": "downloading"},
+        ) as start:
+            result = start_download_all()
+        start.assert_called_once()
+        self.assertEqual(result[1], rows[1])
 
     def test_unknown_model_raises(self) -> None:
         with self.assertRaises(ValueError):

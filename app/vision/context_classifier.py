@@ -1,4 +1,4 @@
-"""Optional local Viddexa tile-ranking adapter.
+"""Local Viddexa tile-ranking adapter.
 
 Viddexa scores tiles so the primary detector can check the highest-risk
 region first. Its porn/hentai scores never trigger protection on their own
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
@@ -38,7 +39,7 @@ def _create_transformers_pipeline(
     task: str,
     **kwargs: object,
 ) -> ClassificationPipeline:
-    """Import the optional heavyweight dependency only when requested."""
+    """Import the bundled heavyweight dependency only when requested."""
 
     from transformers import pipeline
 
@@ -99,6 +100,7 @@ def load_context_classifier(
     enabled: bool | None = None,
     model_name: str = config.CONTEXT_MODEL_NAME,
     revision: str = config.CONTEXT_MODEL_REVISION,
+    local_model_path: Path | None = None,
     pipeline_factory: Callable[..., ClassificationPipeline] | None = None,
 ) -> ContextClassifier | None:
     """Load the pinned local classifier or return None without crashing."""
@@ -111,10 +113,11 @@ def load_context_classifier(
 
     factory = pipeline_factory or _create_transformers_pipeline
     try:
+        source = str(local_model_path) if local_model_path is not None else model_name
         classifier = factory(
             "image-classification",
-            model=model_name,
-            revision=revision,
+            model=source,
+            revision=None if local_model_path is not None else revision,
             framework="pt",
             device=-1,
             use_fast=False,
