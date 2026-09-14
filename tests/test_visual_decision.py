@@ -41,6 +41,36 @@ class VisualDecisionEngineTests(unittest.TestCase):
         self.assertEqual(proposal.proposal, breast(0.60))
         self.assertIs(clear.classification, VisualViolationClassification.CLEAR)
 
+    def test_primary_assessment_uses_its_policy_and_highest_confidence(self) -> None:
+        policy = ThresholdPolicy(
+            tables={
+                "nudenet_640m": {
+                    "FEMALE_BREAST_EXPOSED": {"proposal": 0.60, "strong": 0.70},
+                    "FEMALE_GENITALIA_EXPOSED": {"proposal": 0.40, "strong": 0.50},
+                },
+                "yolo11_nsfw_small": {},
+            }
+        )
+        engine = VisualDecisionEngine(policy)
+        genital = ViolationEvidence(
+            ViolationEvidenceType.GENITAL_EXPOSURE,
+            "FEMALE_GENITALIA_EXPOSED",
+            0.71,
+            None,
+            "nudenet_640m",
+            2,
+        )
+
+        clear = engine.assess_primary((breast(0.68),))
+        strong = engine.assess_primary((genital, breast(0.72)))
+
+        self.assertIs(clear.classification, VisualViolationClassification.CLEAR)
+        self.assertIsNone(clear.strong)
+        self.assertIsNone(clear.threshold)
+        self.assertIs(strong.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(strong.strong, breast(0.72))
+        self.assertEqual(strong.threshold, 0.70)
+
     def test_selects_borderline_without_mutating_evidence(self) -> None:
         evidence = (breast(0.60),)
 

@@ -26,6 +26,13 @@ class EvidenceAssessment:
 
 
 @dataclass(frozen=True, slots=True)
+class PrimaryAssessment:
+    classification: VisualViolationClassification
+    strong: ViolationEvidence | None
+    threshold: float | None
+
+
+@dataclass(frozen=True, slots=True)
 class BorderlineCandidate:
     evidence: ViolationEvidence
     threshold: float
@@ -62,6 +69,25 @@ class VisualDecisionEngine:
             classification=classification,
             strong=strongest_evidence(strong),
             proposal=strongest_evidence(proposal),
+        )
+
+    def assess_primary(
+        self, evidence: Iterable[ViolationEvidence]
+    ) -> PrimaryAssessment:
+        """Choose the highest-confidence strong primary hit under this policy."""
+
+        strong = [
+            (item, threshold)
+            for item in evidence
+            if (threshold := self.threshold_policy.strong(item.label, item.model))
+            is not None
+            and item.confidence >= threshold
+        ]
+        if not strong:
+            return PrimaryAssessment(VisualViolationClassification.CLEAR, None, None)
+        strongest, threshold = max(strong, key=lambda pair: pair[0].confidence)
+        return PrimaryAssessment(
+            VisualViolationClassification.VIOLATION, strongest, threshold
         )
 
     def borderline_candidate(

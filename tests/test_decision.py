@@ -2,10 +2,12 @@
 
 import inspect
 import unittest
+from dataclasses import replace
 
 import numpy as np
 
 from app.platforms.capture.models import CaptureFrame
+from app.settings.schema import default_vision_settings
 from app.vision.context.base import ContextResult
 from app.vision.decision import DecisionEngine
 from app.vision.primary_detector_set import PrimaryDetection
@@ -105,6 +107,29 @@ def empty_result() -> PrimaryDetection:
 
 
 class DecisionEngineTests(unittest.TestCase):
+    def test_primary_classification_uses_persisted_thresholds(self) -> None:
+        settings = default_vision_settings()
+        thresholds = replace(
+            settings.thresholds,
+            nudenet_640m={
+                **settings.thresholds.nudenet_640m,
+                "FEMALE_BREAST_EXPOSED": {"proposal": 0.60, "strong": 0.70},
+            },
+        )
+        settings = replace(settings, thresholds=thresholds)
+
+        borderline = DecisionEngine(settings=settings).evaluate(
+            result_with_detection(0.68), captured_frame()
+        )
+        strong = DecisionEngine(settings=settings).evaluate(
+            result_with_detection(0.72), captured_frame()
+        )
+
+        self.assertIs(borderline.classification, VisualViolationClassification.UNCERTAIN)
+        self.assertEqual(borderline.threshold, 0.70)
+        self.assertIs(strong.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(strong.threshold, 0.70)
+
     def test_rescue_ranks_all_tiles_and_skips_low_risk(self) -> None:
         low_context = {"normal": 0.99, "porn": 0.01}
         context = FakeContextClassifier(low_context)

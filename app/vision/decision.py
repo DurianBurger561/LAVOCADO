@@ -29,7 +29,7 @@ from app.vision.violation_policy import (
     threshold_for_label,
     tier_for_score,
 )
-from app.vision.visual_decision import BorderlineCandidate
+from app.vision.visual_decision import BorderlineCandidate, PrimaryAssessment
 from app.vision.visual_decision import VisualDecisionEngine as _VisualDecisionEngine
 
 
@@ -106,7 +106,10 @@ class DecisionEngine:
         prepared = prepared_frame or FramePreprocessor(captured_frame)
         prepared.require_frame(captured_frame)
         frame_sequence = captured_frame.sequence
-        result, primary_hit = self._initial_result(detection)
+        primary_assessment = self.visual_decision_engine.assess_primary(
+            detection.primary
+        )
+        result = self._initial_result(detection, primary_assessment)
 
         plan = scan_plan
         if plan is None:
@@ -144,14 +147,16 @@ class DecisionEngine:
                 focused, captured_frame, monitor_index, frame_sequence
             )
 
-        if primary_hit is not None:
+        if primary_assessment.strong is not None:
             decided = self._confirm_primary_candidate(
                 result,
                 captured_frame,
-                primary_hit,
+                primary_assessment.strong,
                 confirmed_source="nudenet_roi",
                 candidate_source="anatomy_candidate",
-                fallback=self._strong_primary_result(result, captured_frame),
+                fallback=self._strong_primary_result(
+                    result, captured_frame, threshold=primary_assessment.threshold
+                ),
                 prepared=prepared,
             )
             return self._finalize_decision(
@@ -237,8 +242,9 @@ class DecisionEngine:
     @staticmethod
     def _initial_result(
         detection: PrimaryDetection,
-    ) -> tuple[dict[str, Any], ViolationEvidence | None]:
-        """Seed working metadata from typed primary evidence only."""
+        assessment: PrimaryAssessment,
+    ) -> dict[str, Any]:
+        """Serialize a pure primary assessment into working metadata."""
 
         checkpoints = [
             {
@@ -248,23 +254,10 @@ class DecisionEngine:
             }
             for item in detection.primary
         ]
-        strong = [
-            (item, threshold)
-            for item in detection.primary
-            if (threshold := threshold_for_label(item.label, item.model)) is not None
-            and item.confidence >= threshold
-        ]
-        strongest, threshold = (
-            max(strong, key=lambda pair: pair[0].confidence)
-            if strong
-            else (None, None)
-        )
+        strongest = assessment.strong
+        threshold = assessment.threshold
         result = {
-            "classification": (
-                VisualViolationClassification.VIOLATION
-                if strongest is not None
-                else VisualViolationClassification.CLEAR
-            ),
+            "classification": assessment.classification,
             "reason": (
                 f"{strongest.label} (score {strongest.confidence:.2f}, "
                 f"threshold {threshold:.2f})"
@@ -277,7 +270,7 @@ class DecisionEngine:
             "check_points": checkpoints,
             "evidence": [evidence_to_dict(item) for item in detection.evidence],
         }
-        return result, strongest
+        return result
 
     def _confirm_primary_candidate(
         self,
@@ -695,6 +688,8 @@ class DecisionEngine:
         self,
         result: dict[str, Any],
         captured_frame: CaptureFrame,
+        *,
+        threshold: float | None = None,
     ) -> dict[str, Any]:
         box = result.get("box")
         region: Region | None = None
@@ -706,7 +701,8 @@ class DecisionEngine:
                 original.shape,
             )
         label = result.get("label")
-        threshold = threshold_for_label(str(label))
+        if threshold is None:
+            threshold = threshold_for_label(str(label))
         return self._with_metadata(
             result,
             source="nudenet_full",
