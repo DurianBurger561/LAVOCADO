@@ -168,7 +168,7 @@ class BenchmarkSession:
                     full_input_size=self.settings.detector.full_input_size,
                     data_dir=data_dir,
                 )
-                detector = bundle.checker
+                detector = bundle.primary
             self.detector = detector
             if context_ranker is None:
                 context_ranker = context_factory(

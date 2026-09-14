@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any
 
 import numpy as np
 
@@ -31,15 +30,10 @@ class Yolo11NsfwDetector:
         self.default_input_size = int(default_input_size)
         self.model_variant = "yolo11-nsfw-small"
         self.inference_resolution = self.default_input_size
-        self._last_raw: list[dict[str, Any]] = []
 
     @property
     def name(self) -> str:
         return "yolo11_nsfw_small"
-
-    @property
-    def inner(self) -> Yolo11Adapter:
-        return self._adapter
 
     def detect(
         self,
@@ -48,7 +42,6 @@ class Yolo11NsfwDetector:
         input_size: int,
     ) -> list[DetectionEvidence]:
         if not isinstance(frame, np.ndarray):
-            self._last_raw = []
             return []
         model = self._adapter.model
         previous = getattr(model, "imgsz", None)
@@ -57,16 +50,11 @@ class Yolo11NsfwDetector:
         try:
             detections = list(model.detect(frame))
         except Exception:  # noqa: BLE001 - inference must not crash protection
-            self._last_raw = []
             return []
         finally:
             if hasattr(model, "imgsz"):
                 model.imgsz = previous
-        self._last_raw = detections
         return to_detection_evidence(detections, model=self.name)
-
-    def last_raw_detections(self) -> list[dict[str, Any]]:
-        return list(self._last_raw)
 
 
 def load_yolo11_nsfw_detector(

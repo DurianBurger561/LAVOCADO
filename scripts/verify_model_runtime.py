@@ -10,12 +10,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.vision.context.factory import load_context_ranker
-from app.vision.detector import Detector
 from app.vision.detectors.factory import load_primary_bundle
+from app.vision.detectors.nudenet import NudeNetPrimaryDetector
 
 
 def verify_model_runtime() -> None:
-    nudenet = Detector()
+    nudenet = NudeNetPrimaryDetector()
     if nudenet.model_variant != "640m":
         raise RuntimeError("Pinned NudeNet 640m did not load.")
     yolo = load_primary_bundle("yolo11_nsfw_small")

@@ -29,7 +29,7 @@ from app.vision.capture import Capturer
 from app.vision.change_scheduler import ChangeScheduler
 from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
-from app.vision.detector import Detector
+from app.vision.detectors.base import PrimaryDetector
 from app.vision.detectors.factory import PRIMARY_YOLO, load_primary_bundle
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.model_lifecycle import compact_model_status, inspect_models
@@ -65,7 +65,7 @@ class LavocadoService:
         self,
         platform_adapter: PlatformAdapter,
         capturer: Capturer | None = None,
-        detector: Detector | None = None,
+        detector: PrimaryDetector | None = None,
         overlay: Overlay | None = None,
         recorder: EventRecorder | None = None,
         intervention: InterventionGenerator | None = None,
@@ -101,12 +101,13 @@ class LavocadoService:
                 full_input_size=self.vision_settings.detector.full_input_size,
                 data_dir=data_dir,
             )
-            self.detector = bundle.checker
+            self.detector = bundle.primary
             yolo_status = bundle.yolo_status
             if self.vision_settings.shadow.enabled:
                 shadow_adapter = load_yolo_adapter(enabled=True, data_dir=data_dir)
         else:
-            self.detector = detector if detector is not None else Detector()
+            assert detector is not None
+            self.detector = detector
         self.capturer = (
             capturer
             if capturer is not None

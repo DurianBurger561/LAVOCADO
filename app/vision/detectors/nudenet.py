@@ -1,15 +1,26 @@
-"""NudeNet primary detector. Emits DetectionEvidence, not product Block."""
+"""Load NudeNet and emit typed primary detection evidence."""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
+from nudenet import NudeDetector
 
-from app.vision.detector import DetectionModel, Detector
+from app import config
 from app.vision.detectors.base import DetectionEvidence, to_detection_evidence
+from app.vision.model_assets import resolve_nudenet_model_path
+
+LOGGER = logging.getLogger(__name__)
+
+
+class DetectionModel(Protocol):
+    """Raw NudeNet inference boundary."""
+
+    def detect(self, image: np.ndarray) -> list[dict[str, Any]]: ...
 
 
 class NudeNetPrimaryDetector:
@@ -17,45 +28,55 @@ class NudeNetPrimaryDetector:
 
     def __init__(
         self,
-        detector: Detector | None = None,
-        *,
         model: DetectionModel | None = None,
-        model_factory: Callable[..., DetectionModel] | None = None,
+        *,
+        model_factory: Callable[..., DetectionModel] = NudeDetector,
         model_path: str | Path | None = None,
         data_dir: str | Path | None = None,
     ) -> None:
-        if detector is not None:
-            self._detector = detector
-        elif model_factory is not None:
-            self._detector = Detector(
-                model=model,
-                model_factory=model_factory,
-                model_path=model_path,
-                data_dir=data_dir,
+        self.model_variant = "injected"
+        self.inference_resolution: int | None = None
+        if model is not None:
+            self.model = model
+            return
+
+        resolved_path = (
+            Path(model_path)
+            if model_path is not None and Path(model_path).is_file()
+            else resolve_nudenet_model_path(
+                data_dir=None if data_dir is None else Path(data_dir)
             )
-        else:
-            self._detector = Detector(
-                model=model, model_path=model_path, data_dir=data_dir
-            )
-        self._last_raw: list[dict[str, Any]] = []
+        )
+        if resolved_path is not None:
+            try:
+                self.model = model_factory(
+                    model_path=str(resolved_path),
+                    inference_resolution=config.NUDENET_INFERENCE_RESOLUTION,
+                )
+                self.model_variant = "640m"
+                self.inference_resolution = config.NUDENET_INFERENCE_RESOLUTION
+                return
+            except Exception:
+                LOGGER.exception(
+                    "Could not load NudeNet 640m from %s; using bundled 320n",
+                    resolved_path,
+                )
+
+        LOGGER.warning(
+            "NudeNet 640m is unavailable; using bundled 320n at %s pixels",
+            config.NUDENET_FALLBACK_INFERENCE_RESOLUTION,
+        )
+        self.model = model_factory(
+            inference_resolution=config.NUDENET_FALLBACK_INFERENCE_RESOLUTION,
+        )
+        self.model_variant = "320n-fallback"
+        self.inference_resolution = config.NUDENET_FALLBACK_INFERENCE_RESOLUTION
 
     @property
     def name(self) -> str:
-        if self._detector.model_variant == "320n-fallback":
+        if self.model_variant == "320n-fallback":
             return "nudenet_320n"
         return "nudenet_640m"
-
-    @property
-    def model_variant(self) -> str:
-        return self._detector.model_variant
-
-    @property
-    def inference_resolution(self) -> int | None:
-        return self._detector.inference_resolution
-
-    @property
-    def inner(self) -> Detector:
-        return self._detector
 
     def detect(
         self,
@@ -67,11 +88,6 @@ class NudeNetPrimaryDetector:
 
         del input_size
         if not isinstance(frame, np.ndarray):
-            self._last_raw = []
             return []
-        detections = list(self._detector.model.detect(frame))
-        self._last_raw = detections
+        detections = list(self.model.detect(frame))
         return to_detection_evidence(detections, model=self.name)
-
-    def last_raw_detections(self) -> list[dict[str, Any]]:
-        return list(self._last_raw)

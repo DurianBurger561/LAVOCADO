@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
-from app.vision.detector import Detector
+from app.vision.detectors.base import PrimaryDetector
 from app.vision.detectors.nudenet import NudeNetPrimaryDetector
 from app.vision.detectors.yolo11_nsfw import load_yolo11_nsfw_detector
 
@@ -18,24 +17,24 @@ KNOWN_PRIMARIES = frozenset({PRIMARY_NUDENET, PRIMARY_YOLO})
 
 
 class PrimaryBundle:
-    """Runtime primary detector plus the object used for ROI rechecks."""
+    """Runtime primary detector and its selection status."""
 
     def __init__(
         self,
         *,
-        name: str,
-        checker: Any,
+        primary: PrimaryDetector,
         requested: str,
         fallback_from: str | None = None,
         yolo_status: str,
     ) -> None:
-        self.name = name
-        self.checker = checker
+        self.primary = primary
         self.requested = requested
         self.fallback_from = fallback_from
         self.yolo_status = yolo_status
-        self.model_variant = str(getattr(checker, "model_variant", name))
-        self.inference_resolution = getattr(checker, "inference_resolution", None)
+
+    @property
+    def name(self) -> str:
+        return self.primary.name
 
 
 def normalize_primary_name(name: str | None) -> str:
@@ -70,8 +69,7 @@ def load_primary_bundle(
         )
         if yolo is not None:
             return PrimaryBundle(
-                name=yolo.name,
-                checker=yolo,
+                primary=yolo,
                 requested=requested,
                 yolo_status="available",
             )
@@ -80,8 +78,7 @@ def load_primary_bundle(
         )
         nudenet = NudeNetPrimaryDetector(data_dir=data_dir)
         return PrimaryBundle(
-            name=nudenet.name,
-            checker=nudenet,
+            primary=nudenet,
             requested=requested,
             fallback_from=PRIMARY_YOLO,
             yolo_status="unavailable",
@@ -89,14 +86,7 @@ def load_primary_bundle(
 
     nudenet = NudeNetPrimaryDetector(data_dir=data_dir)
     return PrimaryBundle(
-        name=nudenet.name,
-        checker=nudenet,
+        primary=nudenet,
         requested=requested,
         yolo_status="disabled",
     )
-
-
-def nudenet_checker() -> Detector:
-    """Default NudeNet ``check()`` object used by tests and fallbacks."""
-
-    return Detector()

@@ -3,20 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
 
-import numpy as np
-
-from app.vision.detectors.base import DetectionEvidence, detection_to_violation
+from app.vision.detectors.base import (
+    DetectionEvidence,
+    PrimaryDetector,
+    detection_to_violation,
+)
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.violation_policy import ViolationEvidence
 from app.vision.yolo_adapter import Yolo11Adapter
-
-
-class PrimaryModel(Protocol):
-    def detect(
-        self, image: np.ndarray, *, input_size: int
-    ) -> list[DetectionEvidence]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +46,7 @@ class PrimaryDetectorSet:
 
     def __init__(
         self,
-        primary: PrimaryModel,
+        primary: PrimaryDetector,
         *,
         supplementary: Yolo11Adapter | None = None,
         full_input_size: int = 640,

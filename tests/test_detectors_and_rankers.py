@@ -75,6 +75,7 @@ class DetectorAbstractionTests(unittest.TestCase):
     def test_yolo_unavailable_falls_back_to_nudenet(self) -> None:
         bundle = load_primary_bundle(PRIMARY_YOLO, yolo_enabled=False)
         self.assertEqual(bundle.requested, PRIMARY_YOLO)
+        self.assertIsInstance(bundle.primary, NudeNetPrimaryDetector)
         self.assertTrue(str(bundle.name).startswith("nudenet"))
         self.assertEqual(bundle.yolo_status, "unavailable")
 

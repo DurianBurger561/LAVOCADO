@@ -8,22 +8,24 @@ from unittest.mock import patch
 
 import numpy as np
 
-from app.vision.detector import Detector
+from app.vision.detectors.nudenet import NudeNetPrimaryDetector
 
 
 class FakeModel:
     def __init__(self, detections: list[dict[str, Any]]) -> None:
         self.detections = detections
+        self.calls = 0
 
     def detect(self, image: np.ndarray) -> list[dict[str, Any]]:
+        self.calls += 1
         return self.detections
 
 
-class DetectorTests(unittest.TestCase):
+class NudeNetPrimaryDetectorTests(unittest.TestCase):
     def setUp(self) -> None:
         self.image = np.zeros((320, 320, 3), dtype=np.uint8)
 
-    def test_allows_non_blocking_detections(self) -> None:
+    def test_emits_anatomy_evidence_below_strong_threshold(self) -> None:
         model = FakeModel(
             [
                 {"class": "FACE_FEMALE", "score": 0.99, "box": [0, 0, 10, 10]},
@@ -35,12 +37,13 @@ class DetectorTests(unittest.TestCase):
             ]
         )
 
-        evidence = Detector(model=model).detect(self.image)
+        evidence = NudeNetPrimaryDetector(model=model).detect(self.image, input_size=640)
 
+        self.assertEqual(model.calls, 1)
         self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
         self.assertAlmostEqual(evidence[0].confidence, 0.64)
 
-    def test_blocks_detection_over_its_threshold(self) -> None:
+    def test_emits_anatomy_evidence_above_strong_threshold(self) -> None:
         model = FakeModel(
             [
                 {
@@ -51,13 +54,13 @@ class DetectorTests(unittest.TestCase):
             ]
         )
 
-        evidence = Detector(model=model).detect(self.image)
+        evidence = NudeNetPrimaryDetector(model=model).detect(self.image, input_size=640)
 
         self.assertEqual(evidence[0].label, "FEMALE_GENITALIA_EXPOSED")
         self.assertAlmostEqual(evidence[0].confidence, 0.81)
         self.assertEqual(evidence[0].box, (0.0, 0.0, 10.0, 10.0))
 
-    def test_chooses_strongest_blocking_detection(self) -> None:
+    def test_preserves_detector_evidence_order(self) -> None:
         model = FakeModel(
             [
                 {
@@ -73,7 +76,7 @@ class DetectorTests(unittest.TestCase):
             ]
         )
 
-        evidence = Detector(model=model).detect(self.image)
+        evidence = NudeNetPrimaryDetector(model=model).detect(self.image, input_size=640)
 
         self.assertEqual([item.label for item in evidence], [
             "ANUS_EXPOSED",
@@ -91,7 +94,7 @@ class DetectorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             model_path = Path(temp_dir) / "640m.onnx"
             model_path.touch()
-            detector = Detector(model_factory=factory, model_path=model_path)
+            detector = NudeNetPrimaryDetector(model_factory=factory, model_path=model_path)
 
         self.assertEqual(
             calls,
@@ -100,7 +103,7 @@ class DetectorTests(unittest.TestCase):
         self.assertEqual(detector.model_variant, "640m")
         self.assertEqual(detector.inference_resolution, 640)
 
-    @patch("app.vision.detector.resolve_nudenet_model_path", return_value=None)
+    @patch("app.vision.detectors.nudenet.resolve_nudenet_model_path", return_value=None)
     def test_falls_back_to_bundled_320n_when_640m_is_missing(
         self,
         _resolve: object,
@@ -111,10 +114,11 @@ class DetectorTests(unittest.TestCase):
             calls.append(kwargs)
             return FakeModel([])
 
-        detector = Detector(model_factory=factory)
+        detector = NudeNetPrimaryDetector(model_factory=factory)
 
         self.assertEqual(calls, [{"inference_resolution": 320}])
         self.assertEqual(detector.model_variant, "320n-fallback")
+        self.assertEqual(detector.name, "nudenet_320n")
         self.assertEqual(detector.inference_resolution, 320)
 
     def test_falls_back_when_640m_cannot_be_loaded(self) -> None:
@@ -129,7 +133,7 @@ class DetectorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             model_path = Path(temp_dir) / "640m.onnx"
             model_path.touch()
-            detector = Detector(model_factory=factory, model_path=model_path)
+            detector = NudeNetPrimaryDetector(model_factory=factory, model_path=model_path)
 
         self.assertEqual(calls[-1], {"inference_resolution": 320})
         self.assertEqual(detector.model_variant, "320n-fallback")

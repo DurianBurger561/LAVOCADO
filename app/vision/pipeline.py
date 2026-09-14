@@ -7,7 +7,7 @@ from typing import Any
 
 from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
-from app.vision.detector import Detector
+from app.vision.detectors.base import PrimaryDetector
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.primary_detector_set import PrimaryDetection, PrimaryDetectorSet
 from app.vision.scheduler import ScanPlan
@@ -24,7 +24,7 @@ class VisionPipeline:
 
     def __init__(
         self,
-        detector: Detector,
+        detector: PrimaryDetector,
         decision_engine: DecisionEngine,
         yolo_adapter: Yolo11Adapter | None = None,
         *,

@@ -28,7 +28,7 @@ from app.platforms.capture import (
     CapturePermissionDeniedError,
     ScreenCaptureBackend,
 )
-from app.vision.detector import Detector
+from app.vision.detectors.nudenet import NudeNetPrimaryDetector
 
 EXIT_FAILED = 1
 EXIT_PERMISSION_DENIED = 2
@@ -299,7 +299,7 @@ def run_single(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         memory = PsutilMemorySampler()
         result = benchmark_backend(
             backend,
-            Detector(),
+            NudeNetPrimaryDetector(),
             memory,
             mode=args.backend,
             frames=args.frames,
