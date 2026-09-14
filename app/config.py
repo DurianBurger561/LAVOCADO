@@ -23,10 +23,6 @@ CONTEXT_MINI_MODEL_REVISION = CONTEXT_MODEL_REVISION
 CONTEXT_NANO_MODEL_NAME = "viddexa/nsfw-detection-2-nano"
 CONTEXT_NANO_MODEL_REVISION = "12e57200346246b37382f746e4d94d10b014f6a1"
 
-# Selectable primary detector and context ranker. Env overrides are for
-# development; persisted vision_settings.json wins when present.
-PRIMARY_DETECTOR = os.environ.get("LAVOCADO_PRIMARY_DETECTOR", "nudenet_640m")
-CONTEXT_RANKER = os.environ.get("LAVOCADO_CONTEXT_MODEL", "viddexa_mini")
 YOLO_FULL_INPUT_SIZE = 640
 YOLO_TILE_INPUT_SIZE = 640
 

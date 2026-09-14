@@ -30,7 +30,7 @@ from app.vision.change_scheduler import ChangeScheduler
 from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
 from app.vision.detectors.base import PrimaryDetector
-from app.vision.detectors.factory import PRIMARY_YOLO, load_primary_bundle
+from app.vision.detectors.factory import load_primary_bundle
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.model_lifecycle import compact_model_status, inspect_models
 from app.vision.overlay import Overlay
@@ -43,7 +43,7 @@ from app.vision.violation_policy import (
     VisualViolationDecision,
     activate_threshold_policy,
 )
-from app.vision.yolo_adapter import load_yolo_adapter, yolo_is_requested
+from app.vision.yolo_adapter import load_yolo_adapter
 
 LOGGER = logging.getLogger(__name__)
 
@@ -92,11 +92,8 @@ class LavocadoService:
         shadow_adapter = None
         yolo_status = "disabled"
         if uses_default_detector:
-            requested_primary = self.vision_settings.detector.primary
-            if yolo_is_requested():
-                requested_primary = PRIMARY_YOLO
             bundle = load_primary_bundle(
-                requested_primary,
+                self.vision_settings.detector.primary,
                 full_input_size=self.vision_settings.detector.full_input_size,
                 data_dir=data_dir,
             )

@@ -6,16 +6,13 @@ from typing import Any
 
 from app import config
 from app.settings.schema import VisionSettings, default_vision_settings
-from app.vision.yolo_adapter import yolo_is_requested
 
 
 def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str, Any]:
     """Return the Vision Settings group, never medical/art/education modes."""
 
     current = settings or default_vision_settings()
-    yolo_requested = (
-        current.detector.primary == "yolo11_nsfw_small" or yolo_is_requested()
-    )
+    yolo_requested = current.detector.primary == "yolo11_nsfw_small"
     primary = current.detector.primary
     tile_ranking = bool(current.tiles.enabled and current.context.model != "off")
     return {

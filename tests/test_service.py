@@ -2,13 +2,18 @@
 
 import unittest
 from concurrent.futures import Future
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import Event
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
 from app.intervention.recorder import ProtectionEvent
 from app.platforms.capture import CaptureBackendStatus, CaptureFrame, Rect
 from app.service import LavocadoService, State
+from app.ui.api import DashboardAPI
 from app.vision.change_scheduler import ChangeDecision
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.primary_detector_set import PrimaryDetection
@@ -341,6 +346,64 @@ class SequenceDecisionEngine:
 
 
 class ServiceTests(unittest.TestCase):
+    def test_dashboard_primary_setting_controls_next_protection_start(self) -> None:
+        for primary, model_path in (
+            ("nudenet_640m", "/unused/yolo.pt"),
+            ("yolo11_nsfw_small", ""),
+        ):
+            with self.subTest(primary=primary), TemporaryDirectory() as temporary:
+                data_dir = Path(temporary)
+                api = DashboardAPI(None, None, data_dir=data_dir)
+                saved = api.save_vision_settings(
+                    {"detector": {"primary": primary}, "context": {"model": "off"}}
+                )
+                self.assertTrue(saved["ok"])
+                self.assertEqual(saved["settings"]["primary_detector"], primary)
+                self.assertEqual(
+                    saved["settings"]["yolo"]["requested"],
+                    primary == "yolo11_nsfw_small",
+                )
+
+                class SettingsPlatform(FakePlatform):
+                    def __init__(self, directory: Path) -> None:
+                        self.directory = directory
+
+                    def default_data_dir(self) -> Path:
+                        return self.directory
+
+                bundle = SimpleNamespace(
+                    primary=FakeDetector({1: [False]}),
+                    yolo_status="disabled",
+                )
+                with (
+                    patch.dict(
+                        "os.environ",
+                        {
+                            "LAVOCADO_YOLO_MODEL": model_path,
+                            "LAVOCADO_PRIMARY_DETECTOR": "nudenet_640m",
+                        },
+                    ),
+                    patch("app.service.load_primary_bundle", return_value=bundle) as load,
+                ):
+                    service = LavocadoService(
+                        SettingsPlatform(data_dir),
+                        capturer=FakeCapturer(),
+                        overlay=FakeOverlay(),
+                        recorder=FakeRecorder(),
+                        intervention=FakeIntervention(),
+                        decision_engine=FakeDecisionEngine(),
+                        diagnostics=DiagnosticsStore(
+                            model_variant="test",
+                            inference_resolution=640,
+                            context_model="off",
+                            context_status="disabled",
+                        ),
+                    )
+
+                self.assertEqual(service.vision_settings.detector.primary, primary)
+                self.assertIs(service.detector, bundle.primary)
+                self.assertEqual(load.call_args.args[0], primary)
+
     def test_change_scheduler_skips_detector_until_scan_is_due(self) -> None:
         detector = FakeDetector({1: [False]})
         scheduler = FakeChangeScheduler([False, True])
