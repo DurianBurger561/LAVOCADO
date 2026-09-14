@@ -4,94 +4,86 @@
 
 <h1 align="center">LAVOCADO / 小油果</h1>
 
-<p align="center"><a href="README.md"><b>🇬🇧🇺🇸🇨🇦🇦🇺🇳🇿English<b></a> | <a href="README.zh.md"><b>🇨🇳中文<b></a></p>
+<p align="center">
+  <a href="README.md"><b>🇬🇧 English</b></a> |
+  <a href="README.zh.md"><b>🇨🇳 中文</b></a>
+</p>
 
-LAVOCADO 是一款本地优先的桌面守护工具。它在需要保护的上下文中检测视觉违规内容,通过连续多帧确认后,只遮挡触发保护的那一块屏幕。
+LAVOCADO 是一个面向 Windows 和 macOS 的本地优先桌面保护工具。
 
-LAVOCADO 不会判断观看目的。受信任的应用或网站可以加入白名单,以便在医学、教育、艺术、新闻或其他用户认可的用途下跳过视觉保护。
+它会在本机检测屏幕中的明确成人视觉内容，通过多帧确认降低误报，并在确认后于对应显示器上显示干预界面。
 
-截图全部在本地处理,不会被存储或传输。主检测器对整屏使用 NudeNet 640m 模型,以 640 像素进行推理。原始分辨率的截图仅保留在内存中,供后续本地复检使用。
+所有截图均只在本地内存中处理，**不会保存或上传**。
 
-当风险被确认后,受影响的屏幕会经过一次短暂停顿、一次引导呼吸,再进入准备阶段,之后才会启用"继续"按钮。`Esc` 键始终可用作紧急退出。
+## 功能
 
-## 本地数据与隐私
+- 本地视觉内容检测
+- 多帧确认，降低误报
+- 多显示器支持
+- 应用程序黑名单和白名单
+- 网站黑名单和白名单
+- 本地 Dashboard，用于设置、规则、诊断和历史记录
+- 支持 Windows 10/11 和 macOS
 
-保护被触发时,LAVOCADO 只记录 UTC 时间、触发类型、置信度、显示器编号,以及是否展示了干预。视觉检测事件还可以保存检测类别。应用规则和网站规则事件的标签始终为空,因此应用标识和域名不会写入历史。它不会存储截图、完整 URL 或窗口标题。
+## 隐私
 
-SQLite 事件数据库存放在当前用户的应用数据目录下:
+LAVOCADO 的设计目标是尽可能让屏幕内容只留在本机。
 
-- Windows:`%LOCALAPPDATA%\\LAVOCADO\\events.db`
-- macOS:`~/Library/Application Support/LAVOCADO/events.db`
+不会保存：
 
-启动前设置 `LAVOCADO_DATA_DIR` 环境变量,可指定其他目录。
-同一个文件还保存 `application_rules` 和 `website_rules`。网站输入在保存前会转成域名,路径与查询参数不会存入规则。请在保护停止时通过仪表盘编辑这些规则;Protection 进程启动时加载它们。
+- 屏幕截图或图像裁剪
+- 完整 URL
+- 窗口标题
+
+保护历史只保存有限的元数据，例如：
+
+- 事件时间
+- 触发类型
+- 置信度
+- 显示器编号
+- 是否显示了干预界面
+
+网站规则只保存 hostname，不保存 URL 路径或查询参数。
 
 ## 保护规则
 
-仪表盘在保护停止时可编辑四组本地规则。更改会在下次启动保护时生效:
+可以在 Dashboard 中配置：
 
-- 应用黑名单
-- 应用白名单
-- 网站黑名单
-- 网站白名单
+- 被阻止的应用程序
+- 白名单应用程序
+- 被阻止的网站
+- 白名单网站
 
-使用 **Pick current app** 可从前台窗口填入稳定的可执行文件名或 bundle ID。网站输入接受域名或 HTTPS URL,只保存域名。匹配方式可以是精确主机名,也可以包含子域名。
-
-加入白名单时会弹出确认:白名单中的应用和网站将完全跳过 LAVOCADO 的视觉保护。如果你需要查看医学、教育、艺术、新闻或其他非色情目的但可能包含裸露或明确人体内容的来源,可以将可靠来源加入白名单。你将自行负责白名单环境中显示的内容。白名单不是 LAVOCADO 对来源安全性的认证。
-
-LAVOCADO 会先识别前台应用。如果它是受支持的浏览器,再通过平台辅助功能 API 读取活动标签页的域名(Windows UI Automation 或 macOS Accessibility)。它不会根据窗口标题猜测网站。若无法读取地址栏,网站上下文保持 UNKNOWN,只应用应用规则。
-
-应用规则与网站规则先独立计算,再统一合并:
+规则优先级：
 
 ```text
 FORCE_BLOCK > FULL_BYPASS > NORMAL
 ```
 
-黑名单始终优先于白名单。没有任何匹配规则时,保护行为与现有视觉检测路径完全一致。
+- **命中黑名单：** 立即触发保护。
+- **命中白名单：** 暂时跳过视觉检测。
+- **没有命中规则：** 正常运行视觉检测。
 
-分层固定: `ForegroundContextService` 负责发现上下文, `ContextPolicyService` 负责规则,
-`VisionPipeline` 与 `DecisionEngine` 只判断视觉证据, `ProtectionRuntime` 负责扫描调度并用
-`TemporalVerifier` 确认新帧, `LavocadoService` 管理状态和干预。`OverlayBackend` 从捕获模块
-接收目标显示器的 `MonitorInfo`,不再单独用 MSS 发现显示器。检测器不能直接触发保护;决策引擎不会收到主机名、
-应用名,或医学/艺术/教育标记。
+黑名单始终优先于白名单。
 
-- `FORCE_BLOCK` 立即遮挡前台窗口所在的显示器,跳过 NudeNet、YOLO、区域排序和时序确认。
-- `FULL_BYPASS` 在该上下文活动期间跳过整个视觉流水线,离开后再从干净状态恢复。
-- `NORMAL` 运行截图和视觉违规检测。Vision 只判断画面是否违反 LAVOCADO 的视觉内容规则,不负责医学、艺术、教育或新闻等观看目的。确认后的违规仍需在 3 个新帧中命中 2 次才会保护。
+白名单适合用于可信场景，例如医疗、教育、艺术或新闻内容，这些内容可能合法地包含人体解剖或裸露画面。
 
-实时诊断只显示粗粒度状态:是否识别到应用、是否为浏览器、网站是否已知,以及规则动作。不会包含应用标识、域名、窗口标题或 URL。
+## 环境要求
 
-在 macOS 上,读取前台应用信息需要为终端或打包后的应用授予"辅助功能"权限。
+- Python 3.12
+- Windows 10/11 或 macOS
 
-## 本地干预
+## 安装
 
-暂停、呼吸和准备阶段均使用内置的本地文案。显示干预不需要 API key 或网络请求。
+克隆仓库并创建虚拟环境。
 
-## 支持的平台
-
-- Windows 10/11
-- macOS
-
-运行时的平台集成被隔离在 `app/platforms/` 目录下:
-
-- `windows.py` 包含 User32/Kernel32 前台窗口访问、DPI 设置、Windows 数据路径,以及原生运行时指引。
-- `macos.py` 包含通过 System Events 访问前台窗口、macOS 数据路径,以及权限指引。
-
-网站发现同样按平台实现,位于 `app/platforms/website/`:Windows UI Automation 和 macOS `AXUIElement`。读取失败或不可用时绝不会停止视觉保护,网站一侧保持 UNKNOWN。
-
-每个进程只创建一个 `PlatformAdapter`,并将其传递给截图、遮挡、存储和仪表盘等模块。因此各业务模块无需自行判断操作系统,也无需导入具体的平台实现。
-
-## 安装配置
-
-请使用 Python 3.12 并创建虚拟环境。
-
-### Windows PowerShell
+### Windows
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python scripts/download_models.py
+python scripts/download_models.py --model all
 python main.py
 ```
 
@@ -101,81 +93,91 @@ python main.py
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python scripts/download_models.py
+python scripts/download_models.py --model all
 python main.py
 ```
 
-首次启动时,请在 **系统设置 → 隐私与安全性 → 屏幕与系统音频录制** 中允许"终端"或 LAVOCADO,然后重启应用。
-浏览器地址栏发现还需要 **隐私与安全性 → 辅助功能**;没有该权限时,网站上下文保持 UNKNOWN。
+在 macOS 上，需要在以下位置为 LAVOCADO 或当前终端授予权限：
 
-固定版本的 640m 模型约 99 MiB,从 NudeNet 官方 GitHub release 下载,并做字节大小和 SHA-256 校验。该模型不纳入 Git。源码运行时若缺少它,LAVOCADO 会记录一条警告并降级到 NudeNet 320n;而打包构建版本则要求必须有经校验的 640m 文件。设置 `LAVOCADO_NUDENET_MODEL` 可指定使用位于其他路径的本地 640m 文件。
+- **系统设置 → 隐私与安全性 → 屏幕与系统音频录制**
+- **系统设置 → 隐私与安全性 → 辅助功能**
 
-NudeNet 640m、YOLO11 NSFW Small、Viddexa Nano 和 Viddexa Mini 都是发布包必须包含的本地模型。可在 Dashboard 点 Download all,或运行 `python scripts/download_models.py --model all`。下载及打包均校验固定文件的大小和 SHA-256;Viddexa 快照会被复制到发布包中,而不是仅留在构建机的缓存里。`requirements.txt` 包含 YOLO、Transformers 和 PyTorch 推理依赖,因此发布包较大。YOLO11 NSFW Small 把性行为和解剖标签映射到同一套视觉违规策略。损坏的本地安装仍可回退 NudeNet。单独重新下载 YOLO:
+屏幕录制权限用于保护功能。
 
-```bash
-python scripts/download_models.py --model yolo11_nsfw_small
-```
+辅助功能权限用于识别当前应用程序和浏览器上下文。
 
-Viddexa 只决定主检测器优先复检哪个区域,不能单独触发 Block。
+## 使用
 
-固定版本的模型文件从 Hugging Face 下载,推理则在本地运行。若依赖或模型不可用,LAVOCADO 仍能以纯 NudeNet 模式运行。确认后的视觉违规仍需在 3 个新帧中命中 2 次才会保护。
-
-对于小面积内容的救援机制,每块显示器被分为四块区域。Viddexa 按 porn/hentai 风险排序这些区域;高分只是让同一个 NudeNet 640m 实例复检该区域。被救援的区域会在接下来的两次检查中被锁定,以便时序验证器对同一区域做确认或排除。当只有 NudeNet 320n 降级方案可用时,救援机制会自动禁用。
-
-保护诊断信息保存在一个线程安全的内存快照中。它包含模型可用性、最近一次扫描延迟、显示器编号、置信度最高的检测器元数据、上下文结果、决策来源、时序历史、救援计划,以及粗粒度的前台策略状态。捕获健康信息报告首选与当前后端、是否降级及原因、帧龄和检测到的显示器数量。该快照采用明确的安全数据结构,绝不包含图像像素、截图、裁剪图、URL、窗口标题、应用标识、域名或图片路径。它不会被写入 SQLite,也不会被传输。
-
-每一帧新画面在进入 NudeNet 推理前,还会经过按显示器划分的变化调度器。若当前后端提供原生脏区域元数据则优先使用;否则 LAVOCADO 会在内存中比较一份有界的 64x64 灰度图。第一帧、周期性安全帧,以及候选出现后的时序跟进帧始终会被扫描。变化图不会写入磁盘、进入诊断或被上传。
-
-源码开发者可以显式测试 `Auto`、仅原生和仅 MSS 的捕获路径。该覆盖由环境变量控制,在打包给用户的构建中禁用,也不会出现在仪表盘上。
-
-当保护由仪表盘托管时,一套固定的 stdin/stdout 消息协议会把这份安全快照从保护子进程复制到仪表盘内存中。该协议只支持启动、停止、读取诊断、测试干预和本地规则编辑这几种操作;这座桥梁无法执行命令或访问任意文件。手动测试干预由保护进程在其 GUI 主线程上展示,不会创建 SQLite 保护事件。
-
-## 使用 LAVOCADO
-
-直接启动保护(默认方式):
+直接启动保护：
 
 ```bash
 python main.py
 ```
 
-或打开 WebView 仪表盘,用于启动/停止保护、编辑应用和网站规则、查看实时诊断、测试干预,以及查看近期的隐私安全事件:
+打开 Dashboard：
 
 ```bash
 python main.py dashboard
 ```
 
-仪表盘使用 pywebview,搭配本地的 HTML、CSS 和 JavaScript。它只暴露固定的 `DashboardAPI`,在读取状态前会等待 `pywebviewready`,并使用隐私浏览模式。Windows 在可用时使用 WebView2,macOS 使用系统 WebKit 视图。关闭窗口会停止并回收由仪表盘托管的保护子进程。
+Dashboard 可以用于：
 
-仪表盘会把保护作为独立进程启动,以便遮挡窗口在 Windows 和 macOS 上都保持在 GUI 主线程。关闭仪表盘会请求保护进程干净地退出。
+- 启动和停止保护
+- 配置应用程序和网站规则
+- 修改视觉检测设置
+- 管理本地模型
+- 查看运行诊断
+- 测试干预界面
+- 查看最近的保护事件
 
-在无显示器的机器上,可在终端查看近期的本地事件:
+在终端中查看最近事件：
 
 ```bash
 python main.py events --limit 20
 ```
 
-## 构建桌面应用
+## 自检
 
-安装独立的构建依赖,并在目标操作系统上构建:
+检查本地安装和所需资源：
+
+```bash
+python main.py --self-check
+```
+
+自检会检查：
+
+- 应用运行环境
+- 配置文件
+- 本地数据库
+- 平台集成
+- 必需模型
+
+## 构建
+
+安装运行和构建依赖：
 
 ```bash
 python -m pip install -r requirements.txt -r requirements-build.txt
-python scripts/download_models.py
+python scripts/download_models.py --model all
+```
+
+使用 PyInstaller 构建：
+
+```bash
 python -m PyInstaller --noconfirm --clean lavocado.spec
 ```
 
-产物写入 `dist/` 目录。PyInstaller 应用必须在各自的目标操作系统上构建。
-在 Windows 或 macOS 下载全部四个模型后,可运行 `python main.py --self-check`。
-打包后的可执行文件也支持相同参数。
-自检不打开仪表盘、不截屏、不访问模型网站,会检查本地资源、设置、SQLite、
-平台适配器和四个必需模型的离线加载;失败时返回非零退出码。**Package** 工作流
-在上传两种产物前均执行冻结包自检。
+生成的应用位于：
 
-**Package** 工作流可以构建可下载的 Windows 和 macOS 产物,无需同时拥有两台本地机器。打开仓库的 **Actions** 标签页,选择 **Package**,点击 **Run workflow**,待所有矩阵任务完成后即可下载 Windows 与 macOS 两个产物。以 `v` 开头的标签也会自动触发该工作流。
+```text
+dist/
+```
 
-打包后的应用在不带参数启动时会打开仪表盘。目前 Windows 和 macOS 产物尚未签名,因此开发机器可能会显示常见的"未知发布者"警告。在配置代码签名之前,请勿将它们作为可信版本分发。
+Windows 和 macOS 版本需要分别在对应操作系统上构建。
 
-## 运行测试
+## 测试
+
+运行测试：
 
 ```bash
 python -m unittest discover -s tests -v
