@@ -23,7 +23,6 @@ from tests.test_service import (
     FakeCapturer,
     FakeChangeScheduler,
     FakeDetector,
-    FakeIntervention,
     FakeOverlay,
     FakePlatform,
     FakeRecorder,
@@ -108,7 +107,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             change_scheduler=scheduler,
             context_store=store,
             context_policy=policy(
@@ -158,7 +156,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=FakeOverlay(),
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_policy=policy(application_rules=[
                 ApplicationRule("chrome.exe", ContextPolicyAction.FORCE_BLOCK)
             ]),
@@ -180,7 +177,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=FakeOverlay(),
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_policy=policy(
                 application_rules=[ApplicationRule(
                     "chrome.exe", ContextPolicyAction.FULL_BYPASS
@@ -212,7 +208,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=overlay,
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_store=store,
             context_policy=policy(
                 application_rules=[ApplicationRule("chrome.exe", ContextPolicyAction.FULL_BYPASS)],
@@ -250,7 +245,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_store=store_for(application()),
             context_policy=policy(application_rules=[
                 ApplicationRule("chrome.exe", ContextPolicyAction.FORCE_BLOCK)
@@ -271,7 +265,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=FakeOverlay(),
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_store=store_for(application(), "blocked.example"),
             context_policy=policy(website_rules=[WebsiteRule(
                 "https://blocked.example/private?q=secret",
@@ -298,7 +291,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=overlay,
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             change_scheduler=scheduler,
             context_store=store,
             context_policy=policy(website_rules=[WebsiteRule(
@@ -340,7 +332,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=store_for(application()),
             context_policy=policy(application_rules=[
                 ApplicationRule("chrome.exe", ContextPolicyAction.FULL_BYPASS)
@@ -364,7 +355,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=overlay,
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_store=store_for(application()),
             context_policy=policy(application_rules=[
                 ApplicationRule("chrome.exe", ContextPolicyAction.FULL_BYPASS)
@@ -420,14 +410,12 @@ class ServiceContextPolicyTests(unittest.TestCase):
                 })
                 overlay = FakeOverlay()
                 recorder = FakeRecorder()
-                intervention = FakeIntervention()
                 service = LavocadoService(
                     FakePlatform(),
                     capturer=capturer,
                     detector=detector,
                     overlay=overlay,
                     recorder=recorder,
-                    intervention=intervention,
                     context_store=store,
                     context_policy=policy(),
                     verifier_factory=lambda: TemporalVerifier(3, 2),
@@ -449,7 +437,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
                 self.assertEqual(recorder.events[0].label, "FEMALE_BREAST_EXPOSED")
                 self.assertEqual(recorder.events[0].monitor_index, 1)
                 self.assertEqual(recorder.shown_event_ids, [1])
-                self.assertEqual(intervention.generate_count, 1)
                 self.assertEqual(
                     service.diagnostics.snapshot().to_dict()["foreground_context"],
                     {**availability, **expected_foreground},
@@ -464,7 +451,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=overlay,
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=store_for(application(), "medical.example"),
             context_policy=policy(website_rules=[WebsiteRule(
                 "medical.example", ContextPolicyAction.FULL_BYPASS,
@@ -487,7 +473,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=store_for(application(), "blocked.example"),
             context_policy=policy(website_rules=[WebsiteRule(
                 "blocked.example", ContextPolicyAction.FORCE_BLOCK,
@@ -508,7 +493,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: [False]}),
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_worker=worker,
             sleeper=lambda _: service.stop(),
         )

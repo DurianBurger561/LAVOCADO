@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import subprocess
 import sys
 import time
-from concurrent.futures import Future
 from pathlib import Path
 from queue import Empty, SimpleQueue
 from threading import Event, Thread
 from typing import TextIO
 
-from app.intervention.intervene import LOCAL_FALLBACK_MESSAGE
 from app.platforms.capture import MonitorInfo
 from app.ui.overlay.monitor_payload import encode_monitor
 
@@ -41,7 +38,6 @@ def overlay_process_command(monitor: MonitorInfo) -> list[str]:
 
 def show_overlay_process(
     monitor: MonitorInfo,
-    support_message: Future[str] | None,
     *,
     process_factory=subprocess.Popen,
     sleeper=time.sleep,
@@ -50,7 +46,7 @@ def show_overlay_process(
     startup_timeout: float = STARTUP_TIMEOUT_SECONDS,
     stop_event: Event | None = None,
 ) -> None:
-    """Wait for the isolated overlay and forward its message when available."""
+    """Wait for the isolated overlay while monitoring its heartbeat."""
 
     process = process_factory(
         overlay_process_command(monitor),
@@ -61,7 +57,6 @@ def show_overlay_process(
         encoding="utf-8",
         bufsize=1,
     )
-    message_sent = False
     output_stream = getattr(process, "stdout", None)
     heartbeat_events: SimpleQueue[bool] = SimpleQueue()
     heartbeat_reader: Thread | None = None
@@ -92,11 +87,6 @@ def show_overlay_process(
             if not received_heartbeat and now - started_at > startup_timeout:
                 LOGGER.error("macOS overlay did not start responding; closing it")
                 break
-            if not message_sent:
-                message = _ready_message(support_message)
-                if message is not None:
-                    _send_message(process.stdin, message)
-                    message_sent = True
             sleeper(POLL_INTERVAL_SECONDS)
     finally:
         _close_stdin(process.stdin)
@@ -123,63 +113,31 @@ def run_overlay_process_child(
 
     from app.ui.overlay.tk_backend import TkOverlayBackend
 
-    support_message: Future[str] = Future()
     parent_closed = Event()
     Thread(
-        target=_read_parent_messages,
-        args=(input_stream, support_message, parent_closed),
+        target=_watch_parent_process,
+        args=(input_stream, parent_closed),
         daemon=True,
         name="lavocado-overlay-parent-watch",
     ).start()
     overlay = TkOverlayBackend("Darwin")
     overlay.show(
         monitor,
-        support_message=support_message,
         parent_closed_event=parent_closed,
         heartbeat_callback=_write_heartbeat,
     )
 
 
-def _read_parent_messages(
-    input_stream: TextIO,
-    support_message: Future[str],
-    parent_closed: Event,
-) -> None:
-    """Receive one message, then watch the pipe for parent-process shutdown."""
+def _watch_parent_process(input_stream: TextIO, parent_closed: Event) -> None:
+    """Detect parent shutdown via EOF on the inherited stdin pipe."""
 
     try:
-        line = input_stream.readline()
-        message = LOCAL_FALLBACK_MESSAGE
-        if line:
-            try:
-                payload = json.loads(line)
-                received = payload.get("message") if isinstance(payload, dict) else None
-                if isinstance(received, str) and received.strip():
-                    message = received
-            except (json.JSONDecodeError, TypeError):
-                LOGGER.warning("Ignoring an invalid overlay message")
-        if not support_message.done():
-            support_message.set_result(message)
-
         while input_stream.readline():
             pass
     except (OSError, ValueError):
-        if not support_message.done():
-            support_message.set_result(LOCAL_FALLBACK_MESSAGE)
+        pass
     finally:
         parent_closed.set()
-
-
-def _ready_message(support_message: Future[str] | None) -> str | None:
-    if support_message is None:
-        return LOCAL_FALLBACK_MESSAGE
-    if not support_message.done():
-        return None
-    try:
-        return support_message.result() or LOCAL_FALLBACK_MESSAGE
-    except Exception:
-        LOGGER.exception("Could not prepare the overlay support message")
-        return LOCAL_FALLBACK_MESSAGE
 
 
 def _read_heartbeat_stream(
@@ -210,16 +168,6 @@ def _write_heartbeat() -> None:
     try:
         os.write(1, f"{HEARTBEAT_TOKEN}\n".encode("ascii"))
     except OSError:
-        return
-
-
-def _send_message(input_stream: TextIO | None, message: str) -> None:
-    if input_stream is None:
-        return
-    try:
-        input_stream.write(json.dumps({"message": message}, ensure_ascii=True) + "\n")
-        input_stream.flush()
-    except (BrokenPipeError, OSError, ValueError):
         return
 
 

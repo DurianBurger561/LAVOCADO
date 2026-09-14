@@ -20,7 +20,6 @@ from app.context.policy.resolver import ContextPolicyService, allows_vision
 from app.context.store import ForegroundContextStore
 from app.context.worker import ForegroundContextWorker
 from app.diagnostics import DiagnosticsStore
-from app.intervention.intervene import InterventionGenerator
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platforms import PlatformAdapter
 from app.protection_runtime import ProtectionRuntime
@@ -63,7 +62,6 @@ class LavocadoService:
         detector: PrimaryDetector | None = None,
         overlay: OverlayBackend | None = None,
         recorder: EventRecorder | None = None,
-        intervention: InterventionGenerator | None = None,
         decision_engine: DecisionEngine | None = None,
         diagnostics: DiagnosticsStore | None = None,
         change_scheduler: ChangeScheduler | None = None,
@@ -191,9 +189,6 @@ class LavocadoService:
             if recorder is not None
             else EventRecorder(platform_adapter.default_data_dir() / "events.db")
         )
-        self.intervention = (
-            intervention if intervention is not None else InterventionGenerator()
-        )
         self._verifier_factory = (
             verifier_factory
             if verifier_factory is not None
@@ -281,10 +276,7 @@ class LavocadoService:
                         try:
                             self.capturer.close()
                         finally:
-                            try:
-                                self.recorder.close()
-                            finally:
-                                self.intervention.close()
+                            self.recorder.close()
             finally:
                 self._transition(State.STOPPED)
                 self._running = False
@@ -300,10 +292,7 @@ class LavocadoService:
         monitor = self.capturer.monitor_for_index()
         self._transition(State.BLOCKED)
         try:
-            self.overlay.show(
-                monitor,
-                support_message=self._generate_intervention(),
-            )
+            self.overlay.show(monitor)
         finally:
             self._transition(State.BYPASSED if self._bypass_active else State.MONITORING)
 
@@ -493,23 +482,12 @@ class LavocadoService:
             label=label,
             confidence=confidence,
         )
-        support_message = self._generate_intervention()
         monitor = self.capturer.monitor_for_index(monitor_index)
-        self.overlay.show(
-            monitor,
-            support_message=support_message,
-        )
+        self.overlay.show(monitor)
         self._mark_intervention_shown_after_record(record_future)
         self.runtime.reset_vision()
         self._cooldown_until = self._clock() + self.cooldown_seconds
         self._transition(State.COOLDOWN)
-
-    def _generate_intervention(self) -> Future[str] | None:
-        try:
-            return self.intervention.generate_async()
-        except Exception:
-            LOGGER.exception("Could not queue supportive intervention")
-            return None
 
     def _mark_intervention_shown_after_record(
         self,

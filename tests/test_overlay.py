@@ -1,7 +1,6 @@
 """Tests for safe overlay dismissal."""
 
 import unittest
-from concurrent.futures import Future
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -92,14 +91,13 @@ class OverlayTests(unittest.TestCase):
 
     def test_macos_overlay_uses_an_isolated_process(self) -> None:
         overlay = MacOSProcessOverlayBackend()
-        message: Future[str] = Future()
         monitor = MonitorInfo("secondary", 2, -1200, 0, 1200, 900)
 
         with patch("app.ui.overlay.macos_process_backend.show_overlay_process") as show_process:
-            overlay.show(monitor, support_message=message)
+            overlay.show(monitor)
 
         show_process.assert_called_once_with(
-            monitor, message, stop_event=overlay._stop_event
+            monitor, stop_event=overlay._stop_event
         )
         self.assertFalse(overlay.is_visible)
 
@@ -251,23 +249,6 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(button.options["text"], "Continue")
         self.assertEqual(button.options["state"], "normal")
         self.assertEqual(button.focus_count, 1)
-
-    def test_ready_stage_displays_completed_support_message(self) -> None:
-        overlay = TkOverlayBackend("Windows")
-        root = FakeRoot()
-        body = FakeWidget()
-        message: Future[str] = Future()
-        message.set_result("Take a short walk away from the screen.")
-        overlay._root = root
-        overlay._support_message = message
-
-        overlay._show_support_message(body)
-
-        self.assertEqual(
-            body.options["text"],
-            "Take a short walk away from the screen.",
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

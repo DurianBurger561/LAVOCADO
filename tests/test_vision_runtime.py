@@ -13,7 +13,6 @@ from app.vision.visual_decision import VisualDecisionEngine
 from tests.test_service import (
     FakeCapturer,
     FakeDetector,
-    FakeIntervention,
     FakeOverlay,
     FakePlatform,
     FakeRecorder,
@@ -58,7 +57,6 @@ class VisionRuntimeTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=ForegroundContextStore(clock=lambda: 0.0),
         )
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Future
 from threading import Event
 
 from app.platforms.capture import MonitorInfo
@@ -23,7 +22,6 @@ class MacOSProcessOverlayBackend:
     def show(
         self,
         monitor: MonitorInfo,
-        support_message: Future[str] | None = None,
     ) -> None:
         if self._visible:
             return
@@ -32,7 +30,6 @@ class MacOSProcessOverlayBackend:
         try:
             show_overlay_process(
                 monitor,
-                support_message,
                 stop_event=self._stop_event,
             )
         finally:

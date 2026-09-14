@@ -5,7 +5,6 @@ numpy
 opencv-python-headless>=4.10,<6
 Pillow
 nudenet>=3.4.2,<4
-openai>=2,<3
 pywebview>=6.2,<7
 pyobjc-framework-CoreMedia>=10,<13; sys_platform == "darwin"
 pyobjc-framework-ApplicationServices>=10,<13; sys_platform == "darwin"
@@ -14,7 +13,7 @@ pyobjc-framework-libdispatch>=10,<13; sys_platform == "darwin"
 pyobjc-framework-Quartz>=10,<13; sys_platform == "darwin"
 pyobjc-framework-ScreenCaptureKit>=10,<13; sys_platform == "darwin"
 
-# All four bundled models must run in both User and Developer builds.
+# All four bundled models must run in release builds.
 # Viddexa Nano and Mini context models.
 huggingface_hub>=0.34,<1
 transformers>=4.56.1,<5

@@ -52,6 +52,17 @@ class ArchitectureContractTests(unittest.TestCase):
     def test_no_project_package_shadows_pypi_packaging(self) -> None:
         self.assertFalse((ROOT / "packaging").exists())
 
+    def test_intervention_has_no_llm_client(self) -> None:
+        self.assertFalse((APP / "intervention" / "intervene.py").exists())
+        self.assertNotIn("openai", (ROOT / "requirements.txt").read_text(encoding="utf-8").lower())
+        self.assertNotIn("OPENAI_API_KEY", (APP / "config.py").read_text(encoding="utf-8"))
+        imports = {
+            module
+            for path in _files(APP)
+            for module in _imports(_tree(path))
+        }
+        self.assertFalse(any(_under(module, "openai") for module in imports))
+
     def test_runtime_settings_do_not_duplicate_config_defaults(self) -> None:
         from app import config
 

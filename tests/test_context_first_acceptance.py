@@ -31,7 +31,6 @@ from tests.test_decision import (
 from tests.test_service import (
     FakeCapturer,
     FakeDetector,
-    FakeIntervention,
     FakeOverlay,
     FakePlatform,
     FakeRecorder,
@@ -60,7 +59,6 @@ class ContextFirstAcceptanceTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=store_for(application(), "blocked.example"),
             context_policy=policy(website_rules=[WebsiteRule(
                 "blocked.example", ContextPolicyAction.FORCE_BLOCK,
@@ -83,7 +81,6 @@ class ContextFirstAcceptanceTests(unittest.TestCase):
             detector=detector,
             overlay=overlay,
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=store_for(application(), "medical.example"),
             context_policy=policy(website_rules=[WebsiteRule(
                 "medical.example", ContextPolicyAction.FULL_BYPASS,
@@ -105,7 +102,6 @@ class ContextFirstAcceptanceTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=store,
             context_policy=policy(),
         )
@@ -171,7 +167,6 @@ class ContextFirstAcceptanceTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=ForegroundContextStore(clock=lambda: 0.0),
         )
 

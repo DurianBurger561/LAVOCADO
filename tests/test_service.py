@@ -179,17 +179,14 @@ class FakeOverlay:
     def __init__(self) -> None:
         self.shown_on: list[int] = []
         self.shown_monitors: list[MonitorInfo] = []
-        self.support_messages: list[Future[str] | None] = []
         self.closed = False
 
     def show(
         self,
         monitor: MonitorInfo,
-        support_message: Future[str] | None = None,
     ) -> None:
         self.shown_on.append(monitor.index)
         self.shown_monitors.append(monitor)
-        self.support_messages.append(support_message)
 
     def close(self) -> None:
         self.closed = True
@@ -228,21 +225,6 @@ class PendingRecorder(FakeRecorder):
     def record_async(self, event: ProtectionEvent) -> Future[int]:
         self.events.append(event)
         return self.future
-
-
-class FakeIntervention:
-    def __init__(self) -> None:
-        self.generate_count = 0
-        self.closed = False
-
-    def generate_async(self) -> Future[str]:
-        self.generate_count += 1
-        future: Future[str] = Future()
-        future.set_result("Support message")
-        return future
-
-    def close(self) -> None:
-        self.closed = True
 
 
 def _scan_plan() -> ScanPlan:
@@ -421,7 +403,6 @@ class ServiceTests(unittest.TestCase):
                         capturer=FakeCapturer(),
                         overlay=FakeOverlay(),
                         recorder=FakeRecorder(),
-                        intervention=FakeIntervention(),
                         decision_engine=FakeDecisionEngine(),
                         diagnostics=DiagnosticsStore(
                             model_variant="test",
@@ -465,7 +446,6 @@ class ServiceTests(unittest.TestCase):
                     capturer=FakeCapturer(),
                     overlay=FakeOverlay(),
                     recorder=FakeRecorder(),
-                    intervention=FakeIntervention(),
                     diagnostics=DiagnosticsStore(
                         model_variant="test",
                         inference_resolution=640,
@@ -511,7 +491,6 @@ class ServiceTests(unittest.TestCase):
                     capturer=FakeCapturer(),
                     overlay=FakeOverlay(),
                     recorder=FakeRecorder(),
-                    intervention=FakeIntervention(),
                     diagnostics=DiagnosticsStore(
                         model_variant="test",
                         inference_resolution=640,
@@ -532,7 +511,6 @@ class ServiceTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             change_scheduler=scheduler,
         )
 
@@ -552,7 +530,6 @@ class ServiceTests(unittest.TestCase):
             detector=FakeDetector({1: [True, True, False]}),
             overlay=overlay,
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             verifier_factory=lambda: TemporalVerifier(3, 2),
         )
 
@@ -579,7 +556,6 @@ class ServiceTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             change_scheduler=FakeChangeScheduler([True, True]),
         )
 
@@ -596,7 +572,6 @@ class ServiceTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             change_scheduler=FakeChangeScheduler([True, True]),
         )
 
@@ -623,7 +598,6 @@ class ServiceTests(unittest.TestCase):
             detector=FakeDetector({1: [True]}),
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             diagnostics=diagnostics,
             scan_clock=lambda: next(scan_times),
         )
@@ -654,7 +628,6 @@ class ServiceTests(unittest.TestCase):
             detector=FakeDetector({1: [True, True]}),
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             diagnostics=diagnostics,
             verifier_factory=lambda: TemporalVerifier(2, 2),
             scan_clock=lambda: next(scan_times),
@@ -676,7 +649,6 @@ class ServiceTests(unittest.TestCase):
             detector=FakeDetector({1: [False]}),
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             decision_engine=decision_engine,
         )
 
@@ -696,7 +668,6 @@ class ServiceTests(unittest.TestCase):
             detector=FakeDetector({1: [False, False, False]}),
             overlay=overlay,
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             decision_engine=SequenceDecisionEngine([True, False, True]),
             verifier_factory=lambda: TemporalVerifier(3, 2),
         )
@@ -714,14 +685,12 @@ class ServiceTests(unittest.TestCase):
         capturer = FakeCapturer()
         overlay = FakeOverlay()
         recorder = FakeRecorder()
-        intervention = FakeIntervention()
         service = LavocadoService(
             FakePlatform(),
             capturer=capturer,
             detector=FakeDetector({1: [False, True, True]}),
             overlay=overlay,
             recorder=recorder,
-            intervention=intervention,
             verifier_factory=lambda: TemporalVerifier(3, 2),
             cooldown_seconds=8.0,
             clock=lambda: current_time[0],
@@ -740,8 +709,6 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(recorder.events[0].label, "FEMALE_BREAST_EXPOSED")
         self.assertEqual(recorder.events[0].monitor_index, 1)
         self.assertEqual(recorder.shown_event_ids, [1])
-        self.assertEqual(intervention.generate_count, 1)
-        self.assertEqual(overlay.support_messages[0].result(), "Support message")
 
     def test_intervention_does_not_wait_for_event_recording(self) -> None:
         current_time = [0.0]
@@ -752,7 +719,6 @@ class ServiceTests(unittest.TestCase):
             detector=FakeDetector({1: [True, True]}),
             overlay=FakeOverlay(),
             recorder=recorder,
-            intervention=FakeIntervention(),
             verifier_factory=lambda: TemporalVerifier(2, 2),
             cooldown_seconds=8.0,
             clock=lambda: current_time[0],
@@ -777,7 +743,6 @@ class ServiceTests(unittest.TestCase):
             detector=FakeDetector({1: [False, True, True, False]}),
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             verifier_factory=lambda: TemporalVerifier(3, 2),
             cooldown_seconds=8.0,
             clock=lambda: current_time[0],
@@ -812,7 +777,6 @@ class ServiceTests(unittest.TestCase):
             ),
             overlay=overlay,
             recorder=recorder,
-            intervention=FakeIntervention(),
             verifier_factory=lambda: TemporalVerifier(3, 2),
         )
 
@@ -835,14 +799,12 @@ class ServiceTests(unittest.TestCase):
         capturer = FakeCapturer()
         overlay = FakeOverlay()
         recorder = FakeRecorder()
-        intervention = FakeIntervention()
         service = LavocadoService(
             FakePlatform(),
             capturer=capturer,
             detector=FakeDetector({1: [False]}),
             overlay=overlay,
             recorder=recorder,
-            intervention=intervention,
             sleeper=lambda _: service.stop(),
         )
 
@@ -851,7 +813,6 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(capturer.closed)
         self.assertTrue(overlay.closed)
         self.assertTrue(recorder.closed)
-        self.assertTrue(intervention.closed)
         self.assertEqual(service.state, State.STOPPED)
 
     def test_manual_intervention_runs_on_service_loop_without_recording(self) -> None:
@@ -865,7 +826,6 @@ class ServiceTests(unittest.TestCase):
             detector=FakeDetector({1: [False]}),
             overlay=overlay,
             recorder=recorder,
-            intervention=FakeIntervention(),
             sleeper=lambda _: service.stop(),
         )
 

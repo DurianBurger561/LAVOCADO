@@ -2,6 +2,7 @@
 
 import unittest
 
+from app import config
 from app.intervention.sequence import (
     InterventionSequence,
     InterventionStep,
@@ -23,6 +24,7 @@ class InterventionSequenceTests(unittest.TestCase):
         self.assertTrue(sequence.advance())
         self.assertEqual(sequence.current.name, "ready")
         self.assertTrue(sequence.can_dismiss)
+        self.assertEqual(sequence.current.body, config.OVERLAY_READY_BODY)
 
         self.assertFalse(sequence.advance())
         self.assertEqual(sequence.current.name, "ready")

@@ -1,24 +1,21 @@
 """Tests for the isolated macOS overlay process protocol."""
 
 import io
-import json
 import os
 import sys
 import unittest
-from concurrent.futures import Future
 from pathlib import Path
 from queue import SimpleQueue
 from threading import Event
 from unittest.mock import patch
 
-from app.intervention.intervene import LOCAL_FALLBACK_MESSAGE
 from app.platforms.capture import MonitorInfo
 from app.ui.overlay.monitor_payload import encode_monitor
 from app.ui.overlay.process import (
     HEARTBEAT_TOKEN,
     _consume_heartbeat,
     _read_heartbeat_stream,
-    _read_parent_messages,
+    _watch_parent_process,
     overlay_process_command,
     run_overlay_process_child,
     show_overlay_process,
@@ -83,20 +80,16 @@ class OverlayProcessTests(unittest.TestCase):
              "--overlay-monitor", encode_monitor(self.monitor)],
         )
 
-    def test_support_message_is_forwarded_to_child(self) -> None:
+    def test_parent_does_not_send_message_to_child(self) -> None:
         process = FakeProcess()
-        message: Future[str] = Future()
-        message.set_result("Take one breath, then close that tab.")
 
         show_overlay_process(
             self.monitor,
-            message,
             process_factory=lambda *_args, **_kwargs: process,
             sleeper=lambda _delay: None,
         )
 
-        payload = json.loads(process.stdin.captured)
-        self.assertEqual(payload["message"], "Take one breath, then close that tab.")
+        self.assertEqual(process.stdin.captured, "")
         self.assertTrue(process.stdin.closed)
 
     def test_child_shows_passed_monitor_without_rediscovery(self) -> None:
@@ -110,26 +103,18 @@ class OverlayProcessTests(unittest.TestCase):
         shown = backend_class.return_value.show.call_args
         self.assertEqual(shown.args[0], self.monitor)
 
-    def test_parent_pipe_closure_is_detected_after_message_delivery(self) -> None:
-        message: Future[str] = Future()
+    def test_parent_pipe_closure_is_detected(self) -> None:
         parent_closed = Event()
 
-        _read_parent_messages(
-            io.StringIO('{"message":"A small next step is enough."}\n'),
-            message,
-            parent_closed,
-        )
+        _watch_parent_process(io.StringIO(""), parent_closed)
 
-        self.assertEqual(message.result(), "A small next step is enough.")
         self.assertTrue(parent_closed.is_set())
 
-    def test_missing_parent_message_uses_local_fallback(self) -> None:
-        message: Future[str] = Future()
+    def test_parent_pipe_reads_until_eof(self) -> None:
         parent_closed = Event()
 
-        _read_parent_messages(io.StringIO(""), message, parent_closed)
+        _watch_parent_process(io.StringIO("unused line\n"), parent_closed)
 
-        self.assertEqual(message.result(), LOCAL_FALLBACK_MESSAGE)
         self.assertTrue(parent_closed.is_set())
 
     def test_interrupted_wait_terminates_the_overlay_child(self) -> None:
@@ -138,7 +123,6 @@ class OverlayProcessTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             show_overlay_process(
                 self.monitor,
-                None,
                 process_factory=lambda *_args, **_kwargs: process,
                 sleeper=lambda _delay: (_ for _ in ()).throw(KeyboardInterrupt()),
             )
@@ -152,7 +136,6 @@ class OverlayProcessTests(unittest.TestCase):
 
         show_overlay_process(
             self.monitor,
-            None,
             process_factory=lambda *_args, **_kwargs: process,
             sleeper=lambda delay: now.__setitem__(0, now[0] + delay),
             clock=lambda: now[0],
@@ -168,7 +151,6 @@ class OverlayProcessTests(unittest.TestCase):
 
         show_overlay_process(
             self.monitor,
-            None,
             process_factory=lambda *_args, **_kwargs: process,
             sleeper=lambda _delay: None,
             stop_event=stop_event,

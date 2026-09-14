@@ -14,7 +14,7 @@ LAVOCADO does not determine viewing intent. Trusted applications or websites
 can be whitelisted to bypass visual protection for medical, educational,
 artistic, news, or other user-approved purposes.
 
-Screenshots are processed locally and are not stored or sent to an LLM.
+Screenshots are processed locally and are not stored or transmitted.
 The primary whole-screen detector uses NudeNet 640m at 640-pixel inference.
 The full-resolution capture remains only in memory for later local rechecks.
 
@@ -111,26 +111,10 @@ The durable product rules are in
 On macOS, foreground-application details require Accessibility permission for
 the terminal or packaged application.
 
-## Optional AI support message
+## Local intervention
 
-LAVOCADO works without an API key and uses a built-in local message by default.
-To enable a short AI-generated message in the final intervention stage, set an
-OpenAI API key before starting the application:
-
-```powershell
-# Windows PowerShell
-$env:OPENAI_API_KEY="your-api-key"
-```
-
-```bash
-# macOS
-export OPENAI_API_KEY="your-api-key"
-```
-
-Only a fixed request for a supportive message is sent. Screenshots, detector
-labels, confidence values, monitor numbers, URLs, and window titles are never
-included. API response storage is disabled for this request. Set
-`LAVOCADO_OPENAI_MODEL` to override the default model.
+The pause, breathing, and ready stages use built-in local text. No API key or
+network request is needed to display the intervention.
 
 ## Supported platforms
 
@@ -223,7 +207,7 @@ and coarse foreground-policy state. Capture health reports the preferred and
 active backend, fallback state and reason, frame age, and detected display
 count. The snapshot uses an explicit safe schema and never contains image
 pixels, screenshots, crops, URLs, window titles, application identifiers,
-hostnames, or image paths. It is not written to SQLite or sent to OpenAI.
+hostnames, or image paths. It is not written to SQLite or transmitted.
 
 Every fresh frame also passes through a per-monitor change scheduler before
 NudeNet inference. Native changed-region metadata is preferred when the active
