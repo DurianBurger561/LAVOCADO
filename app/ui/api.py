@@ -16,6 +16,7 @@ from app.settings.storage import (
     save_vision_settings,
 )
 from app.ui.controller import ProtectionStatus
+from app.ui.language import SUPPORTED_LANGUAGES, load_ui_language, save_ui_language
 from app.ui.rules import RuleConflict, RuleEditor
 from app.vision.model_lifecycle import (
     inspect_models,
@@ -38,7 +39,20 @@ class DashboardAPI:
         self.rule_editor = None if rule_store is None else RuleEditor(rule_store)
         self.app_picker = app_picker
         self._data_dir = None if data_dir is None else Path(data_dir)
+        self._ui_language = load_ui_language(self._data_dir)
         self._rule_lock = RLock()
+
+    def get_ui_language(self) -> dict[str, Any]:
+        return {"ok": True, "language": self._ui_language}
+
+    def set_ui_language(self, language: str) -> dict[str, Any]:
+        if not isinstance(language, str) or language not in SUPPORTED_LANGUAGES:
+            return {"ok": False, "message": "Unsupported dashboard language."}
+        try:
+            self._ui_language = save_ui_language(self._data_dir, language)
+        except OSError as error:
+            return self._error_result("Could not save dashboard language", error)
+        return {"ok": True, "language": self._ui_language}
 
     def start_protection(self) -> dict[str, Any]:
         try:

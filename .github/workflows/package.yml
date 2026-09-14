@@ -80,7 +80,7 @@ jobs:
       - name: Verify bundled dashboard resources
         run: >-
           python -c "from pathlib import Path;
-          expected={'index.html','styles.css','app.js'};
+          expected={'index.html','styles.css','i18n.js','app.js'};
           found={path.name for path in Path('dist').rglob('*') if path.parent.name == 'web'};
           missing=expected-found;
           assert not missing, f'Missing dashboard resources: {sorted(missing)}'"

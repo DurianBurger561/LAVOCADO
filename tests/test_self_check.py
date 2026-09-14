@@ -46,7 +46,7 @@ class SelfCheckTests(unittest.TestCase):
             root = Path(temporary)
             web = root / "app" / "ui" / "web"
             web.mkdir(parents=True)
-            for name in ("index.html", "styles.css", "app.js"):
+            for name in ("index.html", "styles.css", "i18n.js", "app.js"):
                 (web / name).touch()
             report = perform_self_check(root=root)
         self.assertTrue(report["Dashboard assets"])

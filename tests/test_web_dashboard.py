@@ -123,6 +123,7 @@ class WebDashboardTests(unittest.TestCase):
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
 
         self.assertIn('href="styles.css"', html)
+        self.assertIn('src="i18n.js"', html)
         self.assertIn('src="app.js"', html)
         self.assertIn('id="app-nav"', html)
         self.assertIn('data-view="home"', html)
@@ -139,6 +140,8 @@ class WebDashboardTests(unittest.TestCase):
             "add_rule",
             "remove_rule",
             "get_vision_settings",
+            "get_ui_language",
+            "set_ui_language",
         ):
             self.assertIn(method, script)
         self.assertNotIn("innerHTML", script)
@@ -182,10 +185,9 @@ class WebDashboardTests(unittest.TestCase):
             self.assertIn(f'data-rule-group="{group}"', html)
             self.assertIn(f'"{group}"', script)
         self.assertIn('id="rule-confirmation"', html)
-        self.assertIn("Visual protection will be completely disabled", script)
-        self.assertIn("You are responsible for content", script)
-        self.assertIn("medical, educational, artistic, news", script)
-        self.assertIn("白名单中的应用和网站将完全跳过", script)
+        self.assertIn("Whitelisted applications bypass visual protection.", script)
+        self.assertIn("Whitelisted websites bypass visual protection.", script)
+        self.assertIn("You are responsible for the content", script)
         self.assertIn("LAVOCADO does not determine viewing intent", html)
         self.assertIn('id="vision-settings-heading"', html)
         self.assertIn("VISUAL DETECTION", html)
@@ -254,7 +256,6 @@ class WebDashboardTests(unittest.TestCase):
 
         for field in (
             "vision-primary-detector",
-            "vision-yolo",
             "vision-context-model",
             "vision-detection-mode",
             "vision-thresholds",
@@ -267,8 +268,8 @@ class WebDashboardTests(unittest.TestCase):
                 self.assertIn(f'"{field}"', script)
         self.assertIn('"get_vision_settings"', script)
         self.assertIn("decision-classification", script)
-        self.assertIn('id="diag-yolo"', html)
-        self.assertIn('"diag-yolo"', script)
+        self.assertNotIn('id="diag-yolo"', html)
+        self.assertNotIn('id="vision-yolo"', html)
         for field in (
             "scan-mode",
             "scan-total-ms",
@@ -296,7 +297,7 @@ class WebDashboardTests(unittest.TestCase):
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
 
         for label in (
-            "Native · ${captureBackendName(backend)}",
+            "Native · {backend}",
             "MSS · Fallback",
             "MSS · Active",
             "Windows DXGI",

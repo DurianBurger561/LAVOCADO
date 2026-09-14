@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LAVOCADO</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="i18n.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -85,10 +86,6 @@
               <div>
                 <dt>Tile-rank model</dt>
                 <dd id="diag-context-model">Not started</dd>
-              </div>
-              <div>
-                <dt>YOLO11</dt>
-                <dd id="diag-yolo">Disabled</dd>
               </div>
               <div>
                 <dt>Monitor</dt>
@@ -305,6 +302,17 @@
             </ul>
           </aside>
         </div>
+
+        <section class="panel language-settings" aria-labelledby="language-heading" hidden>
+          <p class="section-label">DISPLAY</p>
+          <h2 id="language-heading">Language</h2>
+          <label for="language-select">Dashboard language</label>
+          <select id="language-select" name="language" aria-label="Dashboard language">
+            <option value="en">English</option>
+            <option value="zh">Chinese</option>
+          </select>
+          <p id="language-message" class="muted" role="status" aria-live="polite"></p>
+        </section>
 
         <section class="panel rules" aria-labelledby="rules-heading" hidden>
           <div class="section-heading">
@@ -597,10 +605,6 @@
             <div>
               <dt>Primary detector</dt>
               <dd id="vision-primary-detector">NudeNet</dd>
-            </div>
-            <div>
-              <dt>YOLO11</dt>
-              <dd id="vision-yolo">Off</dd>
             </div>
             <div>
               <dt>Region ranking model</dt>

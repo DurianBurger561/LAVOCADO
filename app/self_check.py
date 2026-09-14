@@ -65,7 +65,7 @@ def _runtime_available() -> bool:
 
 def _dashboard_available(root: Path) -> bool:
     web = root / "app" / "ui" / "web"
-    return all((web / name).is_file() for name in ("index.html", "styles.css", "app.js"))
+    return all((web / name).is_file() for name in ("index.html", "styles.css", "i18n.js", "app.js"))
 
 
 def _settings_available() -> bool:
