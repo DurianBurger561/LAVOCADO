@@ -42,9 +42,6 @@ input is reduced to a hostname before saving; paths and query strings are never
 saved as rules. Edit these rules in the dashboard while protection is stopped.
 Protection loads them at startup.
 
-See the [context privacy audit](docs/context_privacy_audit.md) for the
-discovery, diagnostics, and history boundaries.
-
 ## Protection rules
 
 The dashboard edits four local rule groups while protection is stopped.
@@ -104,9 +101,6 @@ Live diagnostics show only coarse availability: whether an application was
 identified, whether it is a browser, whether the website is known, and the
 resulting rule actions. They do not include the application identifier,
 hostname, window title, or URL.
-
-The durable product rules are in
-[context-first visual protection](docs/context-first-vision.md).
 
 On macOS, foreground-application details require Accessibility permission for
 the terminal or packaged application.
@@ -218,13 +212,7 @@ to disk, added to diagnostics, or uploaded.
 
 Source developers can explicitly test `Auto`, native-only, and MSS-only capture
 paths. This override is environment-gated, is disabled in packaged user builds,
-and is not exposed by the dashboard. See the
-[developer capture override guide](docs/developer-capture-override.md) for the
-cross-platform commands and permission-policy notes.
-
-The implementation-to-requirement mapping and remaining physical-platform
-checks are tracked in the
-[native capture acceptance checklist](docs/native-capture-acceptance.md).
+and is not exposed by the dashboard.
 
 When protection is dashboard-owned, a fixed stdin/stdout message protocol
 copies that safe snapshot from the protection child into dashboard memory.
