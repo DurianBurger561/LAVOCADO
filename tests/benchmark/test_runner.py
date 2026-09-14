@@ -6,14 +6,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import numpy as np
-
 from app.vision.decision import DecisionEngine
 from app.vision.pipeline import VisionPipeline
 from developer.benchmark.configs import BenchmarkConfig
 from developer.benchmark.dataset import create_dataset, import_paths, update_sample
 from developer.benchmark.runner import BenchmarkRunner
 from developer.benchmark.session import BenchmarkSession
+
 try:
     from benchmark.helpers import write_png
 except ImportError:
@@ -21,8 +20,8 @@ except ImportError:
 
 
 class FakeDetector:
-    def detect(self, image, *, input_size: int = 640):
-        del image, input_size
+    def detect(self, image, *, input_size: int = 640, frame_sequence: int):
+        del image, input_size, frame_sequence
         return []
 
 

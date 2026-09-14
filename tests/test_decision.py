@@ -8,7 +8,6 @@ import numpy as np
 from app.platforms.capture.models import CaptureFrame
 from app.vision.context.base import ContextResult
 from app.vision.decision import DecisionEngine
-from app.vision.detectors.base import DetectionEvidence
 from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.violation_policy import (
     ViolationEvidence,
@@ -50,18 +49,22 @@ class FakeLocalDetector:
         self._candidates = iter(candidates)
         self.received_means: list[int] = []
 
-    def detect(self, image: np.ndarray, *, input_size: int) -> list[DetectionEvidence]:
+    def detect(
+        self, image: np.ndarray, *, input_size: int, frame_sequence: int
+    ) -> list[ViolationEvidence]:
         del input_size
         self.received_means.append(int(image.mean()))
         candidate = next(self._candidates, False)
         if not candidate:
             return []
         return [
-            DetectionEvidence(
+            ViolationEvidence(
+                evidence_type=ViolationEvidenceType.BREAST_EXPOSURE,
                 label="FEMALE_BREAST_EXPOSED",
                 confidence=0.80,
-                box=(0.0, 0.0, 1.0, 1.0),
+                bbox=(0.0, 0.0, 1.0, 1.0),
                 model="nudenet_640m",
+                frame_sequence=frame_sequence,
             )
         ]
 
@@ -76,14 +79,12 @@ def captured_frame() -> CaptureFrame:
 def result_with_detection(score: float) -> PrimaryDetection:
     return PrimaryDetection.from_primary(
         (
-            DetectionEvidence(
-                "FEMALE_BREAST_EXPOSED",
-                score,
-                (100, 50, 200, 100),
-                "nudenet_640m",
+            ViolationEvidence(
+                ViolationEvidenceType.BREAST_EXPOSURE,
+                "FEMALE_BREAST_EXPOSED", score,
+                (100, 50, 200, 100), "nudenet_640m", 4,
             ),
         ),
-        frame_sequence=4,
     )
 
 
@@ -100,7 +101,7 @@ def rescue_frame() -> CaptureFrame:
 
 
 def empty_result() -> PrimaryDetection:
-    return PrimaryDetection.from_primary((), frame_sequence=1)
+    return PrimaryDetection.from_primary(())
 
 
 class DecisionEngineTests(unittest.TestCase):
@@ -384,7 +385,7 @@ class DecisionEngineTests(unittest.TestCase):
 
         result = DecisionEngine().evaluate(
             PrimaryDetection.from_primary(
-                (), frame_sequence=4, supplementary=tuple(evidence)
+                (), supplementary=tuple(evidence)
             ),
             captured_frame(),
         )
@@ -409,7 +410,7 @@ class DecisionEngineTests(unittest.TestCase):
 
         result = DecisionEngine(None, local_detector).evaluate(
             PrimaryDetection.from_primary(
-                (), frame_sequence=4, supplementary=tuple(evidence)
+                (), supplementary=tuple(evidence)
             ),
             captured_frame(),
         )
@@ -434,7 +435,7 @@ class DecisionEngineTests(unittest.TestCase):
 
         result = DecisionEngine(None, local_detector).evaluate(
             PrimaryDetection.from_primary(
-                (), frame_sequence=4, supplementary=tuple(evidence)
+                (), supplementary=tuple(evidence)
             ),
             captured_frame(),
         )

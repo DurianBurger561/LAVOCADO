@@ -58,9 +58,7 @@ class VisionPipeline:
         focused = scan_plan is not None and scan_plan.mode == "focused"
         if focused:
             decided = self.decision_engine.evaluate(
-                PrimaryDetection.from_primary(
-                    (), frame_sequence=captured_frame.sequence
-                ),
+                PrimaryDetection.from_primary(()),
                 captured_frame,
                 monitor_index=monitor_index,
                 scan_plan=scan_plan,

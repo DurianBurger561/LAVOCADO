@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Protocol
 
 import numpy as np
@@ -13,16 +12,6 @@ from app.vision.violation_policy import (
 )
 
 Box = tuple[float, float, float, float]
-
-
-@dataclass(frozen=True, slots=True)
-class DetectionEvidence:
-    """Normalized detector output. Never includes a product decision."""
-
-    label: str
-    confidence: float
-    box: Box | None
-    model: str
 
 
 class PrimaryDetector(Protocol):
@@ -36,7 +25,8 @@ class PrimaryDetector(Protocol):
         frame: np.ndarray,
         *,
         input_size: int,
-    ) -> list[DetectionEvidence]: ...
+        frame_sequence: int,
+    ) -> list[ViolationEvidence]: ...
 
 
 def box_from_raw(box: object) -> Box | None:
@@ -53,48 +43,34 @@ def box_from_raw(box: object) -> Box | None:
     return (x, y, width, height)
 
 
-def to_detection_evidence(
+def to_violation_evidence(
     detections: list[dict[str, Any]],
     *,
     model: str,
-) -> list[DetectionEvidence]:
+    frame_sequence: int,
+) -> list[ViolationEvidence]:
     """Keep original labels; drop rows that are not visual-violation classes."""
 
-    evidence: list[DetectionEvidence] = []
+    evidence: list[ViolationEvidence] = []
     for detection in detections:
         if not isinstance(detection, dict):
             continue
         label = str(detection.get("class", "")).strip()
-        if evidence_type_for_label(label) is None:
+        evidence_type = evidence_type_for_label(label)
+        if evidence_type is None:
             continue
         try:
             confidence = float(detection.get("score", 0.0))
         except (TypeError, ValueError):
             continue
         evidence.append(
-            DetectionEvidence(
+            ViolationEvidence(
+                evidence_type=evidence_type,
                 label=label,
                 confidence=max(0.0, min(1.0, confidence)),
-                box=box_from_raw(detection.get("box")),
-                model=model,
+                bbox=box_from_raw(detection.get("box")),
+                model=str(detection.get("model") or model),
+                frame_sequence=frame_sequence,
             )
         )
     return evidence
-
-
-def detection_to_violation(
-    item: DetectionEvidence,
-    *,
-    frame_sequence: int = 0,
-) -> ViolationEvidence | None:
-    evidence_type = evidence_type_for_label(item.label)
-    if evidence_type is None:
-        return None
-    return ViolationEvidence(
-        evidence_type=evidence_type,
-        label=item.label,
-        confidence=item.confidence,
-        bbox=item.box,
-        model=item.model,
-        frame_sequence=frame_sequence,
-    )

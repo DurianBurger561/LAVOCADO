@@ -7,9 +7,9 @@ from collections.abc import Callable, Mapping
 import numpy as np
 
 from app.vision.detectors.base import (
-    DetectionEvidence,
-    to_detection_evidence,
+    to_violation_evidence,
 )
+from app.vision.violation_policy import ViolationEvidence
 from app.vision.yolo_adapter import (
     Yolo11Adapter,
     YoloDetectionModel,
@@ -40,7 +40,8 @@ class Yolo11NsfwDetector:
         frame: np.ndarray,
         *,
         input_size: int,
-    ) -> list[DetectionEvidence]:
+        frame_sequence: int,
+    ) -> list[ViolationEvidence]:
         if not isinstance(frame, np.ndarray):
             return []
         model = self._adapter.model
@@ -54,7 +55,7 @@ class Yolo11NsfwDetector:
         finally:
             if hasattr(model, "imgsz"):
                 model.imgsz = previous
-        return to_detection_evidence(detections, model=self.name)
+        return to_violation_evidence(detections, model=self.name, frame_sequence=frame_sequence)
 
 
 def load_yolo11_nsfw_detector(

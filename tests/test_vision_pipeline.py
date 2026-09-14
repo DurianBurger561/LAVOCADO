@@ -6,9 +6,9 @@ import numpy as np
 
 from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
-from app.vision.detectors.base import DetectionEvidence
 from app.vision.pipeline import VisionPipeline
 from app.vision.violation_policy import (
+    ViolationEvidence,
     ViolationEvidenceType,
     VisualViolationClassification,
 )
@@ -16,12 +16,14 @@ from app.vision.yolo_adapter import Yolo11Adapter
 
 
 class FakeDetector:
-    def __init__(self, evidence: list[DetectionEvidence] | None = None) -> None:
+    def __init__(self, evidence: list[ViolationEvidence] | None = None) -> None:
         self.evidence = list(evidence or [])
         self.checked = 0
 
-    def detect(self, image: object, *, input_size: int = 640) -> list[DetectionEvidence]:
-        del input_size
+    def detect(
+        self, image: object, *, input_size: int = 640, frame_sequence: int
+    ) -> list[ViolationEvidence]:
+        del input_size, frame_sequence
         self.checked += 1
         self.image = image
         return list(self.evidence)

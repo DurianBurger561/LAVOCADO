@@ -15,10 +15,7 @@ from app.platforms.capture.models import CaptureFrame
 from app.settings.schema import VisionSettings
 from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
-from app.vision.detectors.base import (
-    DetectionEvidence,
-    box_from_raw,
-)
+from app.vision.detectors.base import to_violation_evidence
 from app.vision.detectors.factory import load_primary_bundle
 from app.vision.model_assets import (
     NUDENET_640M_SHA256,
@@ -28,6 +25,7 @@ from app.vision.pipeline import VisionPipeline
 from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.violation_policy import (
     ThresholdPolicy,
+    ViolationEvidence,
     activate_threshold_policy,
     active_threshold_policy,
 )
@@ -84,14 +82,14 @@ def model_revision_for(detector_name: str) -> str:
     return NUDENET_640M_SHA256
 
 
-def detections_payload(evidence: list[DetectionEvidence]) -> list[dict[str, Any]]:
+def detections_payload(evidence: list[ViolationEvidence]) -> list[dict[str, Any]]:
     payload = []
     for item in evidence:
         payload.append(
             {
                 "class": item.label,
                 "score": float(item.confidence),
-                "box": None if item.box is None else list(item.box),
+                "box": None if item.bbox is None else list(item.bbox),
                 "model": item.model,
             }
         )
@@ -101,27 +99,12 @@ def detections_payload(evidence: list[DetectionEvidence]) -> list[dict[str, Any]
 def evidence_from_payload(
     detections: list[dict[str, Any]],
     model_id: str,
-) -> list[DetectionEvidence]:
-    evidence: list[DetectionEvidence] = []
-    for item in detections:
-        if not isinstance(item, dict):
-            continue
-        label = str(item.get("class") or item.get("label") or "").strip()
-        if not label:
-            continue
-        try:
-            score = float(item.get("score") if item.get("score") is not None else item.get("confidence") or 0.0)
-        except (TypeError, ValueError):
-            continue
-        evidence.append(
-            DetectionEvidence(
-                label=label,
-                confidence=max(0.0, min(1.0, score)),
-                box=box_from_raw(item.get("box")),
-                model=str(item.get("model") or model_id),
-            )
-        )
-    return evidence
+    *,
+    frame_sequence: int,
+) -> list[ViolationEvidence]:
+    return to_violation_evidence(
+        detections, model=model_id, frame_sequence=frame_sequence
+    )
 
 
 class CachedPrimaryDetector:
@@ -130,12 +113,15 @@ class CachedPrimaryDetector:
     def __init__(self, detections: list[dict[str, Any]], model_id: str) -> None:
         self.name = model_id
         self.model_variant = model_id
-        self._evidence = evidence_from_payload(detections, model_id)
         self._raw = list(detections)
 
-    def detect(self, frame: np.ndarray, *, input_size: int) -> list[DetectionEvidence]:
+    def detect(
+        self, frame: np.ndarray, *, input_size: int, frame_sequence: int
+    ) -> list[ViolationEvidence]:
         del frame, input_size
-        return list(self._evidence)
+        return evidence_from_payload(
+            self._raw, self.name, frame_sequence=frame_sequence
+        )
 
 
 class BenchmarkSession:
@@ -223,7 +209,9 @@ class BenchmarkSession:
                 return cached
         started = time.perf_counter()
         preprocess_ms = 0.0
-        evidence = self.detector.detect(image, input_size=self.config.full_input_size)
+        evidence = self.detector.detect(
+            image, input_size=self.config.full_input_size, frame_sequence=1
+        )
         detections = detections_payload(list(evidence or []))
         inference_ms = (time.perf_counter() - started) * 1000
         raw = RawInferenceResult(
@@ -268,19 +256,21 @@ class BenchmarkSession:
         started = time.perf_counter()
         try:
             with isolated_threshold_policy(self._threshold_policy):
-                primary_evidence = tuple(
-                    cached.detect(image, input_size=self.config.full_input_size)
-                )
                 for index in range(repeats):
                     frame = captured_frame_from_bgr(
                         image,
                         max_edge=self.settings.detector.full_input_size,
                         sequence=index + 1,
                     )
+                    primary_evidence = tuple(
+                        cached.detect(
+                            image,
+                            input_size=self.config.full_input_size,
+                            frame_sequence=frame.sequence,
+                        )
+                    )
                     decided = self.decision_engine.evaluate(
-                        PrimaryDetection.from_primary(
-                            primary_evidence, frame_sequence=frame.sequence
-                        ),
+                        PrimaryDetection.from_primary(primary_evidence),
                         frame,
                         monitor_index=1,
                     )

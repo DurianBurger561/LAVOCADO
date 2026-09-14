@@ -8,23 +8,31 @@ from app.platforms.capture.models import CaptureFrame
 from app.settings.schema import default_vision_settings
 from app.vision.candidate_verifier import CandidateVerifier
 from app.vision.context.base import ContextResult
-from app.vision.detectors.base import DetectionEvidence
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.scheduler import TileScheduler
 from app.vision.tiles import TileState
 from app.vision.viddexa_ranker import ViddexaRanker
-from app.vision.violation_policy import ThresholdPolicy
+from app.vision.violation_policy import (
+    ThresholdPolicy,
+    ViolationEvidence,
+    ViolationEvidenceType,
+)
 
 
 class LocalModel:
     def __init__(self) -> None:
         self.images: list[np.ndarray] = []
 
-    def detect(self, frame: np.ndarray, *, input_size: int) -> list[DetectionEvidence]:
+    def detect(
+        self, frame: np.ndarray, *, input_size: int, frame_sequence: int
+    ) -> list[ViolationEvidence]:
         self.images.append(frame)
         assert input_size == 640
         return [
-            DetectionEvidence("FEMALE_BREAST_EXPOSED", 0.8, None, "nudenet_640m")
+            ViolationEvidence(
+                ViolationEvidenceType.BREAST_EXPOSURE,
+                "FEMALE_BREAST_EXPOSED", 0.8, None, "nudenet_640m", frame_sequence,
+            )
         ]
 
 
@@ -58,6 +66,7 @@ class VisionComponentTests(unittest.TestCase):
         self.assertEqual(result.region, (1, 2, 4, 6))
         self.assertEqual(model.images[0].shape, (4, 3, 3))
         self.assertEqual(result.hit.label, "FEMALE_BREAST_EXPOSED")
+        self.assertEqual(result.hit.frame_sequence, 1)
 
     def test_viddexa_ranks_tiles_but_does_not_emit_violation(self) -> None:
         image = np.zeros((4, 4, 3), dtype=np.uint8)

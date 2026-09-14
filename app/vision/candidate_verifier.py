@@ -8,22 +8,25 @@ from typing import Protocol
 
 import numpy as np
 
-from app.vision.detectors.base import DetectionEvidence
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.regions import Region
-from app.vision.violation_policy import DetectionTier, ThresholdPolicy
+from app.vision.violation_policy import (
+    DetectionTier,
+    ThresholdPolicy,
+    ViolationEvidence,
+)
 
 
 class LocalNudityDetector(Protocol):
     def detect(
-        self, frame: np.ndarray, *, input_size: int
-    ) -> list[DetectionEvidence]: ...
+        self, frame: np.ndarray, *, input_size: int, frame_sequence: int
+    ) -> list[ViolationEvidence]: ...
 
 
 @dataclass(frozen=True, slots=True)
 class RecheckResult:
     region: Region
-    hit: DetectionEvidence | None
+    hit: ViolationEvidence | None
 
 
 class CandidateVerifier:
@@ -42,10 +45,12 @@ class CandidateVerifier:
         self.tile_input_size = tile_input_size
         self.enabled = enabled
 
-    def strong_hit(self, crop: np.ndarray) -> DetectionEvidence | None:
+    def strong_hit(self, crop: np.ndarray, *, frame_sequence: int) -> ViolationEvidence | None:
         if self.detector is None or not isinstance(crop, np.ndarray):
             return None
-        evidence = self.detector.detect(crop, input_size=self.tile_input_size)
+        evidence = self.detector.detect(
+            crop, input_size=self.tile_input_size, frame_sequence=frame_sequence
+        )
         strong = [
             item
             for item in evidence
@@ -68,7 +73,7 @@ class CandidateVerifier:
         if cropped is None:
             return None
         image, region = cropped
-        return RecheckResult(region, self.strong_hit(image))
+        return RecheckResult(region, self.strong_hit(image, frame_sequence=prepared.frame.sequence))
 
     def region_recheck(
         self, prepared: FramePreprocessor, region: Region
@@ -78,4 +83,4 @@ class CandidateVerifier:
         crop = prepared.crop_xyxy(region)
         if crop is None:
             return None
-        return RecheckResult(region, self.strong_hit(crop))
+        return RecheckResult(region, self.strong_hit(crop, frame_sequence=prepared.frame.sequence))

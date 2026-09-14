@@ -50,7 +50,9 @@ class FakeYolo:
 class DetectorAbstractionTests(unittest.TestCase):
     def test_nudenet_keeps_original_labels(self) -> None:
         detector = NudeNetPrimaryDetector(model=FakeNudeModel())
-        evidence = detector.detect(np.zeros((16, 16, 3), dtype=np.uint8), input_size=640)
+        evidence = detector.detect(
+            np.zeros((16, 16, 3), dtype=np.uint8), input_size=640, frame_sequence=1
+        )
 
         self.assertEqual(detector.name, "nudenet_640m")
         self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
@@ -59,6 +61,7 @@ class DetectorAbstractionTests(unittest.TestCase):
         evidence = NudeNetPrimaryDetector(model=FakeNudeModel()).detect(
             np.zeros((16, 16, 3), dtype=np.uint8),
             input_size=640,
+            frame_sequence=1,
         )
         self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
         self.assertAlmostEqual(evidence[0].confidence, 0.71)
@@ -66,7 +69,9 @@ class DetectorAbstractionTests(unittest.TestCase):
     def test_yolo_uses_input_size_and_own_labels(self) -> None:
         model = FakeYolo()
         detector = Yolo11NsfwDetector(Yolo11Adapter(model), default_input_size=640)
-        evidence = detector.detect(np.zeros((32, 32, 3), dtype=np.uint8), input_size=960)
+        evidence = detector.detect(
+            np.zeros((32, 32, 3), dtype=np.uint8), input_size=960, frame_sequence=1
+        )
 
         self.assertEqual(detector.name, "yolo11_nsfw_small")
         self.assertEqual(evidence[0].label, "breast")

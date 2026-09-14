@@ -16,8 +16,8 @@ from developer.benchmark.session import BenchmarkSession
 
 
 class FakeDetector:
-    def detect(self, image, *, input_size: int = 640):
-        del image, input_size
+    def detect(self, image, *, input_size: int = 640, frame_sequence: int):
+        del image, input_size, frame_sequence
         return []
 
 

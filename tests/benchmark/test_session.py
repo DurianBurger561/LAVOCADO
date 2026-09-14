@@ -7,31 +7,56 @@ import unittest
 import numpy as np
 
 from app.vision.decision import DecisionEngine
-from app.vision.detectors.base import DetectionEvidence
 from app.vision.pipeline import VisionPipeline
+from app.vision.violation_policy import ViolationEvidence, ViolationEvidenceType
 from developer.benchmark.configs import TARGET_DETECTOR, BenchmarkConfig
 from developer.benchmark.dataset import BenchmarkSample
-from developer.benchmark.session import BenchmarkSession
+from developer.benchmark.session import BenchmarkSession, CachedPrimaryDetector
 
 
 class RecordingDetector:
     def __init__(self) -> None:
         self.detect_calls = 0
 
-    def detect(self, frame, *, input_size: int):
+    def detect(self, frame, *, input_size: int, frame_sequence: int):
         self.detect_calls += 1
         del input_size, frame
         return [
-            DetectionEvidence(
+            ViolationEvidence(
+                evidence_type=ViolationEvidenceType.BREAST_EXPOSURE,
                 label="FEMALE_BREAST_EXPOSED",
                 confidence=0.91,
-                box=(1.0, 2.0, 3.0, 4.0),
+                bbox=(1.0, 2.0, 3.0, 4.0),
                 model="nudenet_640m",
+                frame_sequence=frame_sequence,
             )
         ]
 
 
 class SessionTests(unittest.TestCase):
+    def test_cached_evidence_uses_each_replayed_frame_sequence(self) -> None:
+        detector = CachedPrimaryDetector(
+            [
+                {"class": "FACE_FEMALE", "score": 0.99, "box": [0, 0, 1, 1]},
+                {
+                    "class": "FEMALE_BREAST_EXPOSED",
+                    "score": 0.91,
+                    "box": [1, 2, 3, 4],
+                },
+            ],
+            "nudenet_640m",
+        )
+        frame = np.zeros((20, 20, 3), dtype=np.uint8)
+
+        first = detector.detect(frame, input_size=640, frame_sequence=1)
+        second = detector.detect(frame, input_size=640, frame_sequence=2)
+
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0].evidence_type, ViolationEvidenceType.BREAST_EXPOSURE)
+        self.assertEqual(first[0].bbox, (1.0, 2.0, 3.0, 4.0))
+        self.assertEqual(first[0].frame_sequence, 1)
+        self.assertEqual(second[0].frame_sequence, 2)
+
     def test_detector_only_returns_raw_detections(self) -> None:
         config = BenchmarkConfig(
             id="det",

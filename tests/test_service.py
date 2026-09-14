@@ -10,13 +10,14 @@ from app.intervention.recorder import ProtectionEvent
 from app.platforms.capture import CaptureBackendStatus, CaptureFrame, Rect
 from app.service import LavocadoService, State
 from app.vision.change_scheduler import ChangeDecision
-from app.vision.detectors.base import DetectionEvidence
 from app.vision.diagnostics import DiagnosticsStore
 from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.scheduler import ScanPlan
 from app.vision.temporal import TemporalVerifier
 from app.vision.viddexa_ranker import ViddexaRanker
 from app.vision.violation_policy import (
+    ViolationEvidence,
+    ViolationEvidenceType,
     VisualViolationClassification,
     VisualViolationDecision,
 )
@@ -87,7 +88,9 @@ class FakeDetector:
             for monitor_index, results in results_by_monitor.items()
         }
 
-    def detect(self, image: object, *, input_size: int = 640) -> list[DetectionEvidence]:
+    def detect(
+        self, image: object, *, input_size: int = 640, frame_sequence: int
+    ) -> list[ViolationEvidence]:
         del input_size
         if not isinstance(image, np.ndarray) or image.shape != (8, 8, 3):
             return []
@@ -97,11 +100,13 @@ class FakeDetector:
         if not blocked:
             return []
         return [
-            DetectionEvidence(
+            ViolationEvidence(
+                evidence_type=ViolationEvidenceType.BREAST_EXPOSURE,
                 label="FEMALE_BREAST_EXPOSED",
                 confidence=1.0,
-                box=None,
+                bbox=None,
                 model="nudenet_640m",
+                frame_sequence=frame_sequence,
             )
         ]
 

@@ -14,6 +14,7 @@ from app.platforms.capture import (
     CapturePermissionDeniedError,
     MonitorInfo,
 )
+from app.vision.violation_policy import ViolationEvidence, ViolationEvidenceType
 from scripts.benchmark_capture import (
     EXIT_PERMISSION_DENIED,
     RESULT_PREFIX,
@@ -35,12 +36,20 @@ class FakeDetector:
     def __init__(self) -> None:
         self.calls = 0
 
-    def detect(self, image: np.ndarray, *, input_size: int = 640) -> list[object]:
+    def detect(
+        self, image: np.ndarray, *, input_size: int = 640, frame_sequence: int
+    ) -> list[ViolationEvidence]:
         del input_size
         self.calls += 1
         if image.shape != (2, 4, 3):
             raise AssertionError("benchmark did not preserve the full-resolution BGR frame")
-        return [object()] if self.calls % 2 == 0 else []
+        return [
+            ViolationEvidence(
+                ViolationEvidenceType.BREAST_EXPOSURE,
+                "FEMALE_BREAST_EXPOSED", 0.8, None,
+                "nudenet_640m", frame_sequence,
+            )
+        ] if self.calls % 2 == 0 else []
 
 
 class FakeBackend:

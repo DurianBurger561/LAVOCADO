@@ -240,7 +240,7 @@ class DecisionEngine:
             {
                 "class": item.label,
                 "score": item.confidence,
-                "box": None if item.box is None else list(item.box),
+                "box": None if item.bbox is None else list(item.bbox),
             }
             for item in detection.primary
         ]
@@ -269,7 +269,7 @@ class DecisionEngine:
             ),
             "label": None if strongest is None else strongest.label,
             "confidence": 0.0 if strongest is None else strongest.confidence,
-            "box": None if strongest is None or strongest.box is None else list(strongest.box),
+            "box": None if strongest is None or strongest.bbox is None else list(strongest.bbox),
             "check_points": checkpoints,
             "evidence": [evidence_to_dict(item) for item in detection.evidence],
         }
@@ -367,7 +367,7 @@ class DecisionEngine:
 
         hit = recheck.hit
         base["local_check_points"] = []
-        base["local_box"] = None if hit is None or hit.box is None else list(hit.box)
+        base["local_box"] = None if hit is None or hit.bbox is None else list(hit.bbox)
         if hit is None:
             return base
 
@@ -450,8 +450,8 @@ class DecisionEngine:
             decided["context_score"] = float(context_score)
             decided["context_scores"] = context_scores or None
 
-            hit = self.candidate_verifier.strong_hit(crop)
-            decided["local_box"] = None if hit is None or hit.box is None else list(hit.box)
+            hit = self.candidate_verifier.strong_hit(crop, frame_sequence=captured_frame.sequence)
+            decided["local_box"] = None if hit is None or hit.bbox is None else list(hit.bbox)
             if hit is not None:
                 self.scheduler.pin_tile(monitor_index, tile_index)
                 label = hit.label
@@ -555,7 +555,7 @@ class DecisionEngine:
         if recheck is None:
             return base
         hit = recheck.hit
-        base["local_box"] = None if hit is None or hit.box is None else list(hit.box)
+        base["local_box"] = None if hit is None or hit.bbox is None else list(hit.bbox)
         base["region"] = roi
         if hit is None:
             track = self.tracker.active_track(monitor_index)
@@ -597,8 +597,8 @@ class DecisionEngine:
         top_subtile = self.viddexa_ranker.top_subtile(prepared, tile_state.region)
         if top_subtile is None:
             return base
-        hit = self.candidate_verifier.strong_hit(top_subtile.image)
-        base["local_box"] = None if hit is None or hit.box is None else list(hit.box)
+        hit = self.candidate_verifier.strong_hit(top_subtile.image, frame_sequence=prepared.frame.sequence)
+        base["local_box"] = None if hit is None or hit.bbox is None else list(hit.bbox)
         if hit is None:
             return base
         label = hit.label

@@ -29,6 +29,7 @@ from app.platforms.capture import (
     ScreenCaptureBackend,
 )
 from app.vision.detectors.nudenet import NudeNetPrimaryDetector
+from app.vision.violation_policy import ViolationEvidence
 
 EXIT_FAILED = 1
 EXIT_PERMISSION_DENIED = 2
@@ -38,7 +39,9 @@ RESULT_PREFIX = "LAVOCADO_CAPTURE_BENCHMARK "
 class DetectorLike(Protocol):
     """Detection seam used by the benchmark and its tests."""
 
-    def detect(self, image: np.ndarray, *, input_size: int = 640) -> list[Any]: ...
+    def detect(
+        self, image: np.ndarray, *, input_size: int = 640, frame_sequence: int
+    ) -> list[ViolationEvidence]: ...
 
 
 class MemorySampler(Protocol):
@@ -157,7 +160,9 @@ def benchmark_backend(
                     sleeper=sleeper,
                 )
                 last_sequences[monitor.id] = frame.sequence
-                detector.detect(_canonical_frame(frame.image), input_size=640)
+                detector.detect(
+                    _canonical_frame(frame.image), input_size=640, frame_sequence=frame.sequence
+                )
                 peak_rss = max(peak_rss, memory.rss_bytes())
 
         samples = {
@@ -189,7 +194,9 @@ def benchmark_backend(
                 captured_ns = clock_ns()
                 last_sequences[monitor.id] = frame.sequence
                 detection_started_ns = clock_ns()
-                evidence = detector.detect(_canonical_frame(frame.image), input_size=640)
+                evidence = detector.detect(
+                    _canonical_frame(frame.image), input_size=640, frame_sequence=frame.sequence
+                )
                 decision_finished_ns = clock_ns()
 
                 sample = samples[monitor.id]

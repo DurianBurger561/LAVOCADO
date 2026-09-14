@@ -1,6 +1,6 @@
 """Selectable primary detectors."""
 
-from app.vision.detectors.base import DetectionEvidence, PrimaryDetector
+from app.vision.detectors.base import PrimaryDetector
 from app.vision.detectors.factory import (
     PRIMARY_NUDENET,
     PRIMARY_YOLO,
@@ -14,7 +14,6 @@ from app.vision.detectors.yolo11_nsfw import Yolo11NsfwDetector
 __all__ = (
     "PRIMARY_NUDENET",
     "PRIMARY_YOLO",
-    "DetectionEvidence",
     "NudeNetPrimaryDetector",
     "PrimaryBundle",
     "PrimaryDetector",

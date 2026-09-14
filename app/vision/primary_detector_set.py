@@ -4,11 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.vision.detectors.base import (
-    DetectionEvidence,
-    PrimaryDetector,
-    detection_to_violation,
-)
+from app.vision.detectors.base import PrimaryDetector
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.violation_policy import ViolationEvidence
 from app.vision.yolo_adapter import Yolo11Adapter
@@ -18,27 +14,18 @@ from app.vision.yolo_adapter import Yolo11Adapter
 class PrimaryDetection:
     """One inference result; no classification or protection action."""
 
-    primary: tuple[DetectionEvidence, ...]
+    primary: tuple[ViolationEvidence, ...]
     supplementary: tuple[ViolationEvidence, ...]
     evidence: tuple[ViolationEvidence, ...]
 
     @classmethod
     def from_primary(
         cls,
-        primary: tuple[DetectionEvidence, ...],
+        primary: tuple[ViolationEvidence, ...],
         *,
-        frame_sequence: int,
         supplementary: tuple[ViolationEvidence, ...] = (),
     ) -> PrimaryDetection:
-        mapped = tuple(
-            result
-            for item in primary
-            if (
-                result := detection_to_violation(item, frame_sequence=frame_sequence)
-            )
-            is not None
-        )
-        return cls(primary, supplementary, mapped + supplementary)
+        return cls(primary, supplementary, primary + supplementary)
 
 
 class PrimaryDetectorSet:
@@ -59,7 +46,7 @@ class PrimaryDetectorSet:
         sequence = prepared.frame.sequence
         primary = tuple(
             self.primary.detect(
-                prepared.original, input_size=self.full_input_size
+                prepared.original, input_size=self.full_input_size, frame_sequence=sequence
             )
         )
         supplemental = (
@@ -72,5 +59,5 @@ class PrimaryDetectorSet:
             else ()
         )
         return PrimaryDetection.from_primary(
-            primary, frame_sequence=sequence, supplementary=supplemental
+            primary, supplementary=supplemental
         )

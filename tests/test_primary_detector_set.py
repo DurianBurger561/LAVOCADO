@@ -5,7 +5,6 @@ import unittest
 import numpy as np
 
 from app.platforms.capture.models import CaptureFrame
-from app.vision.detectors.base import DetectionEvidence
 from app.vision.preprocessor import FramePreprocessor
 from app.vision.primary_detector_set import PrimaryDetectorSet
 from app.vision.violation_policy import ViolationEvidence, ViolationEvidenceType
@@ -13,15 +12,18 @@ from app.vision.violation_policy import ViolationEvidence, ViolationEvidenceType
 
 class FakePrimary:
     def __init__(self) -> None:
-        self.calls: list[tuple[np.ndarray, int]] = []
+        self.calls: list[tuple[np.ndarray, int, int]] = []
 
     def detect(
-        self, image: np.ndarray, *, input_size: int
-    ) -> list[DetectionEvidence]:
-        self.calls.append((image, input_size))
+        self, image: np.ndarray, *, input_size: int, frame_sequence: int
+    ) -> list[ViolationEvidence]:
+        self.calls.append((image, input_size, frame_sequence))
         return [
-            DetectionEvidence("FEMALE_BREAST_EXPOSED", 0.8, (1, 2, 3, 4), "nudenet_640m"),
-            DetectionEvidence("FACE_FEMALE", 0.9, None, "nudenet_640m"),
+            ViolationEvidence(
+                ViolationEvidenceType.BREAST_EXPOSURE,
+                "FEMALE_BREAST_EXPOSED", 0.8, (1, 2, 3, 4),
+                "nudenet_640m", frame_sequence,
+            ),
         ]
 
 
@@ -59,8 +61,9 @@ class PrimaryDetectorSetTests(unittest.TestCase):
         self.assertEqual(len(primary.calls), 1)
         self.assertIs(primary.calls[0][0], frame.image)
         self.assertEqual(primary.calls[0][1], 640)
+        self.assertEqual(primary.calls[0][2], 7)
         self.assertEqual(supplementary.calls, [(frame.image, 7)])
-        self.assertEqual(len(result.primary), 2)
+        self.assertEqual(len(result.primary), 1)
         self.assertEqual(len(result.evidence), 2)
         self.assertEqual(result.evidence[0].frame_sequence, 7)
         self.assertEqual(result.evidence[1].evidence_type, ViolationEvidenceType.SEXUAL_ACT)
