@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, SPECPATH)
 
-from packaging.spec_common import (
+from lavocado_packaging.spec_common import (
     USER_APP_NAME,
     USER_EXCLUDES,
     macos_plist,

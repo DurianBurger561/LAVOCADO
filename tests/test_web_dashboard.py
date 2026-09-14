@@ -16,7 +16,9 @@ def _packaging_source() -> str:
     return "\n".join(
         [
             (PROJECT_ROOT / "lavocado.spec").read_text(encoding="utf-8"),
-            (PROJECT_ROOT / "packaging" / "spec_common.py").read_text(encoding="utf-8"),
+            (PROJECT_ROOT / "lavocado_packaging" / "spec_common.py").read_text(
+                encoding="utf-8"
+            ),
         ]
     )
 
