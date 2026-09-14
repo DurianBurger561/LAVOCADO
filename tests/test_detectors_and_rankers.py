@@ -12,7 +12,6 @@ from app.settings.storage import load_vision_settings, save_vision_settings
 from app.vision.change_map import ChangeMap, build_change_map, tile_change_scores
 from app.vision.context.factory import load_context_ranker, normalize_context_name
 from app.vision.context.off import OffContextRanker
-from app.vision.detectors.base import check_result_from_evidence, to_detection_evidence
 from app.vision.detectors.factory import (
     PRIMARY_YOLO,
     load_primary_bundle,
@@ -49,13 +48,12 @@ class FakeYolo:
 
 
 class DetectorAbstractionTests(unittest.TestCase):
-    def test_nudenet_keeps_original_labels_and_does_not_block(self) -> None:
+    def test_nudenet_keeps_original_labels(self) -> None:
         detector = NudeNetPrimaryDetector(model=FakeNudeModel())
         evidence = detector.detect(np.zeros((16, 16, 3), dtype=np.uint8), input_size=640)
 
         self.assertEqual(detector.name, "nudenet_640m")
         self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
-        self.assertFalse(any(hasattr(item, "blocked") for item in evidence))
 
     def test_nudenet_detect_emits_typed_anatomy_evidence(self) -> None:
         evidence = NudeNetPrimaryDetector(model=FakeNudeModel()).detect(
@@ -83,14 +81,6 @@ class DetectorAbstractionTests(unittest.TestCase):
     def test_normalize_primary_aliases(self) -> None:
         self.assertEqual(normalize_primary_name("YOLO11"), PRIMARY_YOLO)
         self.assertEqual(normalize_primary_name("bogus"), "nudenet_640m")
-
-    def test_check_result_ignore_below_proposal(self) -> None:
-        evidence = to_detection_evidence(
-            [{"class": "FEMALE_BREAST_EXPOSED", "score": 0.2, "box": [0, 0, 2, 2]}],
-            model="nudenet_640m",
-        )
-        result = check_result_from_evidence(evidence)
-        self.assertFalse(result["blocked"])
 
 
 class ContextRankerTests(unittest.TestCase):

@@ -363,17 +363,6 @@ def evidence_from_mapping(item: object) -> ViolationEvidence | None:
     )
 
 
-def _classification_from_payload(value: object) -> VisualViolationClassification:
-    if isinstance(value, VisualViolationClassification):
-        return value
-    raw = str(value or "").strip().lower()
-    if raw == VisualViolationClassification.VIOLATION.value:
-        return VisualViolationClassification.VIOLATION
-    if raw == VisualViolationClassification.UNCERTAIN.value:
-        return VisualViolationClassification.UNCERTAIN
-    return VisualViolationClassification.CLEAR
-
-
 def _region_from_payload(value: object) -> tuple[int, int, int, int] | None:
     if not isinstance(value, (list, tuple)) or len(value) != 4:
         return None
@@ -391,6 +380,9 @@ def visual_decision_from_engine_payload(
 ) -> VisualViolationDecision:
     """Build the public vision result. Engine internals still use working dicts."""
 
+    classification = payload["classification"]
+    if not isinstance(classification, VisualViolationClassification):
+        raise TypeError("Vision decision classification must be typed")
     evidence_items: list[ViolationEvidence] = []
     raw_evidence = payload.get("evidence")
     if isinstance(raw_evidence, list):
@@ -434,7 +426,7 @@ def visual_decision_from_engine_payload(
     parsed_rescue = rescue_index if isinstance(rescue_index, int) else None
     shadow = payload.get("shadow")
     return VisualViolationDecision(
-        classification=_classification_from_payload(payload.get("classification")),
+        classification=classification,
         evidence=tuple(evidence_items),
         reason_codes=reason_codes,
         primary_region=_region_from_payload(payload.get("region")),

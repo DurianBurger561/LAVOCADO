@@ -9,9 +9,7 @@ import numpy as np
 
 from app.vision.violation_policy import (
     ViolationEvidence,
-    evidence_to_dict,
     evidence_type_for_label,
-    threshold_for_label,
 )
 
 Box = tuple[float, float, float, float]
@@ -100,59 +98,3 @@ def detection_to_violation(
         model=item.model,
         frame_sequence=frame_sequence,
     )
-
-
-def check_result_from_evidence(
-    evidence: list[DetectionEvidence],
-    *,
-    raw_detections: list[dict[str, Any]] | None = None,
-    frame_sequence: int = 0,
-) -> dict[str, Any]:
-    """Apply per-label strong thresholds. Adapters must not call this internally
-    except through a compatibility ``check()`` wrapper used by DecisionEngine.
-    """
-
-    checkpoints = raw_detections if isinstance(raw_detections, list) else [
-        {
-            "class": item.label,
-            "score": item.confidence,
-            "box": None if item.box is None else list(item.box),
-        }
-        for item in evidence
-    ]
-    violation_payload = []
-    for item in evidence:
-        mapped = detection_to_violation(item, frame_sequence=frame_sequence)
-        if mapped is not None:
-            violation_payload.append(evidence_to_dict(mapped))
-
-    blocking: list[tuple[DetectionEvidence, float]] = []
-    for item in evidence:
-        threshold = threshold_for_label(item.label, item.model)
-        if threshold is not None and item.confidence >= threshold:
-            blocking.append((item, threshold))
-
-    if not blocking:
-        return {
-            "blocked": False,
-            "reason": "",
-            "label": None,
-            "confidence": 0.0,
-            "box": None,
-            "check_points": checkpoints,
-            "evidence": violation_payload,
-        }
-
-    strongest, threshold = max(blocking, key=lambda pair: pair[0].confidence)
-    return {
-        "blocked": True,
-        "reason": (
-            f"{strongest.label} "
-            f"(score {strongest.confidence:.2f}, threshold {threshold:.2f})"
-        ),
-        "label": strongest.label,
-        "confidence": strongest.confidence,
-        "box": None if strongest.box is None else list(strongest.box),
-        "check_points": checkpoints,
-        "evidence": violation_payload,
-    }

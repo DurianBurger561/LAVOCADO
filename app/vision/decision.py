@@ -10,7 +10,6 @@ from app import config
 from app.platforms.capture.models import CaptureFrame
 from app.settings.schema import VisionSettings, default_vision_settings
 from app.vision.candidate_verifier import CandidateVerifier, LocalNudityDetector
-from app.vision.detectors.base import check_result_from_evidence
 from app.vision.evidence import evidence_from_confidence
 from app.vision.nudenet_adapter import detections_to_evidence
 from app.vision.preprocessor import FramePreprocessor
@@ -107,13 +106,7 @@ class DecisionEngine:
         prepared = prepared_frame or FramePreprocessor(captured_frame)
         prepared.require_frame(captured_frame)
         frame_sequence = captured_frame.sequence
-        result = check_result_from_evidence(
-            list(detection.primary), frame_sequence=frame_sequence
-        )
-        if detection.supplementary:
-            result["evidence"].extend(
-                evidence_to_dict(item) for item in detection.supplementary
-            )
+        result = self._initial_result(detection)
 
         plan = scan_plan
         if plan is None:
@@ -151,7 +144,7 @@ class DecisionEngine:
                 focused, captured_frame, monitor_index, frame_sequence
             )
 
-        if bool(result.get("blocked")):
+        if result["classification"] is VisualViolationClassification.VIOLATION:
             decided = self._confirm_primary_candidate(
                 result,
                 captured_frame,
@@ -206,7 +199,7 @@ class DecisionEngine:
                 base = self._evaluate_borderline(
                     result, captured_frame, borderline_detection, prepared
                 )
-                if bool(base.get("blocked")):
+                if base["classification"] is VisualViolationClassification.VIOLATION:
                     return self._finalize_decision(
                         base, captured_frame, monitor_index, frame_sequence
                     )
@@ -220,7 +213,7 @@ class DecisionEngine:
                 ),
             }
             base = self._evaluate_borderline(result, captured_frame, detection, prepared)
-            if bool(base.get("blocked")):
+            if base["classification"] is VisualViolationClassification.VIOLATION:
                 return self._finalize_decision(
                     base, captured_frame, monitor_index, frame_sequence
                 )
@@ -238,6 +231,48 @@ class DecisionEngine:
         return self._finalize_decision(
             decided, captured_frame, monitor_index, frame_sequence
         )
+
+    @staticmethod
+    def _initial_result(detection: PrimaryDetection) -> dict[str, Any]:
+        """Seed working metadata from typed primary evidence only."""
+
+        checkpoints = [
+            {
+                "class": item.label,
+                "score": item.confidence,
+                "box": None if item.box is None else list(item.box),
+            }
+            for item in detection.primary
+        ]
+        strong = [
+            (item, threshold)
+            for item in detection.primary
+            if (threshold := threshold_for_label(item.label, item.model)) is not None
+            and item.confidence >= threshold
+        ]
+        strongest, threshold = (
+            max(strong, key=lambda pair: pair[0].confidence)
+            if strong
+            else (None, None)
+        )
+        return {
+            "classification": (
+                VisualViolationClassification.VIOLATION
+                if strongest is not None
+                else VisualViolationClassification.CLEAR
+            ),
+            "reason": (
+                f"{strongest.label} (score {strongest.confidence:.2f}, "
+                f"threshold {threshold:.2f})"
+                if strongest is not None
+                else ""
+            ),
+            "label": None if strongest is None else strongest.label,
+            "confidence": 0.0 if strongest is None else strongest.confidence,
+            "box": None if strongest is None or strongest.box is None else list(strongest.box),
+            "check_points": checkpoints,
+            "evidence": [evidence_to_dict(item) for item in detection.evidence],
+        }
 
     def _confirm_primary_candidate(
         self,
@@ -277,7 +312,7 @@ class DecisionEngine:
             "threshold": threshold_for_label(str(label)),
         }
         roi = self._evaluate_borderline(result, captured_frame, detection, prepared)
-        if bool(roi.get("blocked")):
+        if roi["classification"] is VisualViolationClassification.VIOLATION:
             roi["source"] = confirmed_source
             roi["reason"] = (
                 f"{label} original-resolution ROI recheck "
@@ -341,8 +376,7 @@ class DecisionEngine:
         confirmed_threshold = threshold_for_label(str(confirmed_label))
         base.update(
             {
-                "blocked": True,
-                "classification": VisualViolationClassification.VIOLATION.value,
+                "classification": VisualViolationClassification.VIOLATION,
                 "reason": (
                     f"{confirmed_label} ROI recheck score {confidence:.2f} "
                     f"after borderline {label} score {score:.2f}"
@@ -425,8 +459,7 @@ class DecisionEngine:
                 threshold = threshold_for_label(str(label))
                 decided.update(
                     {
-                        "blocked": True,
-                        "classification": VisualViolationClassification.VIOLATION.value,
+                        "classification": VisualViolationClassification.VIOLATION,
                         "reason": (
                             f"local rescue found {label} score {confidence:.2f} "
                             f"after tile priority {tile_state.priority_score:.2f}"
@@ -453,7 +486,7 @@ class DecisionEngine:
                 subdivided = self._evaluate_subtiles(
                     decided, prepared, tile_state, monitor_index
                 )
-                if bool(subdivided.get("blocked")):
+                if subdivided["classification"] is VisualViolationClassification.VIOLATION:
                     checked.add(tile_index)
                     self.scheduler.mark_checked(monitor_index, tiles, checked)
                     return subdivided
@@ -535,8 +568,7 @@ class DecisionEngine:
         threshold = threshold_for_label(str(label))
         base.update(
             {
-                "blocked": True,
-                "classification": VisualViolationClassification.VIOLATION.value,
+                "classification": VisualViolationClassification.VIOLATION,
                 "reason": (
                     f"{label} focused ROI score {confidence:.2f} "
                     f"on fresh frame {frame_sequence}"
@@ -573,8 +605,7 @@ class DecisionEngine:
         confidence = float(hit.confidence)
         base.update(
             {
-                "blocked": True,
-                "classification": VisualViolationClassification.VIOLATION.value,
+                "classification": VisualViolationClassification.VIOLATION,
                 "reason": (
                     f"coarse-to-fine found {label} score {confidence:.2f}"
                 ),
@@ -616,7 +647,7 @@ class DecisionEngine:
                     score, str(label), margin=self.borderline_margin
                 ).value
         hit_ids: set[int] = set()
-        if bool(decided.get("blocked")):
+        if decided["classification"] is VisualViolationClassification.VIOLATION:
             region = decided.get("region")
             if isinstance(region, (list, tuple)) and len(region) == 4:
                 mapped = box_to_region(region, xywh=False)
@@ -696,7 +727,6 @@ class DecisionEngine:
         payload = dict(result)
         payload.update(
             {
-                "blocked": True,
                 "label": evidence.label,
                 "confidence": evidence.confidence,
                 "box": box,
@@ -728,11 +758,7 @@ class DecisionEngine:
         classification: VisualViolationClassification | None = None,
     ) -> dict[str, Any]:
         if classification is None:
-            classification = (
-                VisualViolationClassification.VIOLATION
-                if bool(result.get("blocked"))
-                else VisualViolationClassification.CLEAR
-            )
+            classification = result["classification"]
         evidence_payload = result.get("evidence")
         if not isinstance(evidence_payload, list):
             evidence_payload = [
@@ -757,8 +783,7 @@ class DecisionEngine:
                 "rescue_region": None,
                 "local_check_points": None,
                 "local_box": None,
-                "classification": classification.value,
-                "blocked": classification is VisualViolationClassification.VIOLATION,
+                "classification": classification,
                 "evidence": evidence_payload,
             }
         )

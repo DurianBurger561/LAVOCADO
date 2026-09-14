@@ -50,12 +50,31 @@ class VisualDecisionEngineTests(unittest.TestCase):
         self.assertEqual(raw, [{"class": "FEMALE_BREAST_EXPOSED", "score": 0.60}])
 
     def test_finalize_does_not_mutate_payload(self) -> None:
-        payload = {"blocked": False, "source": "nudenet_none", "evidence": []}
+        payload = {
+            "classification": VisualViolationClassification.CLEAR,
+            "source": "nudenet_none",
+            "evidence": [],
+        }
 
         result = self.engine.finalize(payload, frame_sequence=2, monitor_index=1)
 
         self.assertIs(result.classification, VisualViolationClassification.CLEAR)
-        self.assertEqual(payload, {"blocked": False, "source": "nudenet_none", "evidence": []})
+        self.assertEqual(
+            payload,
+            {
+                "classification": VisualViolationClassification.CLEAR,
+                "source": "nudenet_none",
+                "evidence": [],
+            },
+        )
+
+    def test_finalize_rejects_untyped_classification(self) -> None:
+        with self.assertRaisesRegex(TypeError, "must be typed"):
+            self.engine.finalize(
+                {"classification": "violation", "evidence": []},
+                frame_sequence=2,
+                monitor_index=1,
+            )
 
 
 if __name__ == "__main__":
