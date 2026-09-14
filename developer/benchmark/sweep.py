@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from app.settings.schema import merge_vision_settings
-from developer.benchmark.configs import BenchmarkConfig
+from developer.benchmark.configs import (
+    TARGET_CONTEXT_POLICY,
+    TARGET_FULL_PROTECTION_PIPELINE,
+    BenchmarkConfig,
+)
 from developer.benchmark.dataset import BenchmarkDataset, eligible_for_metrics
 from developer.benchmark.engine import policy_only_rerun
-from developer.benchmark.inference_cache import InferenceCache, RawInferenceResult, cache_key
+from developer.benchmark.inference_cache import (
+    InferenceCache,
+    RawInferenceResult,
+    cache_key,
+)
 from developer.benchmark.metrics import summarize_rows
 from developer.benchmark.session import (
     BenchmarkSession,
@@ -30,11 +39,19 @@ def sweep_thresholds(
     cache: InferenceCache | None = None,
     session: BenchmarkSession | None = None,
 ) -> list[dict[str, Any]]:
+    if config.benchmark_target == TARGET_CONTEXT_POLICY:
+        raise ValueError("Context Policy Benchmark has no visual thresholds to sweep")
     cache = cache or InferenceCache(dataset.cache_dir)
     base_session = session or BenchmarkSession(config, cache=cache)
     rows: list[dict[str, Any]] = []
     raw_by_sample: dict[str, RawInferenceResult] = {}
+    context_rows: dict[str, dict[str, Any]] = {}
     for sample in dataset.samples:
+        if config.benchmark_target == TARGET_FULL_PROTECTION_PIPELINE:
+            immediate = base_session.context_protection_result(sample)
+            if immediate is not None:
+                context_rows[sample.id] = immediate
+                continue
         if not eligible_for_metrics(sample) and sample.expected is None and not sample.excluded:
             path = dataset.resolve_path(sample)
             image = load_bgr_image(path)
@@ -71,11 +88,14 @@ def sweep_thresholds(
         sweep_session = BenchmarkSession(patched, cache=cache, detector=base_session.detector)
         evaluated = []
         for sample in dataset.samples:
+            if sample.id in context_rows:
+                evaluated.append({**context_rows[sample.id], "config_id": patched.id})
+                continue
             raw = raw_by_sample.get(sample.id)
             if raw is None:
                 continue
             evaluated.append(policy_only_rerun(sweep_session, dataset, sample, raw))
-        summary = summarize_rows(evaluated)
+        summary = summarize_rows(evaluated, target=config.benchmark_target)
         rows.append(
             {
                 "strong": strong,

@@ -18,10 +18,10 @@ from app.context.policy.resolver import ContextPolicyService, allows_vision
 from app.context.policy.website import WebsitePolicy
 from app.context.store import ForegroundContextStore
 from app.service import LavocadoService, State
-from app.vision.benchmarking import evaluate_product_pipeline, vision_ground_truth
 from app.vision.decision import DecisionEngine
 from app.vision.ranking_benchmark import ranking_quality
 from app.vision.visual_decision import VisualDecisionEngine
+from developer.benchmark.ground_truth import visual_policy_classification
 from tests.test_decision import (
     FakeContextClassifier,
     FakeLocalDetector,
@@ -161,34 +161,11 @@ class ContextFirstAcceptanceTests(unittest.TestCase):
         self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
         self.assertIsNone(ranking["product_block"])
 
-    def test_medical_anatomy_is_vision_true_positive_and_whitelist_bypass(self) -> None:
-        self.assertEqual(vision_ground_truth(MEDICAL_ANATOMY), "violation")
-        product = evaluate_product_pipeline(
-            app_action=ContextPolicyAction.NORMAL,
-            website_action=ContextPolicyAction.FULL_BYPASS,
-            vision_frames=["violation", "violation", "violation"],
-            detections=MEDICAL_ANATOMY,
-            scenario_tag="medical",
+    def test_medical_anatomy_remains_a_visual_violation(self) -> None:
+        self.assertEqual(
+            visual_policy_classification(MEDICAL_ANATOMY).value,
+            "violation",
         )
-
-        self.assertFalse(product["vision_called"])
-        self.assertFalse(product["protection"])
-        self.assertEqual(product["scenario_score"], "whitelist_correct")
-
-    def test_product_protection_needs_fresh_frame_confirmation(self) -> None:
-        one = evaluate_product_pipeline(
-            app_action=ContextPolicyAction.NORMAL,
-            website_action=None,
-            vision_frames=["violation"],
-        )
-        confirmed = evaluate_product_pipeline(
-            app_action=ContextPolicyAction.NORMAL,
-            website_action=None,
-            vision_frames=["violation", "violation", "clear"],
-        )
-
-        self.assertFalse(one["protection"])
-        self.assertTrue(confirmed["protection"])
 
     def test_missing_context_store_still_runs_vision(self) -> None:
         detector = FakeDetector({1: [False]})

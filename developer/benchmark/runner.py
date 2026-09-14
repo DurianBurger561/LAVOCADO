@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from threading import Event, Lock
-from typing import Any, Callable
+from typing import Any
 
-from developer.benchmark.configs import BenchmarkConfig
+from developer.benchmark.configs import TARGET_CONTEXT_POLICY, BenchmarkConfig
 from developer.benchmark.dataset import BenchmarkDataset
 from developer.benchmark.engine import evaluate_sample, session_for
 from developer.benchmark.inference_cache import InferenceCache
 from developer.benchmark.results import BenchmarkRun, finalize_run, new_run, save_run
 from developer.benchmark.session import BenchmarkSession
-
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
@@ -64,8 +64,9 @@ class BenchmarkRunner:
                 **self.session_kwargs,
             )
             label = (
-                f"{config.detector} {config.full_input_size} "
-                f"{config.context_model or 'off'}"
+                "Context Policy"
+                if config.benchmark_target == TARGET_CONTEXT_POLICY
+                else f"{config.detector} {config.full_input_size} {config.context_model or 'off'}"
             )
             for sample_index, sample in enumerate(samples, start=1):
                 if self.cancel_event.is_set():

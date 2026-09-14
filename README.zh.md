@@ -51,9 +51,10 @@ FORCE_BLOCK > FULL_BYPASS > NORMAL
 
 黑名单始终优先于白名单。没有任何匹配规则时,保护行为与现有视觉检测路径完全一致。
 
-分层固定: ForegroundContextService 负责发现上下文, ContextPolicyService 负责规则,
-VisionPipeline / VisualDecisionEngine 只判断视觉证据, TemporalEngine 确认新帧,
-保护运行时负责遮挡与干预。检测器不能直接触发保护;决策引擎不会收到主机名、
+分层固定: `ForegroundContextService` 负责发现上下文, `ContextPolicyService` 负责规则,
+`VisionPipeline` 与 `DecisionEngine` 只判断视觉证据, `ProtectionRuntime` 负责扫描调度并用
+`TemporalVerifier` 确认新帧, `LavocadoService` 管理状态和干预。`OverlayBackend` 从捕获模块
+接收目标显示器的 `MonitorInfo`,不再单独用 MSS 发现显示器。检测器不能直接触发保护;决策引擎不会收到主机名、
 应用名,或医学/艺术/教育标记。
 
 - `FORCE_BLOCK` 立即遮挡前台窗口所在的显示器,跳过 NudeNet、YOLO、区域排序和时序确认。
@@ -125,10 +126,9 @@ python main.py
 
 固定版本的 640m 模型约 99 MiB,从 NudeNet 官方 GitHub release 下载,并做字节大小和 SHA-256 校验。该模型不纳入 Git。源码运行时若缺少它,LAVOCADO 会记录一条警告并降级到 NudeNet 320n;而打包构建版本则要求必须有经校验的 640m 文件。设置 `LAVOCADO_NUDENET_MODEL` 可指定使用位于其他路径的本地 640m 文件。
 
-NudeNet 640m、YOLO11 NSFW Small、Viddexa Nano 和 Viddexa Mini 都是必须从固定来源下载的本地模型。可在 Dashboard 点 Download all，或运行 `python scripts/download_models.py`。校验 hash 或 revision。YOLO11 NSFW Small 把性行为和解剖标签映射到同一套视觉违规策略。缺少 ultralytics 或权重时仍回退 NudeNet:
+NudeNet 640m、YOLO11 NSFW Small、Viddexa Nano 和 Viddexa Mini 都是 User 与 Developer 发布包必须包含的本地模型。可在 Dashboard 点 Download all,或运行 `python scripts/download_models.py --model all`。下载及打包均校验固定文件的大小和 SHA-256;Viddexa 快照会被复制到发布包中,而不是仅留在构建机的缓存里。`requirements.txt` 包含 YOLO、Transformers 和 PyTorch 推理依赖,因此发布包较大。YOLO11 NSFW Small 把性行为和解剖标签映射到同一套视觉违规策略。损坏的本地安装仍可回退 NudeNet。单独重新下载 YOLO:
 
 ```bash
-python -m pip install -r requirements-yolo.txt
 python scripts/download_models.py --model yolo11_nsfw_small
 ```
 
@@ -138,19 +138,16 @@ python scripts/download_models.py --model yolo11_nsfw_small
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 ```
 
-开发者 Benchmark Lab 把两套计分板分开。Vision Benchmark 只问像素是否违反
-LAVOCADO 的视觉内容规则(Violation / Clear,标注为 Visual Policy Ground Truth)。
-medical、education、art、news 只是场景元数据,不会把 Vision 结果改成 Allow。
-Full Pipeline Benchmark 再加上应用/网站规则夹具,输出 FORCE_BLOCK、FULL_BYPASS
-或 NORMAL,以及 Failure Explorer(上下文策略、规则、是否调用 Vision、检测证据、
-时序状态、最终动作)。Full Product Benchmark 会跑 Context + Vision + Temporal:
-一次视觉违规不够,保护需要 3 个新帧中的 2 次确认。UNCERTAIN 不计为时序命中:
+开发者 Benchmark Lab 分为 Detector Only、Vision Pipeline、Context Policy 和
+Full Protection Pipeline 四种数据集目标。Vision Pipeline 只评估单帧视觉决策;
+Full Protection 先评估应用/网站规则夹具,仅在 NORMAL 时通过与正式保护相同的
+`VisionPipeline` 和 `ProtectionRuntime` 进行多帧确认。FORCE_BLOCK 与 FULL_BYPASS
+不调用 Vision。第五类 Capture Benchmark 使用真实显示器单独运行。medical、education、
+art、news 只是场景元数据,不会强制 Allow。夹具 JSON 格式及各项指标见
+[开发者基准说明](docs/developer-benchmark.md)。独立的视觉检测诊断命令:
 
 ```bash
 python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
-python scripts/benchmark_pipeline.py --website-action full_bypass --tag medical
-python scripts/benchmark_pipeline.py --website-unknown --vision-classification violation --temporal-confirmed
-python scripts/benchmark_pipeline.py --vision-frames violation,violation,clear --tag medical
 ```
 
 若要在隔离的开发进程中对比原生捕获路径和 MSS:
@@ -172,10 +169,9 @@ python scripts/soak_capture.py --backend auto --duration-seconds 3600
 
 ### 可选的区域排序基准测试
 
-Viddexa 五分类模型目前是一个可选的开发依赖,尚未包含在发布包中。安装后,它只给 tile 排序,让主检测器优先复检 porn/hentai 风险最高的区域。Viddexa 不判断观看目的,不能单独触发保护,也不会把 NudeNet 的边界结果提升为违规。安装并测试排序延迟:
+Viddexa Nano 与 Mini 已包含在发布包中,运行时可选择是否启用 tile 排序。它们只让主检测器优先复检 porn/hentai 风险较高的区域,不判断观看目的、不能单独触发保护,也不会把 NudeNet 的边界结果提升为违规。测试排序延迟:
 
 ```bash
-python -m pip install -r requirements-context.txt
 python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 python scripts/benchmark_ranking.py --tiles '[{"index":0,"scores":{"porn":0.99},"primary_hit":false},{"index":1,"scores":{"porn":0.2},"primary_hit":true}]' --baseline-hits 6 --with-tile-hits 8 --positives 10
 ```

@@ -7,7 +7,7 @@ from app.context.policy.resolver import allows_vision
 from app.context.store import ForegroundContextStore
 from app.service import LavocadoService, State
 from app.vision.nudenet_adapter import NudeNetAdapter
-from app.vision.temporal import EvidenceAccumulator, TemporalEngine
+from app.vision.temporal import EvidenceAccumulator
 from app.vision.visual_decision import VisualDecisionEngine
 from tests.test_service import (
     FakeCapturer,
@@ -26,12 +26,10 @@ class VisionRuntimeTests(unittest.TestCase):
         self.assertFalse(allows_vision(ContextPolicyAction.FORCE_BLOCK))
         self.assertFalse(allows_vision(ContextPolicyAction.FULL_BYPASS))
 
-    def test_visual_decision_is_not_an_orchestration_alias(self) -> None:
+    def test_visual_decision_and_orchestration_are_distinct(self) -> None:
         from app.vision.decision import DecisionEngine
-        from app.vision.temporal import TemporalVerifier
 
         self.assertIsNot(VisualDecisionEngine, DecisionEngine)
-        self.assertIs(TemporalEngine, TemporalVerifier)
 
     def test_nudenet_adapter_emits_shared_evidence(self) -> None:
         evidence = NudeNetAdapter().detect_evidence(

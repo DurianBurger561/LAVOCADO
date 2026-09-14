@@ -82,10 +82,12 @@ FORCE_BLOCK > FULL_BYPASS > NORMAL
 A blacklist always wins over a whitelist. With no matching rules, protection
 runs the existing vision pipeline unchanged.
 
-Layer ownership is fixed: ForegroundContextService discovers context,
-ContextPolicyService evaluates rules, VisionPipeline/VisualDecisionEngine
-judge visual evidence only, TemporalEngine confirms fresh frames, and the
-protection runtime owns overlay/intervention. Detectors never trigger
+Layer ownership is fixed: `ForegroundContextService` discovers context,
+`ContextPolicyService` evaluates rules, `VisionPipeline` and `DecisionEngine`
+judge visual evidence only, `ProtectionRuntime` schedules scans and confirms
+fresh frames with `TemporalVerifier`, and `LavocadoService` owns state and
+intervention. `OverlayBackend` receives the target `MonitorInfo` from capture.
+Detectors never trigger
 protection directly, and the decision engine never receives a hostname,
 application name, or medical/art/education flag.
 
@@ -147,9 +149,10 @@ Website discovery is also platform-specific and lives under
 failed or unavailable reader never stops visual protection; the website side
 stays UNKNOWN.
 
-Each process creates one `PlatformAdapter` and passes it to capture, overlay,
-storage, and dashboard composition. Business modules therefore do not select an
-operating system or import a concrete platform implementation.
+Each process creates one `PlatformAdapter` for capture, context discovery,
+storage, and dashboard composition. Overlay selection is isolated in the UI
+backend factory; it does not rediscover monitors through MSS. Business modules
+do not select an operating system or import a concrete platform implementation.
 
 ## Setup
 
@@ -208,22 +211,21 @@ To compare 320n and 640m latency locally without saving any analysis output:
 python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
 ```
 
-Developer Benchmark Lab keeps two scoreboards separate. Vision Benchmark
-asks only whether the pixels violate LAVOCADO's visual content rules
-(Violation / Clear — Visual Policy Ground Truth). Scenario tags such as
-medical, education, art, or news are metadata; they never force Allow.
-Full Pipeline Benchmark adds application/website fixtures and reports
-FORCE_BLOCK, FULL_BYPASS, or NORMAL plus the Failure Explorer
-(context policy, rules, whether Vision ran, detector evidence, temporal
-state, final action). Full Product Benchmark runs Context + Vision +
-Temporal: one visual violation is not enough; protection needs 2 of 3
-fresh frames. UNCERTAIN does not count as a temporal hit:
+Developer Benchmark Lab separates Detector Only, Vision Pipeline, Context
+Policy, and Full Protection Pipeline. Vision Pipeline scores one frame's visual
+decision without context or temporal confirmation. Full Protection first
+evaluates typed application/website fixtures; NORMAL then uses the same
+`VisionPipeline` and `ProtectionRuntime` as production, including fresh-frame
+temporal confirmation. FORCE_BLOCK and FULL_BYPASS skip Vision. Capture
+Benchmark is a fifth, separate hardware test. Scenario tags such as medical,
+education, art, or news are metadata and never force Allow. Fixture format,
+scoreboards, and the distinction between still-frame replay and live capture
+are documented in the [Developer benchmark guide](docs/developer-benchmark.md).
+
+For local detector diagnostics outside the Lab:
 
 ```bash
 python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
-python scripts/benchmark_pipeline.py --website-action full_bypass --tag medical
-python scripts/benchmark_pipeline.py --website-unknown --vision-classification violation --temporal-confirmed
-python scripts/benchmark_pipeline.py --vision-frames violation,violation,clear --tag medical
 ```
 
 To compare the native capture path with MSS in isolated developer processes:

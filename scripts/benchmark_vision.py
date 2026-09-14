@@ -9,17 +9,20 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from nudenet import NudeDetector
 from PIL import Image
-import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app import config
-from app.vision.benchmarking import VISION_GROUND_TRUTH_NOTE, vision_ground_truth
 from app.vision.model_assets import resolve_nudenet_model_path
+from developer.benchmark.ground_truth import (
+    VISION_GROUND_TRUTH_NOTE,
+    visual_policy_classification,
+)
 
 
 def load_bgr_image(path: Path) -> np.ndarray:
@@ -33,7 +36,7 @@ def score_image(model: NudeDetector, image_path: Path) -> tuple[float, str, list
     started = time.perf_counter()
     detections = list(model.detect(image))
     elapsed = time.perf_counter() - started
-    return elapsed, vision_ground_truth(detections), detections
+    return elapsed, visual_policy_classification(detections).value, detections
 
 
 def main() -> int:

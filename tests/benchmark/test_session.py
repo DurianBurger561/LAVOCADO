@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from unittest.mock import Mock
 
 import numpy as np
 
 from app.vision.decision import DecisionEngine
 from app.vision.pipeline import VisionPipeline
 from app.vision.violation_policy import ViolationEvidence, ViolationEvidenceType
-from developer.benchmark.configs import TARGET_DETECTOR, BenchmarkConfig
-from developer.benchmark.dataset import BenchmarkSample
+from developer.benchmark.configs import (
+    TARGET_CONTEXT_POLICY,
+    TARGET_DETECTOR,
+    TARGET_FULL_PROTECTION_PIPELINE,
+    TARGET_VISION_PIPELINE,
+    BenchmarkConfig,
+)
+from developer.benchmark.dataset import BenchmarkDataset, BenchmarkSample
+from developer.benchmark.engine import evaluate_sample
 from developer.benchmark.session import BenchmarkSession, CachedPrimaryDetector
 
 
@@ -33,7 +42,147 @@ class RecordingDetector:
         ]
 
 
+def config_for(target: str) -> BenchmarkConfig:
+    return BenchmarkConfig(
+        id=target,
+        benchmark_target=target,
+        detector="nudenet_640m",
+        context_model=None,
+        full_input_size=640,
+        tile_input_size=None,
+        tile_rows=None,
+        tile_columns=None,
+        tile_overlap=0.0,
+        checks_per_scan=None,
+        threshold_profile="current",
+    )
+
+
 class SessionTests(unittest.TestCase):
+    def test_context_policy_target_uses_real_rules_without_loading_an_image_or_model(self) -> None:
+        detector_factory = Mock(side_effect=AssertionError("model loaded"))
+        session = BenchmarkSession(
+            config_for(TARGET_CONTEXT_POLICY),
+            detector_factory=detector_factory,
+        )
+        sample = BenchmarkSample(
+            "context",
+            "missing.png",
+            None,
+            False,
+            context_fixture={
+                "application_identifier": "org.example.browser",
+                "website_hostname": "blocked.example",
+                "website_rules": [
+                    {"domain": "blocked.example", "action": "force_block"}
+                ],
+            },
+            expected_policy="force_block",
+        )
+        dataset = BenchmarkDataset("context", Path("/missing"), "now", [sample])
+
+        result = evaluate_sample(session, dataset, sample)
+
+        self.assertEqual(result["predicted"], "force_block")
+        self.assertEqual(result["outcome"], "correct")
+        detector_factory.assert_not_called()
+
+    def test_full_protection_bypass_skips_image_and_detector(self) -> None:
+        detector = RecordingDetector()
+        session = BenchmarkSession(
+            config_for(TARGET_FULL_PROTECTION_PIPELINE),
+            pipeline=VisionPipeline(detector, DecisionEngine(local_detector=detector)),
+        )
+        sample = BenchmarkSample(
+            "bypass",
+            "missing.png",
+            "allow",
+            False,
+            context_fixture={
+                "application_identifier": "org.example.browser",
+                "application_rules": [
+                    {"identifier": "org.example.browser", "action": "full_bypass"}
+                ],
+            },
+        )
+        dataset = BenchmarkDataset("context", Path("/missing"), "now", [sample])
+
+        result = evaluate_sample(session, dataset, sample)
+
+        self.assertEqual(result["predicted"], "allow")
+        self.assertEqual(result["context_summary"]["policy_action"], "full_bypass")
+        self.assertFalse(result["vision_called"])
+        self.assertEqual(detector.detect_calls, 0)
+
+    def test_full_protection_force_block_skips_detector(self) -> None:
+        detector = RecordingDetector()
+        session = BenchmarkSession(
+            config_for(TARGET_FULL_PROTECTION_PIPELINE),
+            pipeline=VisionPipeline(detector, DecisionEngine(local_detector=detector)),
+        )
+        sample = BenchmarkSample(
+            "forced",
+            "missing.png",
+            "block",
+            False,
+            context_fixture={
+                "application_identifier": "org.example.app",
+                "application_rules": [
+                    {"identifier": "org.example.app", "action": "force_block"}
+                ],
+            },
+        )
+
+        result = session.run_full_pipeline(
+            sample,
+            np.zeros((20, 20, 3), dtype=np.uint8),
+            sample_hash="hash",
+        )
+
+        self.assertEqual(result["predicted"], "block")
+        self.assertFalse(result["vision_called"])
+        self.assertEqual(detector.detect_calls, 0)
+
+    def test_full_protection_normal_requires_temporal_confirmation(self) -> None:
+        detector = RecordingDetector()
+        session = BenchmarkSession(
+            config_for(TARGET_FULL_PROTECTION_PIPELINE),
+            pipeline=VisionPipeline(detector, DecisionEngine(local_detector=detector)),
+        )
+        sample = BenchmarkSample("normal", "image.png", "block", False)
+
+        result = session.run_full_pipeline(
+            sample,
+            np.zeros((20, 20, 3), dtype=np.uint8),
+            sample_hash="hash",
+        )
+
+        self.assertEqual(result["context_summary"]["policy_action"], "normal")
+        self.assertEqual(result["predicted"], "block")
+        self.assertTrue(result["vision_called"])
+        self.assertTrue(result["temporal_summary"]["confirmed"])
+        self.assertGreaterEqual(result["temporal_summary"]["fresh_frames"], 2)
+        self.assertEqual(detector.detect_calls, 1)
+
+    def test_vision_pipeline_is_separate_from_temporal_protection(self) -> None:
+        detector = RecordingDetector()
+        session = BenchmarkSession(
+            config_for(TARGET_VISION_PIPELINE),
+            pipeline=VisionPipeline(detector, DecisionEngine(local_detector=detector)),
+        )
+        sample = BenchmarkSample("vision", "image.png", "block", False)
+
+        result = session.run_vision_pipeline(
+            sample,
+            np.zeros((20, 20, 3), dtype=np.uint8),
+            sample_hash="hash",
+        )
+
+        self.assertEqual(result["predicted"], "block")
+        self.assertIsNone(result["context_summary"]["policy_action"])
+        self.assertIsNone(result["temporal_summary"])
+        self.assertEqual(detector.detect_calls, 1)
+
     def test_cached_evidence_uses_each_replayed_frame_sequence(self) -> None:
         detector = CachedPrimaryDetector(
             [
@@ -72,7 +221,12 @@ class SessionTests(unittest.TestCase):
             threshold_profile="current",
         )
         detector = RecordingDetector()
-        session = BenchmarkSession(config, detector=detector, context_ranker=None)
+        context_factory = Mock(side_effect=AssertionError("context model loaded"))
+        session = BenchmarkSession(
+            config,
+            detector=detector,
+            context_factory=context_factory,
+        )
         sample = BenchmarkSample("000001", "a.png", "block", False, set())
         raw = session.run_detector_only(
             sample,
@@ -81,6 +235,8 @@ class SessionTests(unittest.TestCase):
         )
         self.assertEqual(raw.detections[0]["class"], "FEMALE_BREAST_EXPOSED")
         self.assertGreaterEqual(detector.detect_calls, 1)
+        context_factory.assert_not_called()
+        self.assertIsNone(session.pipeline)
 
     def test_full_pipeline_maps_blocked_to_product_ground_truth(self) -> None:
         config = BenchmarkConfig(

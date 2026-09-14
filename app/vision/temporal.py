@@ -183,6 +183,3 @@ class TemporalVerifier:
             window_full=len(self._history) == self._window_size,
             confirmation=self._confirmation,
         )
-
-
-TemporalEngine = TemporalVerifier

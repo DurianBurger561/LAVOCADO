@@ -88,27 +88,6 @@ class RuleSettingsTests(unittest.TestCase):
             )))
         self.assertEqual(store.load(), original)
 
-    def test_drops_legacy_blocklist_migration_table(self) -> None:
-        with closing(sqlite3.connect(self.database)) as connection, connection:
-            connection.execute(
-                "CREATE TABLE context_rule_migrations (name TEXT PRIMARY KEY)"
-            )
-            connection.execute(
-                "INSERT INTO context_rule_migrations (name) VALUES (?)",
-                ("blocked_apps_v1:example",),
-            )
-
-        RuleSettingsStore(self.database)
-
-        with closing(sqlite3.connect(self.database)) as connection:
-            tables = {
-                row[0]
-                for row in connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
-        self.assertNotIn("context_rule_migrations", tables)
-
     def test_corrupt_conflicting_rows_still_resolve_force_block(self) -> None:
         store = RuleSettingsStore(self.database)
         with closing(sqlite3.connect(self.database)) as connection, connection:

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
-from typing import Any, Iterable
+from typing import Any
 from uuid import uuid4
 
 from app.settings.presets import apply_preset
@@ -30,9 +31,16 @@ from app.settings.schema import (
 )
 
 TARGET_DETECTOR = "detector_only"
-TARGET_PIPELINE = "full_protection_pipeline"
+TARGET_VISION_PIPELINE = "vision_pipeline"
+TARGET_CONTEXT_POLICY = "context_policy"
+TARGET_FULL_PROTECTION_PIPELINE = "full_protection_pipeline"
+BENCHMARK_TARGETS = frozenset({
+    TARGET_DETECTOR,
+    TARGET_VISION_PIPELINE,
+    TARGET_CONTEXT_POLICY,
+    TARGET_FULL_PROTECTION_PIPELINE,
+})
 TILE_FULL_ONLY = "full_only"
-TILE_GRID = "grid"
 THRESHOLD_PROFILES = ("current",) + PRESETS
 
 
@@ -125,7 +133,7 @@ class BenchmarkConfig:
 
 @dataclass(frozen=True, slots=True)
 class ConfigSelection:
-    benchmark_target: str = TARGET_PIPELINE
+    benchmark_target: str = TARGET_FULL_PROTECTION_PIPELINE
     detectors: tuple[str, ...] = ("nudenet_640m",)
     context_models: tuple[str, ...] = ("off",)
     full_input_sizes: tuple[int, ...] = (640,)
@@ -145,11 +153,24 @@ def _unique(values: Iterable[Any]) -> tuple[Any, ...]:
 
 
 def expand_configs(selection: ConfigSelection) -> list[BenchmarkConfig]:
-    target = (
-        TARGET_DETECTOR
-        if selection.benchmark_target == TARGET_DETECTOR
-        else TARGET_PIPELINE
-    )
+    target = selection.benchmark_target
+    if target not in BENCHMARK_TARGETS:
+        raise ValueError(f"Unknown benchmark target: {target}")
+    if target == TARGET_CONTEXT_POLICY:
+        return [
+            _make_config(
+                target,
+                "nudenet_640m",
+                None,
+                640,
+                None,
+                None,
+                None,
+                0.0,
+                None,
+                selection,
+            )
+        ]
     detectors = [
         name
         for name in _unique(selection.detectors)
@@ -195,7 +216,7 @@ def expand_configs(selection: ConfigSelection) -> list[BenchmarkConfig]:
                             )
                         )
                         continue
-                    grids = GRID_CHOICES if tile_mode == TILE_GRID else GRID_CHOICES
+                    grids = GRID_CHOICES
                     if tile_mode in {"2x2", "2×2"}:
                         grids = ((2, 2),)
                     elif tile_mode in {"3x3", "3×3"}:
@@ -282,7 +303,7 @@ def selection_from_payload(payload: dict[str, Any] | None) -> ConfigSelection:
     if profile not in THRESHOLD_PROFILES:
         profile = "current"
     return ConfigSelection(
-        benchmark_target=str(data.get("benchmark_target") or TARGET_PIPELINE),
+        benchmark_target=str(data.get("benchmark_target") or TARGET_FULL_PROTECTION_PIPELINE),
         detectors=tuple(data.get("detectors") or ("nudenet_640m",)),
         context_models=tuple(data.get("context_models") or ("off",)),
         full_input_sizes=tuple(int(size) for size in (data.get("full_input_sizes") or (640,))),
@@ -322,9 +343,12 @@ def algorithm_settings_from_payload(data: dict[str, Any]) -> dict[str, Any]:
         temporal["min_fresh_hits"] = int(source["min_fresh_hits"])
     if source.get("window_size") is not None:
         temporal["window_size"] = int(source["window_size"])
-    if "min_fresh_hits" in temporal and "window_size" in temporal:
-        if int(temporal["min_fresh_hits"]) > int(temporal["window_size"]):
-            temporal["min_fresh_hits"] = int(temporal["window_size"])
+    if (
+        "min_fresh_hits" in temporal
+        and "window_size" in temporal
+        and int(temporal["min_fresh_hits"]) > int(temporal["window_size"])
+    ):
+        temporal["min_fresh_hits"] = int(temporal["window_size"])
     if source.get("tile_ranking") is not None:
         raw = source["tile_ranking"]
         context["tile_ranking"] = str(raw).strip().lower() not in {"0", "false", "off", ""}

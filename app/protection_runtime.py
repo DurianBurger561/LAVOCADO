@@ -26,6 +26,7 @@ class ScanOutcome:
     decision: VisualViolationDecision | None = None
     candidate: bool = False
     confirmed: bool = False
+    temporal_history: tuple[bool, ...] = ()
 
 
 class ProtectionRuntime:
@@ -119,6 +120,7 @@ class ProtectionRuntime:
             decision=decision,
             candidate=is_violation,
             confirmed=confirmed,
+            temporal_history=verifier.history,
         )
 
     def reset_vision(self) -> None:

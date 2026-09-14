@@ -5,6 +5,9 @@ from __future__ import annotations
 import unittest
 
 from developer.benchmark.configs import (
+    TARGET_CONTEXT_POLICY,
+    TARGET_FULL_PROTECTION_PIPELINE,
+    TARGET_VISION_PIPELINE,
     TILE_FULL_ONLY,
     ConfigSelection,
     expand_configs,
@@ -12,6 +15,23 @@ from developer.benchmark.configs import (
 
 
 class ConfigExpansionTests(unittest.TestCase):
+    def test_targets_are_explicit_and_context_policy_has_one_model_free_case(self) -> None:
+        for target in (TARGET_VISION_PIPELINE, TARGET_FULL_PROTECTION_PIPELINE):
+            with self.subTest(target=target):
+                self.assertEqual(
+                    expand_configs(ConfigSelection(benchmark_target=target))[0].benchmark_target,
+                    target,
+                )
+        context = expand_configs(ConfigSelection(
+            benchmark_target=TARGET_CONTEXT_POLICY,
+            detectors=("nudenet_640m", "yolo11_nsfw_small"),
+            context_models=("off", "viddexa_nano"),
+        ))
+        self.assertEqual(len(context), 1)
+        self.assertEqual(context[0].benchmark_target, TARGET_CONTEXT_POLICY)
+        with self.assertRaises(ValueError):
+            expand_configs(ConfigSelection(benchmark_target="unknown"))
+
     def test_full_only_ignores_overlap_and_tile_input(self) -> None:
         configs = expand_configs(
             ConfigSelection(

@@ -16,15 +16,15 @@ if str(PROJECT_ROOT) not in sys.path:
 from nudenet import NudeDetector
 
 from app import config
-from app.vision.benchmarking import vision_ground_truth
 from app.vision.model_assets import resolve_nudenet_model_path
 from app.vision.violation_policy import VisualViolationClassification
+from developer.benchmark.ground_truth import visual_policy_classification
 
 
 def is_blocking(detections: list[dict[str, Any]]) -> bool:
     """Apply Visual Violation Policy to raw detections."""
 
-    return vision_ground_truth(detections) == VisualViolationClassification.VIOLATION.value
+    return visual_policy_classification(detections) is VisualViolationClassification.VIOLATION
 
 
 def benchmark(

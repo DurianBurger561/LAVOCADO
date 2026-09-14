@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from developer.benchmark.dataset import (
+    BenchmarkSample,
     DatasetError,
     create_dataset,
     import_paths,
@@ -15,6 +16,7 @@ from developer.benchmark.dataset import (
     save_dataset,
     update_sample,
 )
+
 try:
     from benchmark.helpers import write_png
 except ImportError:
@@ -22,6 +24,28 @@ except ImportError:
 
 
 class DatasetTests(unittest.TestCase):
+    def test_context_fixture_and_expected_policy_round_trip(self) -> None:
+        sample = BenchmarkSample(
+            "context-1",
+            "image.png",
+            "allow",
+            False,
+            context_fixture={
+                "application_identifier": "org.example.browser",
+                "application_rules": [
+                    {"identifier": "org.example.browser", "action": "full_bypass"}
+                ],
+            },
+            expected_policy="full_bypass",
+        )
+
+        restored = BenchmarkSample.from_dict(sample.to_dict())
+
+        self.assertEqual(restored.context_fixture, sample.context_fixture)
+        self.assertEqual(restored.expected_policy, "full_bypass")
+        with self.assertRaises(DatasetError):
+            BenchmarkSample.from_dict({**sample.to_dict(), "expected_policy": "block"})
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -60,7 +84,7 @@ class DatasetTests(unittest.TestCase):
     def test_import_reference_and_copy(self) -> None:
         dataset = create_dataset(self.root, "import_test")
         first = write_png(self.root / "src" / "a.png", (10, 20, 30))
-        second = write_png(self.root / "src" / "b.jpg".replace(".jpg", ".png"), (40, 50, 60))
+        write_png(self.root / "src" / "b.png", (40, 50, 60))
         result = import_paths(dataset, [first.parent], mode="reference")
         self.assertEqual(result["added"], 2)
         self.assertTrue(Path(dataset.samples[0].path).is_absolute())

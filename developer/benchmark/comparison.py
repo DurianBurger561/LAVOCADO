@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 
 def compare_summaries(
@@ -78,6 +79,8 @@ def _best(rows: list[dict[str, Any]], key: str, *, highest: bool) -> str | None:
 
 
 def _config_label(config: Mapping[str, Any]) -> str:
+    if config.get("benchmark_target") == "context_policy":
+        return "Context Policy"
     detector = str(config.get("detector") or "detector")
     context = config.get("context_model") or "off"
     size = config.get("full_input_size")

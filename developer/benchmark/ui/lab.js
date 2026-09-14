@@ -289,7 +289,10 @@ async function openDataset(path) {
 }
 
 async function refreshConfigs() {
-  const response = labAssert(await labInvoke("lab_expand_configs", configPayload()));
+  const payload = configPayload();
+  const sweep = labEl("lab-threshold-sweep");
+  if (sweep) sweep.hidden = ["detector_only", "context_policy"].includes(payload.benchmark_target);
+  const response = labAssert(await labInvoke("lab_expand_configs", payload));
   lab.configs = response.configs || [];
   labText("lab-config-count", `${response.count} configurations`);
 }
@@ -300,14 +303,24 @@ function renderSummary(run) {
   const summaries = Object.values((run && run.summaries) || {});
   const summary = summaries[0] || {};
   const detectorOnly = summary.target === "detector_only";
+  const contextOnly = summary.target === "context_policy";
   const matrix = labEl("lab-matrix");
   const detectorNote = labEl("lab-detector-note");
   const detectorList = labEl("lab-detector-list");
-  if (matrix) matrix.hidden = detectorOnly;
+  if (matrix) matrix.hidden = detectorOnly || contextOnly;
   if (detectorNote) detectorNote.hidden = !detectorOnly;
   if (detectorList) detectorList.hidden = !detectorOnly;
   const latency = (value) => (value == null ? "—" : `${Number(value).toFixed(0)} ms`);
-  const items = detectorOnly
+  const items = contextOnly
+    ? [
+        ["Samples", summary.sample_count ?? 0],
+        ["Labelled policies", summary.labelled_count ?? 0],
+        ["Correct", summary.correct ?? 0],
+        ["Incorrect", summary.incorrect ?? 0],
+        ["Policy accuracy", percent(summary.accuracy)],
+        ["Mean latency", latency(summary.mean_latency_ms)],
+      ]
+    : detectorOnly
     ? [
         ["Samples", summary.sample_count ?? 0],
         ["Detections", summary.detection_count ?? 0],
@@ -325,7 +338,7 @@ function renderSummary(run) {
         ["p95 latency", latency(summary.p95_latency_ms)],
       ];
   const ranking = summary.ranking || {};
-  if (!detectorOnly && ranking.eligible_samples) {
+  if (!detectorOnly && !contextOnly && ranking.eligible_samples) {
     items.push(
       ["Top-1 relevant tile", percent(ranking.top1_relevant_tile_rate)],
       ["Top-2 relevant tile", percent(ranking.top2_relevant_tile_rate)],
@@ -333,7 +346,7 @@ function renderSummary(run) {
     );
   }
   box.innerHTML = items.map(([label, value]) => `<div><span class="muted">${label}</span><strong>${value}</strong></div>`).join("");
-  if (!detectorOnly) {
+  if (!detectorOnly && !contextOnly) {
     labText("lab-tp", summary.tp ?? "—");
     labText("lab-tn", summary.tn ?? "—");
     labText("lab-fp", summary.fp ?? "—");
@@ -348,7 +361,7 @@ function renderSummary(run) {
   }
   const tagBox = labEl("lab-tag-metrics");
   if (tagBox) {
-    if (detectorOnly) {
+    if (detectorOnly || contextOnly) {
       tagBox.innerHTML = "";
       return;
     }
@@ -393,12 +406,16 @@ async function refreshFailures() {
       const detail = labEl("lab-failure-detail");
       const decision = row.decision_summary || {};
       const detector = row.detector_summary || {};
+      const context = row.context_summary || {};
+      const temporal = row.temporal_summary || {};
       detail.innerHTML = `
         <p><strong>Sample ${row.sample_id}</strong></p>
         <p>Expected ${row.expected || "Unlabelled"} · Predicted ${row.predicted || "—"}</p>
         <p>Tags: ${(row.tags || []).join(", ") || "—"}</p>
         <p>Detector: ${detector.best_label || "none"} ${detector.best_confidence == null ? "" : detector.best_confidence}</p>
         <p>Decision: ${decision.source || "—"} · ${decision.classification || "—"} · ${decision.label || ""}</p>
+        <p>Context: ${context.policy_action || "not evaluated"} · Vision ${row.vision_called ? "called" : "skipped"}</p>
+        <p>Temporal: ${temporal.history ? temporal.history.join(", ") : "n/a"} · Confirmed ${temporal.confirmed ? "yes" : "no"}</p>
         <p>Latency: ${row.total_ms == null ? "—" : `${Number(row.total_ms).toFixed(1)} ms`}</p>
         <p>Ranking: ${row.ranking && row.ranking.eligible ? `Top-1 ${row.ranking.top1} · Top-2 ${row.ranking.top2} · context ${row.ranking.context_latency_ms == null ? "—" : `${Number(row.ranking.context_latency_ms).toFixed(1)} ms`}` : "n/a"}</p>
       `;

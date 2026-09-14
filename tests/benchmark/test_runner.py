@@ -8,8 +8,19 @@ from pathlib import Path
 
 from app.vision.decision import DecisionEngine
 from app.vision.pipeline import VisionPipeline
-from developer.benchmark.configs import BenchmarkConfig
-from developer.benchmark.dataset import create_dataset, import_paths, update_sample
+from developer.benchmark.configs import (
+    TARGET_CONTEXT_POLICY,
+    BenchmarkConfig,
+    ConfigSelection,
+    expand_configs,
+)
+from developer.benchmark.dataset import (
+    BenchmarkSample,
+    create_dataset,
+    import_paths,
+    save_dataset,
+    update_sample,
+)
 from developer.benchmark.runner import BenchmarkRunner
 from developer.benchmark.session import BenchmarkSession
 
@@ -26,6 +37,29 @@ class FakeDetector:
 
 
 class RunnerTests(unittest.TestCase):
+    def test_context_policy_runner_never_opens_missing_image(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            dataset = create_dataset(Path(temporary), "policy")
+            dataset.samples.append(BenchmarkSample(
+                "context-1", "missing.png", None, False,
+                context_fixture={
+                    "application_identifier": "org.example.app",
+                    "application_rules": [
+                        {"identifier": "org.example.app", "action": "force_block"}
+                    ],
+                },
+                expected_policy="force_block",
+            ))
+            save_dataset(dataset)
+            config = expand_configs(
+                ConfigSelection(benchmark_target=TARGET_CONTEXT_POLICY)
+            )[0]
+
+            run = BenchmarkRunner(dataset, [config]).start()
+
+            self.assertEqual(run.rows[0]["predicted"], "force_block")
+            self.assertEqual(run.summaries[config.id]["accuracy"], 1.0)
+
     def test_cancel_keeps_completed_rows(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

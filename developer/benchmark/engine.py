@@ -2,62 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
 
-from developer.benchmark.configs import TARGET_DETECTOR, BenchmarkConfig
+from developer.benchmark.configs import (
+    TARGET_CONTEXT_POLICY,
+    TARGET_DETECTOR,
+    TARGET_FULL_PROTECTION_PIPELINE,
+    TARGET_VISION_PIPELINE,
+    BenchmarkConfig,
+)
 from developer.benchmark.dataset import BenchmarkDataset, BenchmarkSample
 from developer.benchmark.inference_cache import InferenceCache, RawInferenceResult
-from developer.benchmark.session import BenchmarkSession, load_bgr_image, sample_hash_for
-
-
-@dataclass
-class PipelineBenchmarkResult:
-    sample_id: str
-    config_id: str
-    expected: str | None
-    predicted: str
-    outcome: str
-    correct: bool
-    total_ms: float
-    detector_summary: dict[str, Any] = field(default_factory=dict)
-    context_summary: dict[str, Any] = field(default_factory=dict)
-    decision_summary: dict[str, Any] = field(default_factory=dict)
-    tags: list[str] = field(default_factory=list)
-    excluded: bool = False
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "sample_id": self.sample_id,
-            "config_id": self.config_id,
-            "expected": self.expected,
-            "predicted": self.predicted,
-            "outcome": self.outcome,
-            "correct": self.correct,
-            "total_ms": self.total_ms,
-            "detector_summary": self.detector_summary,
-            "context_summary": self.context_summary,
-            "decision_summary": self.decision_summary,
-            "tags": list(self.tags),
-            "excluded": self.excluded,
-        }
-
-    @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> PipelineBenchmarkResult:
-        return cls(
-            sample_id=str(payload.get("sample_id") or ""),
-            config_id=str(payload.get("config_id") or ""),
-            expected=payload.get("expected"),
-            predicted=str(payload.get("predicted") or "allow"),
-            outcome=str(payload.get("outcome") or ""),
-            correct=bool(payload.get("correct")),
-            total_ms=float(payload.get("total_ms") or 0.0),
-            detector_summary=dict(payload.get("detector_summary") or {}),
-            context_summary=dict(payload.get("context_summary") or {}),
-            decision_summary=dict(payload.get("decision_summary") or {}),
-            tags=list(payload.get("tags") or []),
-            excluded=bool(payload.get("excluded")),
-        )
+from developer.benchmark.session import (
+    BenchmarkSession,
+    load_bgr_image,
+    sample_hash_for,
+)
 
 
 def evaluate_sample(
@@ -65,6 +25,15 @@ def evaluate_sample(
     dataset: BenchmarkDataset,
     sample: BenchmarkSample,
 ) -> dict[str, Any]:
+    if session.config.benchmark_target == TARGET_CONTEXT_POLICY:
+        payload = session.run_context_policy(sample)
+        payload["target"] = TARGET_CONTEXT_POLICY
+        return payload
+    if session.config.benchmark_target == TARGET_FULL_PROTECTION_PIPELINE:
+        context_result = session.context_protection_result(sample)
+        if context_result is not None:
+            context_result["target"] = TARGET_FULL_PROTECTION_PIPELINE
+            return context_result
     path = dataset.resolve_path(sample)
     image = load_bgr_image(path)
     digest = sample_hash_for(path, sample)
@@ -80,7 +49,12 @@ def evaluate_sample(
                 "tags": sorted(sample.tags),
                 "raw": raw.to_dict(),
             }
-        payload = session.run_full_pipeline(sample, image, sample_hash=digest)
+        if session.config.benchmark_target == TARGET_VISION_PIPELINE:
+            payload = session.run_vision_pipeline(sample, image, sample_hash=digest)
+        elif session.config.benchmark_target == TARGET_FULL_PROTECTION_PIPELINE:
+            payload = session.run_full_pipeline(sample, image, sample_hash=digest)
+        else:
+            raise ValueError(f"Unknown benchmark target: {session.config.benchmark_target}")
         payload["target"] = session.config.benchmark_target
         return payload
     finally:

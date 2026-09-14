@@ -182,7 +182,6 @@ class RuleSettingsStore:
                 )
                 """
             )
-            connection.execute("DROP TABLE IF EXISTS context_rule_migrations")
 
 
 def _validate_rule_fields(action: ContextPolicyAction, enabled: bool) -> None:

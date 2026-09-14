@@ -71,7 +71,7 @@ class EventRecorderTests(unittest.TestCase):
         self.assertNotIn(b"private.example", database_bytes)
         self.assertNotIn(b"confidential", database_bytes)
 
-    def test_old_identity_labels_are_hidden_without_modifying_history(self) -> None:
+    def test_identity_labels_are_hidden_on_read_without_modifying_storage(self) -> None:
         with closing(sqlite3.connect(self.database_path)) as connection, connection:
             connection.execute(
                 "INSERT INTO protection_events (occurred_at, trigger_type, label, "
@@ -82,12 +82,12 @@ class EventRecorderTests(unittest.TestCase):
         self.assertIsNone(self.recorder.recent()[0].label)
         self.assertIn(b"private.example", self.database_path.read_bytes())
 
-    def test_historical_blocklist_labels_are_hidden_without_modifying_history(self) -> None:
+    def test_unknown_trigger_labels_are_hidden_without_modifying_storage(self) -> None:
         with closing(sqlite3.connect(self.database_path)) as connection, connection:
             connection.execute(
                 "INSERT INTO protection_events (occurred_at, trigger_type, label, "
                 "monitor_index) VALUES (?, ?, ?, ?)",
-                ("2026-09-12T00:00:00+00:00", "blocklist", "Steam", 1),
+                ("2026-09-12T00:00:00+00:00", "unknown_context", "Steam", 1),
             )
 
         self.assertIsNone(self.recorder.recent()[0].label)

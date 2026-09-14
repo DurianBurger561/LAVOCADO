@@ -6,10 +6,11 @@ import hashlib
 import json
 import os
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
 
 from developer.benchmark import SCHEMA_VERSION
 from developer.benchmark.tags import normalize_tags
@@ -40,6 +41,8 @@ class BenchmarkSample:
     tags: set[str] = field(default_factory=set)
     source_path: str | None = None
     content_hash: str | None = None
+    context_fixture: dict[str, Any] | None = None
+    expected_policy: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -50,6 +53,8 @@ class BenchmarkSample:
             "tags": sorted(self.tags),
             "source_path": self.source_path,
             "content_hash": self.content_hash,
+            "context_fixture": self.context_fixture,
+            "expected_policy": self.expected_policy,
         }
 
     @classmethod
@@ -77,7 +82,28 @@ class BenchmarkSample:
                 if payload.get("content_hash") in (None, "")
                 else str(payload.get("content_hash"))
             ),
+            context_fixture=_context_fixture_from_payload(payload.get("context_fixture")),
+            expected_policy=_expected_policy_from_payload(payload.get("expected_policy")),
         )
+
+
+def _context_fixture_from_payload(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise DatasetError("context_fixture must be an object")
+    return dict(value)
+
+
+def _expected_policy_from_payload(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    from app.context.models import ContextPolicyAction
+
+    try:
+        return ContextPolicyAction(value).value
+    except ValueError as error:
+        raise DatasetError("expected_policy must be normal, full_bypass, or force_block") from error
 
 
 @dataclass
@@ -181,7 +207,7 @@ def validate_image(path: Path) -> None:
             image.verify()
     except DatasetError:
         raise
-    except Exception as error:  # noqa: BLE001 - convert decoder failures
+    except Exception as error:
         raise DatasetError(f"Invalid image: {path.name}") from error
 
 

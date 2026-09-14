@@ -16,7 +16,6 @@ from developer.benchmark.configs import (
     selection_from_payload,
     settings_to_protection_payload,
 )
-from developer.benchmark.sweep import DEFAULT_PROPOSAL, DEFAULT_STRONG, sweep_thresholds
 from developer.benchmark.dataset import (
     DatasetError,
     create_dataset,
@@ -28,9 +27,8 @@ from developer.benchmark.dataset import (
 from developer.benchmark.exporter import export_csv, export_json
 from developer.benchmark.inference_cache import InferenceCache
 from developer.benchmark.preview import annotated_data_url, image_data_url
-from developer.benchmark.results import load_run
 from developer.benchmark.runner import BenchmarkRunner
-
+from developer.benchmark.sweep import DEFAULT_PROPOSAL, DEFAULT_STRONG, sweep_thresholds
 from developer.benchmark.tags import catalog_payload
 
 
@@ -274,7 +272,9 @@ class DeveloperDashboardAPI(DashboardAPI):
         elif wanted == "false_positive":
             rows = [row for row in rows if row.get("outcome") == "fp"]
         elif wanted == "correct":
-            rows = [row for row in rows if row.get("outcome") in {"tp", "tn"}]
+            rows = [row for row in rows if row.get("outcome") in {"tp", "tn", "correct"}]
+        elif wanted == "incorrect":
+            rows = [row for row in rows if row.get("outcome") == "incorrect"]
         return {"ok": True, "rows": rows}
 
     def lab_annotated_preview(self, sample_id: str, config_id: str | None = None) -> dict[str, Any]:
@@ -428,7 +428,7 @@ class DeveloperDashboardAPI(DashboardAPI):
                 allow_multiple=False,
                 file_types=("Dataset JSON (dataset.json;*.json)",),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - native dialog failure is cancellation
             return None
         if not result:
             return None
@@ -448,7 +448,7 @@ class DeveloperDashboardAPI(DashboardAPI):
                 allow_multiple=True,
                 file_types=("Images (*.jpg;*.jpeg;*.png;*.webp;*.bmp)",),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - native dialog failure is cancellation
             return []
         if not result:
             return []
@@ -462,7 +462,7 @@ class DeveloperDashboardAPI(DashboardAPI):
             import webview
 
             result = window.create_file_dialog(webview.FOLDER_DIALOG)
-        except Exception:
+        except Exception:  # noqa: BLE001 - native dialog failure is cancellation
             return None
         if not result:
             return None
@@ -479,7 +479,7 @@ class DeveloperDashboardAPI(DashboardAPI):
                 webview.SAVE_DIALOG,
                 save_filename=filename,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - native dialog failure is cancellation
             return None
         if not result:
             return None

@@ -34,9 +34,9 @@ the application rule. A blacklist always beats a whitelist.
 | ForegroundContextService | App / website identity | Capture backends, pixels |
 | ContextPolicyService | FORCE_BLOCK / FULL_BYPASS / NORMAL | Screenshots, detector labels |
 | VisionPipeline | NudeNet, optional YOLO, tile ranking | Hostnames, URLs, viewing purpose |
-| VisualDecisionEngine | VIOLATION / UNCERTAIN / CLEAR | Application or website identity |
-| TemporalEngine | Confirmed visual violations on fresh frames | Raw detector hits, porn-purpose scores |
-| Protection runtime | Overlay / intervention | Interpreting NudeNet/YOLO class names |
+| DecisionEngine | VIOLATION / UNCERTAIN / CLEAR | Application or website identity |
+| ProtectionRuntime / TemporalVerifier | Scan scheduling and confirmed visual violations on fresh frames | Viewing-purpose scores or UI decisions |
+| LavocadoService / OverlayBackend | State, intervention, and target-display overlay | Interpreting NudeNet/YOLO class names |
 
 Viddexa only ranks tiles. It cannot block. Detectors emit `ViolationEvidence`.
 The decision engine classifies visual evidence. Protection runs only after
@@ -62,10 +62,12 @@ Keep these scoreboards separate:
 
 | Lab | Question | Not the question |
 | --- | --- | --- |
-| Vision | Does this image violate visual policy? | Is the site medical/art/education? |
+| Vision Pipeline | Does this image violate visual policy? | Is the site medical/art/education? |
+| Context Policy | Does the typed foreground fixture resolve to NORMAL, BYPASS, or BLOCK? | Do pixels violate visual policy? |
 | Viddexa ranking | Did ranking put the right tile first? | Is Viddexa porn accuracy Block accuracy? |
 | Detector | Recall, precision, small-target, ROI/tile, latency | Viewing purpose |
-| Full Product | Context + Vision + Temporal + Protection | A single raw detector hit |
+| Full Protection Pipeline | Context + Vision if NORMAL + Temporal + final action | A single raw detector hit |
+| Capture | How does the real backend perform on this display? | Static image classification |
 
 Medical anatomy that matches visual policy is a Vision true positive. The
 same image on a whitelisted site is FULL_BYPASS: Vision is not called, and

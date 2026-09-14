@@ -4,10 +4,26 @@ from __future__ import annotations
 
 import unittest
 
-from developer.benchmark.metrics import ConfusionCounts, metric_bundle
+from developer.benchmark.metrics import (
+    ConfusionCounts,
+    metric_bundle,
+    summarize_context_rows,
+)
 
 
 class MetricsTests(unittest.TestCase):
+    def test_context_policy_metrics_do_not_use_block_allow_confusion_counts(self) -> None:
+        summary = summarize_context_rows([
+            {"expected": "normal", "predicted": "normal", "outcome": "correct", "total_ms": 1.0},
+            {"expected": "force_block", "predicted": "normal", "outcome": "incorrect", "total_ms": 2.0},
+            {"expected": None, "predicted": "normal", "outcome": "unlabelled", "total_ms": 3.0},
+        ])
+
+        self.assertEqual(summary["target"], "context_policy")
+        self.assertEqual(summary["labelled_count"], 2)
+        self.assertEqual(summary["accuracy"], 0.5)
+        self.assertNotIn("tp", summary)
+
     def test_guide_example(self) -> None:
         counts = ConfusionCounts(tp=90, fn=10, tn=95, fp=5)
         bundle = metric_bundle(counts)

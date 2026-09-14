@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
-from typing import Any, Iterable, Mapping
+from typing import Any
 
+from developer.benchmark.configs import TARGET_FULL_PROTECTION_PIPELINE
 from developer.benchmark.dataset import EXPECTED_ALLOW, EXPECTED_BLOCK
 from developer.benchmark.ranking import summarize_ranking
 from developer.benchmark.tags import (
@@ -93,7 +95,11 @@ def metric_bundle(counts: ConfusionCounts) -> dict[str, Any]:
     }
 
 
-def summarize_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+def summarize_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    target: str = TARGET_FULL_PROTECTION_PIPELINE,
+) -> dict[str, Any]:
     eligible = [
         row
         for row in rows
@@ -116,7 +122,7 @@ def summarize_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         if isinstance(row.get("total_ms"), (int, float))
     ]
     payload = {
-        "target": "full_protection_pipeline",
+        "target": target,
         **metric_bundle(counts),
         "mean_latency_ms": _mean(latencies),
         "p95_latency_ms": _percentile(latencies, 0.95),
@@ -126,6 +132,31 @@ def summarize_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     if ranking is not None:
         payload["ranking"] = ranking
     return payload
+
+
+def summarize_context_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Score Context Policy actions separately from image Block/Allow metrics."""
+
+    samples = list(rows)
+    labelled = [
+        row for row in samples if not row.get("excluded") and row.get("expected")
+    ]
+    correct = sum(row.get("outcome") == "correct" for row in labelled)
+    latencies = [
+        float(row["total_ms"])
+        for row in samples
+        if isinstance(row.get("total_ms"), (int, float))
+    ]
+    return {
+        "target": "context_policy",
+        "sample_count": len(samples),
+        "labelled_count": len(labelled),
+        "correct": correct,
+        "incorrect": len(labelled) - correct,
+        "accuracy": _ratio(correct, len(labelled)),
+        "mean_latency_ms": _mean(latencies),
+        "p95_latency_ms": _percentile(latencies, 0.95),
+    }
 
 
 def summarize_detector_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:

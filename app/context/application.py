@@ -1,4 +1,4 @@
-"""Reduce legacy foreground-window metadata to rule-safe app identity."""
+"""Reduce platform foreground-window metadata to rule-safe app identity."""
 
 from __future__ import annotations
 

@@ -10,10 +10,17 @@ from typing import Any
 from uuid import uuid4
 
 from developer.benchmark import ENGINE_VERSION
-from developer.benchmark.configs import BenchmarkConfig
+from developer.benchmark.configs import (
+    TARGET_CONTEXT_POLICY,
+    TARGET_DETECTOR,
+    BenchmarkConfig,
+)
 from developer.benchmark.dataset import BenchmarkDataset, hash_file
-from developer.benchmark.configs import TARGET_DETECTOR
-from developer.benchmark.metrics import summarize_detector_rows, summarize_rows
+from developer.benchmark.metrics import (
+    summarize_context_rows,
+    summarize_detector_rows,
+    summarize_rows,
+)
 
 
 @dataclass
@@ -68,14 +75,13 @@ def finalize_run(run: BenchmarkRun) -> BenchmarkRun:
         by_config.setdefault(str(row.get("config_id") or ""), []).append(row)
     summaries = {}
     for config_id, rows in by_config.items():
-        detector_rows = [row for row in rows if row.get("target") == TARGET_DETECTOR]
-        pipeline_rows = [row for row in rows if row.get("target") != TARGET_DETECTOR]
-        if pipeline_rows:
-            summaries[config_id] = summarize_rows(pipeline_rows)
-        elif detector_rows:
-            summaries[config_id] = summarize_detector_rows(detector_rows)
+        target = str(rows[0].get("target") or "")
+        if target == TARGET_DETECTOR:
+            summaries[config_id] = summarize_detector_rows(rows)
+        elif target == TARGET_CONTEXT_POLICY:
+            summaries[config_id] = summarize_context_rows(rows)
         else:
-            summaries[config_id] = summarize_rows([])
+            summaries[config_id] = summarize_rows(rows, target=target)
     run.summaries = summaries
     return run
 
