@@ -14,6 +14,11 @@ pyobjc-framework-libdispatch>=10,<13; sys_platform == "darwin"
 pyobjc-framework-Quartz>=10,<13; sys_platform == "darwin"
 pyobjc-framework-ScreenCaptureKit>=10,<13; sys_platform == "darwin"
 
-# All four bundled models must also be runnable in User and Developer builds.
--r requirements-context.txt
--r requirements-yolo.txt
+# All four bundled models must run in both User and Developer builds.
+# Viddexa Nano and Mini context models.
+huggingface_hub>=0.34,<1
+transformers>=4.56.1,<5
+torch>=2.4,<3
+
+# YOLO11 NSFW Small primary detector. Pinned weights are downloaded separately.
+ultralytics>=8.3,<9

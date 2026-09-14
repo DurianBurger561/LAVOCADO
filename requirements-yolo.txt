@@ -1,3 +1,0 @@
-# Required to run the bundled YOLO11 NSFW Small primary detector.
-# LAVOCADO never trains weights; scripts/download_models.py fetches pinned weights.
-ultralytics>=8.3,<9

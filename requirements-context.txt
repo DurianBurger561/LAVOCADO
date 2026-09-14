@@ -1,4 +1,0 @@
-# Required for the bundled Viddexa Nano and Mini context models.
-huggingface_hub>=0.34,<1
-transformers>=4.56.1,<5
-torch>=2.4,<3

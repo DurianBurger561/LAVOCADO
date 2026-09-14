@@ -105,8 +105,16 @@ class PackagingSpecTests(unittest.TestCase):
             test_matrix.splitlines(),
             ["          - windows-latest", "          - macos-latest"],
         )
-        self.assertIn("-r requirements-context.txt", (ROOT / "requirements.txt").read_text())
-        self.assertIn("-r requirements-yolo.txt", (ROOT / "requirements.txt").read_text())
+        runtime_requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        for dependency in (
+            "huggingface_hub>=0.34,<1",
+            "transformers>=4.56.1,<5",
+            "torch>=2.4,<3",
+            "ultralytics>=8.3,<9",
+        ):
+            self.assertIn(dependency, runtime_requirements)
+        self.assertFalse((ROOT / "requirements-context.txt").exists())
+        self.assertFalse((ROOT / "requirements-yolo.txt").exists())
         self.assertIn("ultralytics", MODEL_HIDDENIMPORTS)
         self.assertIn(
             "transformers.models.efficientnet.modeling_efficientnet",

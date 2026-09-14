@@ -30,8 +30,6 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-build.txt
-            requirements-context.txt
-            requirements-yolo.txt
 
       - name: Install CPU PyTorch for Windows tests
         if: runner.os == 'Windows'
