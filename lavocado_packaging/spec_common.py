@@ -7,7 +7,6 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
 
-
 USER_APP_NAME = "LAVOCADO"
 DEVELOPER_APP_NAME = "LAVOCADO-Developer"
 DEVELOPER_BUNDLE_NAME = "LAVOCADO Developer"
