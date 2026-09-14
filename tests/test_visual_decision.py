@@ -1,6 +1,7 @@
-"""The visual decision core only transforms evidence and scalar payloads."""
+"""The visual decision core only transforms typed evidence and decisions."""
 
 import unittest
+from dataclasses import replace
 
 from app.settings.schema import default_vision_settings
 from app.vision.violation_policy import (
@@ -9,7 +10,7 @@ from app.vision.violation_policy import (
     ViolationEvidenceType,
     VisualViolationClassification,
 )
-from app.vision.visual_decision import VisualDecisionEngine
+from app.vision.visual_decision import VisualDecisionDraft, VisualDecisionEngine
 
 
 def breast(score: float) -> ViolationEvidence:
@@ -93,29 +94,24 @@ class VisualDecisionEngineTests(unittest.TestCase):
         self.assertEqual(selected.evidence, breast(0.50))
         self.assertEqual(selected.threshold, 0.65)
 
-    def test_finalize_does_not_mutate_payload(self) -> None:
-        payload = {
-            "classification": VisualViolationClassification.CLEAR,
-            "source": "nudenet_none",
-            "evidence": [],
-        }
+    def test_finalize_does_not_mutate_draft(self) -> None:
+        draft = VisualDecisionDraft(
+            classification=VisualViolationClassification.CLEAR,
+            source="nudenet_none",
+            evidence=(),
+        )
+        original = replace(draft)
 
-        result = self.engine.finalize(payload, frame_sequence=2, monitor_index=1)
+        result = self.engine.finalize(draft, frame_sequence=2, monitor_index=1)
 
         self.assertIs(result.classification, VisualViolationClassification.CLEAR)
-        self.assertEqual(
-            payload,
-            {
-                "classification": VisualViolationClassification.CLEAR,
-                "source": "nudenet_none",
-                "evidence": [],
-            },
-        )
+        self.assertEqual(result.reason_codes, ("nudenet_none",))
+        self.assertEqual(draft, original)
 
     def test_finalize_rejects_untyped_classification(self) -> None:
         with self.assertRaisesRegex(TypeError, "must be typed"):
             self.engine.finalize(
-                {"classification": "violation", "evidence": []},
+                VisualDecisionDraft(classification="violation", evidence=()),  # type: ignore[arg-type]
                 frame_sequence=2,
                 monitor_index=1,
             )
@@ -123,14 +119,28 @@ class VisualDecisionEngineTests(unittest.TestCase):
     def test_finalize_preserves_typed_evidence_without_dict_roundtrip(self) -> None:
         evidence = breast(0.8)
         result = self.engine.finalize(
-            {"classification": VisualViolationClassification.VIOLATION, "evidence": [evidence]},
+            VisualDecisionDraft(
+                classification=VisualViolationClassification.VIOLATION,
+                evidence=(evidence,),
+            ),
             frame_sequence=2,
             monitor_index=1,
         )
         self.assertIs(result.evidence[0], evidence)
         with self.assertRaisesRegex(TypeError, "evidence must remain typed"):
             self.engine.finalize(
-                {"classification": VisualViolationClassification.CLEAR, "evidence": [{}]},
+                VisualDecisionDraft(
+                    classification=VisualViolationClassification.CLEAR,
+                    evidence=({},),  # type: ignore[arg-type]
+                ),
+                frame_sequence=2,
+                monitor_index=1,
+            )
+
+    def test_finalize_rejects_dictionary_decision_protocol(self) -> None:
+        with self.assertRaisesRegex(TypeError, "draft must be typed"):
+            self.engine.finalize(  # type: ignore[arg-type]
+                {"classification": VisualViolationClassification.CLEAR, "evidence": ()},
                 frame_sequence=2,
                 monitor_index=1,
             )

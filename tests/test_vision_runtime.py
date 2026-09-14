@@ -8,6 +8,7 @@ from app.context.store import ForegroundContextStore
 from app.service import LavocadoService, State
 from app.vision.nudenet_adapter import NudeNetAdapter
 from app.vision.temporal import EvidenceAccumulator
+from app.vision.violation_policy import ViolationEvidenceType
 from app.vision.visual_decision import VisualDecisionEngine
 from tests.test_service import (
     FakeCapturer,
@@ -41,11 +42,11 @@ class VisionRuntimeTests(unittest.TestCase):
 
     def test_evidence_accumulator_decays_visual_types_not_purpose(self) -> None:
         accumulator = EvidenceAccumulator(3)
-        accumulator.add("sexual_act")
+        accumulator.add(ViolationEvidenceType.SEXUAL_ACT)
         accumulator.decay()
         accumulator.decay()
 
-        self.assertEqual(accumulator.history(), ("sexual_act", None, None))
+        self.assertEqual(accumulator.history(), (ViolationEvidenceType.SEXUAL_ACT, None, None))
 
     def test_missing_context_still_runs_vision(self) -> None:
         detector = FakeDetector({1: [False]})

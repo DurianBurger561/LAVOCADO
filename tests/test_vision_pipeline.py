@@ -116,6 +116,7 @@ class VisionPipelineTests(unittest.TestCase):
 
         self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
         self.assertEqual(result.reason_codes, ("yolo_sexual_act",))
+        self.assertIs(result.evidence_type, ViolationEvidenceType.SEXUAL_ACT)
         evidence_types = {item.evidence_type for item in result.evidence}
         self.assertIn(ViolationEvidenceType.SEXUAL_ACT, evidence_types)
 

@@ -97,14 +97,11 @@ class ProtectionRuntime:
         if verifier is None:
             verifier = self.verifier_factory()
             self._verifiers[monitor_index] = verifier
-        evidence_type = (
-            decision.evidence[0].evidence_type.value if decision.evidence else None
-        )
         confirmed = verifier.update(
             is_violation,
             frame_sequence=frame.sequence,
             region=decision.primary_region,
-            evidence_type=evidence_type,
+            evidence_type=decision.evidence_type,
             track_id=decision.track_id,
             evidence_score=decision.track_evidence,
         )

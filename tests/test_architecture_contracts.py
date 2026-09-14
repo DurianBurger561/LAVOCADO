@@ -67,6 +67,18 @@ class ArchitectureContractTests(unittest.TestCase):
         ]
         self.assertEqual(definitions, ["app/vision/detectors/base.py"])
 
+    def test_visual_decision_boundary_is_typed(self) -> None:
+        from typing import get_type_hints
+
+        from app.vision import violation_policy
+        from app.vision.visual_decision import VisualDecisionDraft, VisualDecisionEngine
+
+        self.assertIs(
+            get_type_hints(VisualDecisionEngine.finalize)["draft"],
+            VisualDecisionDraft,
+        )
+        self.assertFalse(hasattr(violation_policy, "visual_decision_from_engine_payload"))
+
     def test_display_uses_platform_independent_paths(self) -> None:
         self.assertEqual(
             _display(ROOT / "app" / "platforms" / "capture" / "models.py"),

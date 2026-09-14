@@ -224,6 +224,7 @@ class VisualViolationDecision:
     reason_codes: tuple[str, ...]
     primary_region: tuple[int, int, int, int] | None
     frame_sequence: int
+    evidence_type: ViolationEvidenceType | None = None
     label: str | None = None
     confidence: float = 0.0
     track_id: int | None = None
@@ -323,92 +324,3 @@ def evidence_to_dict(item: ViolationEvidence) -> dict[str, Any]:
         "model": item.model,
         "frame_sequence": item.frame_sequence,
     }
-
-
-def _region_from_payload(value: object) -> tuple[int, int, int, int] | None:
-    if not isinstance(value, (list, tuple)) or len(value) != 4:
-        return None
-    try:
-        return (int(value[0]), int(value[1]), int(value[2]), int(value[3]))
-    except (TypeError, ValueError):
-        return None
-
-
-def visual_decision_from_engine_payload(
-    payload: dict[str, Any],
-    *,
-    frame_sequence: int,
-    monitor_index: int = 1,
-) -> VisualViolationDecision:
-    """Build the public vision result. Engine internals still use working dicts."""
-
-    classification = payload["classification"]
-    if not isinstance(classification, VisualViolationClassification):
-        raise TypeError("Vision decision classification must be typed")
-    raw_evidence = payload.get("evidence") or ()
-    if not isinstance(raw_evidence, (list, tuple)) or not all(
-        isinstance(item, ViolationEvidence) for item in raw_evidence
-    ):
-        raise TypeError("Vision evidence must remain typed")
-    evidence_items = tuple(raw_evidence)
-    source = str(payload.get("source") or "").strip()
-    reason_codes = (source,) if source else ()
-    label = payload.get("label")
-    confidence = payload.get("confidence")
-    try:
-        parsed_confidence = 0.0 if confidence is None else float(confidence)
-    except (TypeError, ValueError):
-        parsed_confidence = 0.0
-    track_evidence = payload.get("track_evidence")
-    try:
-        parsed_track_evidence = (
-            None if track_evidence is None else float(track_evidence)
-        )
-    except (TypeError, ValueError):
-        parsed_track_evidence = None
-    interval = payload.get("scan_interval_ms")
-    try:
-        parsed_interval = None if interval is None else float(interval)
-    except (TypeError, ValueError):
-        parsed_interval = None
-    threshold = payload.get("threshold")
-    try:
-        parsed_threshold = None if threshold is None else float(threshold)
-    except (TypeError, ValueError):
-        parsed_threshold = None
-    track_id = payload.get("track_id")
-    parsed_track_id = track_id if isinstance(track_id, int) else None
-    fresh_hits = payload.get("track_fresh_hits")
-    try:
-        parsed_fresh_hits = 0 if fresh_hits is None else int(fresh_hits)
-    except (TypeError, ValueError):
-        parsed_fresh_hits = 0
-    rescue_index = payload.get("rescue_tile_index")
-    parsed_rescue = rescue_index if isinstance(rescue_index, int) else None
-    shadow = payload.get("shadow")
-    return VisualViolationDecision(
-        classification=classification,
-        evidence=evidence_items,
-        reason_codes=reason_codes,
-        primary_region=_region_from_payload(payload.get("region")),
-        frame_sequence=int(frame_sequence),
-        label=None if label is None else str(label),
-        confidence=parsed_confidence,
-        track_id=parsed_track_id,
-        track_evidence=parsed_track_evidence,
-        track_fresh_hits=parsed_fresh_hits,
-        monitor_index=int(monitor_index),
-        scan_mode=None if payload.get("scan_mode") is None else str(payload.get("scan_mode")),
-        scan_interval_ms=parsed_interval,
-        context_label=(
-            None if payload.get("context_label") is None else str(payload.get("context_label"))
-        ),
-        context_score=(
-            None
-            if payload.get("context_score") is None
-            else float(payload.get("context_score") or 0.0)
-        ),
-        rescue_tile_index=parsed_rescue,
-        threshold=parsed_threshold,
-        shadow=dict(shadow) if isinstance(shadow, dict) else None,
-    )

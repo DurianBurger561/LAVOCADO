@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import replace
 
 import numpy as np
 
@@ -19,16 +19,18 @@ from app.vision.tiles import TileState
 from app.vision.tracking import CandidateTracker, box_to_region
 from app.vision.viddexa_ranker import ContextSensor, ViddexaRanker
 from app.vision.violation_policy import (
-    DetectionTier,
     ThresholdPolicy,
     ViolationEvidence,
     ViolationEvidenceType,
     VisualViolationClassification,
     VisualViolationDecision,
     threshold_for_label,
-    tier_for_score,
 )
-from app.vision.visual_decision import BorderlineCandidate, PrimaryAssessment
+from app.vision.visual_decision import (
+    BorderlineCandidate,
+    PrimaryAssessment,
+    VisualDecisionDraft,
+)
 from app.vision.visual_decision import VisualDecisionEngine as _VisualDecisionEngine
 
 
@@ -160,11 +162,10 @@ class DecisionEngine:
                 captured_frame,
                 monitor_index,
                 plan.roi,
-                frame_sequence,
                 prepared,
             )
             return self._finalize_decision(
-                focused, captured_frame, monitor_index, frame_sequence
+                focused, monitor_index, frame_sequence
             )
 
         if primary_assessment.strong is not None:
@@ -180,7 +181,7 @@ class DecisionEngine:
                 prepared=prepared,
             )
             return self._finalize_decision(
-                decided, captured_frame, monitor_index, frame_sequence
+                decided, monitor_index, frame_sequence
             )
 
         assessment = self.visual_decision_engine.assess(detection.evidence)
@@ -206,7 +207,7 @@ class DecisionEngine:
                 prepared=prepared,
             )
             return self._finalize_decision(
-                decided, captured_frame, monitor_index, frame_sequence
+                decided, monitor_index, frame_sequence
             )
 
         borderline = assessment.proposal
@@ -224,9 +225,9 @@ class DecisionEngine:
                 base = self._evaluate_borderline(
                     result, captured_frame, borderline_candidate, prepared
                 )
-                if base["classification"] is VisualViolationClassification.VIOLATION:
+                if base.classification is VisualViolationClassification.VIOLATION:
                     return self._finalize_decision(
-                        base, captured_frame, monitor_index, frame_sequence
+                        base, monitor_index, frame_sequence
                     )
         else:
             threshold = self.threshold_policy.strong(
@@ -240,9 +241,9 @@ class DecisionEngine:
                 BorderlineCandidate(borderline, threshold),
                 prepared,
             )
-            if base["classification"] is VisualViolationClassification.VIOLATION:
+            if base.classification is VisualViolationClassification.VIOLATION:
                 return self._finalize_decision(
-                    base, captured_frame, monitor_index, frame_sequence
+                    base, monitor_index, frame_sequence
                 )
 
         if plan is None:
@@ -256,53 +257,37 @@ class DecisionEngine:
             base, captured_frame, monitor_index, plan=plan, prepared=prepared
         )
         return self._finalize_decision(
-            decided, captured_frame, monitor_index, frame_sequence
+            decided, monitor_index, frame_sequence
         )
 
     @staticmethod
     def _initial_result(
         detection: PrimaryDetection,
         assessment: PrimaryAssessment,
-    ) -> dict[str, Any]:
-        """Serialize a pure primary assessment into working metadata."""
+    ) -> VisualDecisionDraft:
+        """Keep primary evidence typed throughout the decision chain."""
 
-        checkpoints = [
-            {
-                "class": item.label,
-                "score": item.confidence,
-                "box": None if item.bbox is None else list(item.bbox),
-            }
-            for item in detection.primary
-        ]
         strongest = assessment.strong
-        threshold = assessment.threshold
-        result = {
-            "classification": assessment.classification,
-            "reason": (
-                f"{strongest.label} (score {strongest.confidence:.2f}, "
-                f"threshold {threshold:.2f})"
-                if strongest is not None
-                else ""
-            ),
-            "label": None if strongest is None else strongest.label,
-            "confidence": 0.0 if strongest is None else strongest.confidence,
-            "box": None if strongest is None or strongest.bbox is None else list(strongest.bbox),
-            "check_points": checkpoints,
-            "evidence": list(detection.evidence),
-        }
-        return result
+        return VisualDecisionDraft(
+            classification=assessment.classification,
+            evidence=detection.evidence,
+            label=None if strongest is None else strongest.label,
+            confidence=0.0 if strongest is None else strongest.confidence,
+            box=None if strongest is None else strongest.bbox,
+            threshold=assessment.threshold,
+        )
 
     def _confirm_primary_candidate(
         self,
-        result: dict[str, Any],
+        result: VisualDecisionDraft,
         captured_frame: CaptureFrame,
         evidence: ViolationEvidence,
         *,
         confirmed_source: str,
         candidate_source: str,
-        fallback: dict[str, Any],
+        fallback: VisualDecisionDraft,
         prepared: FramePreprocessor,
-    ) -> dict[str, Any]:
+    ) -> VisualDecisionDraft:
         """Confirm primary visual evidence on an original-resolution ROI.
 
         Temporal confirmation still happens on a later fresh frame. Viddexa is
@@ -327,38 +312,30 @@ class DecisionEngine:
             BorderlineCandidate(evidence, threshold),
             prepared,
         )
-        if roi["classification"] is VisualViolationClassification.VIOLATION:
-            roi["source"] = confirmed_source
-            roi["reason"] = (
-                f"{label} original-resolution ROI recheck "
-                f"after score {score:.2f}"
-            )
+        if roi.classification is VisualViolationClassification.VIOLATION:
+            roi.source = confirmed_source
             return roi
-        if roi.get("local_check_points") is None:
+        if not roi.recheck_performed:
             return fallback
-        roi["source"] = candidate_source
-        roi["label"] = label
-        roi["confidence"] = score
+        roi.source = candidate_source
+        roi.label = label
+        roi.confidence = score
         return roi
 
     def _evaluate_borderline(
         self,
-        result: dict[str, Any],
+        result: VisualDecisionDraft,
         captured_frame: CaptureFrame,
         borderline: BorderlineCandidate,
         prepared: FramePreprocessor,
-    ) -> dict[str, Any]:
+    ) -> VisualDecisionDraft:
         """Recheck a borderline box on the original-resolution crop."""
 
-        label = borderline.evidence.label
-        score = borderline.evidence.confidence
         threshold = borderline.threshold
         box = borderline.evidence.bbox
         base = self._with_metadata(
             result,
             source="nudenet_borderline",
-            nudenet_label=label,
-            nudenet_score=score,
             threshold=threshold,
             classification=VisualViolationClassification.UNCERTAIN,
         )
@@ -378,42 +355,31 @@ class DecisionEngine:
         )
         if recheck is None:
             return base
-        base["region"] = recheck.region
+        base.region = recheck.region
+        base.recheck_performed = True
 
         hit = recheck.hit
-        base["local_check_points"] = []
-        base["local_box"] = None if hit is None or hit.bbox is None else list(hit.bbox)
         if hit is None:
             return base
 
         confirmed_label = hit.label
         confidence = float(hit.confidence)
         confirmed_threshold = threshold_for_label(str(confirmed_label))
-        base.update(
-            {
-                "classification": VisualViolationClassification.VIOLATION,
-                "reason": (
-                    f"{confirmed_label} ROI recheck score {confidence:.2f} "
-                    f"after borderline {label} score {score:.2f}"
-                ),
-                "label": confirmed_label,
-                "confidence": confidence,
-                "source": "nudenet_roi",
-                "nudenet_label": None if confirmed_label is None else str(confirmed_label),
-                "nudenet_score": confidence,
-                "threshold": confirmed_threshold,
-            }
-        )
+        base.classification = VisualViolationClassification.VIOLATION
+        base.label = confirmed_label
+        base.confidence = confidence
+        base.source = "nudenet_roi"
+        base.threshold = confirmed_threshold
         return base
 
     def _evaluate_rescue(
         self,
-        base: dict[str, Any],
+        base: VisualDecisionDraft,
         captured_frame: CaptureFrame,
         monitor_index: int,
         plan: ScanPlan | None = None,
         prepared: FramePreprocessor | None = None,
-    ) -> dict[str, Any]:
+    ) -> VisualDecisionDraft:
         """Check priority tiles. Viddexa only orders them; it never vetoes."""
 
         prepared = prepared or FramePreprocessor(captured_frame)
@@ -434,12 +400,6 @@ class DecisionEngine:
         if not batch.tiles:
             return base
 
-        ranking_payload = [
-            {"index": tile.index, "priority": tile.priority_score}
-            for tile in batch.ranked
-        ]
-        base["tile_ranking"] = ranking_payload
-
         checked: set[int] = set()
         decided = base
         for tile_state in batch.selected:
@@ -456,38 +416,24 @@ class DecisionEngine:
                 )
             else:
                 context_label, context_score = "none", 0.0
-            decided["rescue_tile_index"] = tile_index
-            decided["rescue_region"] = tile_state.region
-            decided["context_label"] = context_label
-            decided["context_score"] = float(context_score)
-            decided["context_scores"] = context_scores or None
+            decided.rescue_tile_index = tile_index
+            decided.context_label = context_label
+            decided.context_score = float(context_score)
 
             hit = self.candidate_verifier.strong_hit(crop, frame_sequence=captured_frame.sequence)
             self.scheduler.record_rescue_attempt(
                 monitor_index, tile_index, confirmed=hit is not None
             )
-            decided["local_box"] = None if hit is None or hit.bbox is None else list(hit.bbox)
             if hit is not None:
                 label = hit.label
                 confidence = float(hit.confidence)
                 threshold = threshold_for_label(str(label))
-                decided.update(
-                    {
-                        "classification": VisualViolationClassification.VIOLATION,
-                        "reason": (
-                            f"local rescue found {label} score {confidence:.2f} "
-                            f"after tile priority {tile_state.priority_score:.2f}"
-                        ),
-                        "label": label,
-                        "confidence": confidence,
-                        "source": "rescue_tile",
-                        "region": tile_state.region,
-                        "nudenet_label": label,
-                        "nudenet_score": confidence,
-                        "threshold": threshold,
-                        "tier": DetectionTier.STRONG.value,
-                    }
-                )
+                decided.classification = VisualViolationClassification.VIOLATION
+                decided.label = label
+                decided.confidence = confidence
+                decided.source = "rescue_tile"
+                decided.region = tile_state.region
+                decided.threshold = threshold
                 self.scheduler.mark_checked(monitor_index, batch.tiles, checked)
                 return decided
 
@@ -500,7 +446,7 @@ class DecisionEngine:
                 subdivided = self._evaluate_subtiles(
                     decided, prepared, tile_state, monitor_index
                 )
-                if subdivided["classification"] is VisualViolationClassification.VIOLATION:
+                if subdivided.classification is VisualViolationClassification.VIOLATION:
                     checked.add(tile_index)
                     self.scheduler.mark_checked(monitor_index, batch.tiles, checked)
                     return subdivided
@@ -516,13 +462,12 @@ class DecisionEngine:
 
     def _evaluate_focused(
         self,
-        result: dict[str, Any],
+        result: VisualDecisionDraft,
         captured_frame: CaptureFrame,
         monitor_index: int,
         roi: Region,
-        frame_sequence: int,
         prepared: FramePreprocessor,
-    ) -> dict[str, Any]:
+    ) -> VisualDecisionDraft:
         original = captured_frame.image
         base = self._with_metadata(
             result,
@@ -536,42 +481,30 @@ class DecisionEngine:
         if recheck is None:
             return base
         hit = recheck.hit
-        base["local_box"] = None if hit is None or hit.bbox is None else list(hit.bbox)
-        base["region"] = roi
+        base.region = roi
         if hit is None:
             track = self.tracker.active_track(monitor_index)
             if track is not None:
                 self.tracker.mark_miss(track, decay=self.settings.temporal.decay)
-            base["source"] = "focused_miss"
+            base.source = "focused_miss"
             return base
         label = hit.label
         confidence = float(hit.confidence)
         threshold = threshold_for_label(str(label))
-        base.update(
-            {
-                "classification": VisualViolationClassification.VIOLATION,
-                "reason": (
-                    f"{label} focused ROI score {confidence:.2f} "
-                    f"on fresh frame {frame_sequence}"
-                ),
-                "label": label,
-                "confidence": confidence,
-                "source": "focused_roi",
-                "nudenet_label": label,
-                "nudenet_score": confidence,
-                "threshold": threshold,
-                "tier": DetectionTier.STRONG.value,
-            }
-        )
+        base.classification = VisualViolationClassification.VIOLATION
+        base.label = label
+        base.confidence = confidence
+        base.source = "focused_roi"
+        base.threshold = threshold
         return base
 
     def _evaluate_subtiles(
         self,
-        base: dict[str, Any],
+        base: VisualDecisionDraft,
         prepared: FramePreprocessor,
         tile_state: TileState,
         monitor_index: int,
-    ) -> dict[str, Any]:
+    ) -> VisualDecisionDraft:
         del monitor_index
         if self.candidate_verifier.detector is None:
             return base
@@ -579,86 +512,58 @@ class DecisionEngine:
         if top_subtile is None:
             return base
         hit = self.candidate_verifier.strong_hit(top_subtile.image, frame_sequence=prepared.frame.sequence)
-        base["local_box"] = None if hit is None or hit.bbox is None else list(hit.bbox)
         if hit is None:
             return base
         label = hit.label
         confidence = float(hit.confidence)
-        base.update(
-            {
-                "classification": VisualViolationClassification.VIOLATION,
-                "reason": (
-                    f"coarse-to-fine found {label} score {confidence:.2f}"
-                ),
-                "label": label,
-                "confidence": confidence,
-                "source": "subtile",
-                "region": top_subtile.region,
-                "nudenet_label": label,
-                "nudenet_score": confidence,
-                "threshold": threshold_for_label(str(label)),
-                "tier": DetectionTier.STRONG.value,
-            }
-        )
+        base.classification = VisualViolationClassification.VIOLATION
+        base.label = label
+        base.confidence = confidence
+        base.source = "subtile"
+        base.region = top_subtile.region
+        base.threshold = threshold_for_label(str(label))
         return base
 
     def _finalize_decision(
         self,
-        decided: dict[str, Any],
-        captured_frame: CaptureFrame,
+        decided: VisualDecisionDraft,
         monitor_index: int,
         frame_sequence: int,
     ) -> VisualViolationDecision:
         plan = self.scheduler.last_plan(monitor_index)
         if plan is not None:
-            decided["scan_mode"] = plan.mode
-            decided["scan_interval_ms"] = plan.interval_ms
-        label = decided.get("label") or decided.get("nudenet_label")
-        score = float(decided.get("confidence") or decided.get("nudenet_score") or 0.0)
-        if label and "tier" not in decided:
-            model = None
-            payload = decided.get("evidence")
-            if isinstance(payload, list) and payload and isinstance(payload[0], ViolationEvidence):
-                model = payload[0].model
-            decided["tier"] = self.threshold_policy.tier(
-                score, str(label), None if model is None else str(model)
-            ).value
-            if decided["tier"] == DetectionTier.IGNORE.value:
-                decided["tier"] = tier_for_score(
-                    score, str(label), margin=self.borderline_margin
-                ).value
+            decided.scan_mode = plan.mode
+            decided.scan_interval_ms = plan.interval_ms
+        label = decided.label
+        score = decided.confidence
         hit_ids: set[int] = set()
-        if decided["classification"] is VisualViolationClassification.VIOLATION:
-            region = decided.get("region")
-            if isinstance(region, (list, tuple)) and len(region) == 4:
-                mapped = box_to_region(region, xywh=False)
-                region = mapped or tuple(int(v) for v in region)
-            else:
-                region = box_to_region(decided.get("box"), xywh=True)
+        if decided.classification is VisualViolationClassification.VIOLATION:
+            region = decided.region
+            if region is None:
+                region = box_to_region(decided.box, xywh=True)
             track = self.tracker.match_or_create(
                 monitor_index=monitor_index,
-                box=region if isinstance(region, tuple) else None,
-                label=None if label is None else str(label),
+                box=region,
+                label=label,
                 confidence=score,
-                source=str(decided.get("source") or "unknown"),
+                source=decided.source or "unknown",
                 frame_sequence=frame_sequence,
                 evidence_delta=evidence_from_confidence(
-                    score, None if label is None else str(label)
+                    score, label
                 ),
             )
             if track is not None:
                 hit_ids.add(track.id)
-                decided["track_id"] = track.id
-                decided["track_fresh_hits"] = track.fresh_frame_hits
-                decided["track_evidence"] = track.evidence_score
-                decided["region"] = track.box
+                decided.track_id = track.id
+                decided.track_fresh_hits = track.fresh_frame_hits
+                decided.track_evidence = track.evidence_score
+                decided.region = track.box
         self.tracker.mark_monitor_misses(
             monitor_index,
             hit_ids=hit_ids,
             decay=self.settings.temporal.decay,
             frame_sequence=frame_sequence,
         )
-        del captured_frame
         return self.visual_decision_engine.finalize(
             decided,
             frame_sequence=frame_sequence,
@@ -672,12 +577,12 @@ class DecisionEngine:
 
     def _strong_primary_result(
         self,
-        result: dict[str, Any],
+        result: VisualDecisionDraft,
         captured_frame: CaptureFrame,
         *,
         threshold: float | None = None,
-    ) -> dict[str, Any]:
-        box = result.get("box")
+    ) -> VisualDecisionDraft:
+        box = result.box
         region: Region | None = None
         original = captured_frame.image
         if isinstance(box, (list, tuple)) and original is not None:
@@ -686,43 +591,34 @@ class DecisionEngine:
                 original.shape,
                 original.shape,
             )
-        label = result.get("label")
+        label = result.label
         if threshold is None:
             threshold = threshold_for_label(str(label))
         return self._with_metadata(
             result,
             source="nudenet_full",
             region=region,
-            nudenet_label=None if label is None else str(label),
-            nudenet_score=float(result.get("confidence", 0.0)),
             threshold=threshold,
             classification=VisualViolationClassification.VIOLATION,
         )
 
     def _violation_from_evidence(
         self,
-        result: dict[str, Any],
+        result: VisualDecisionDraft,
         captured_frame: CaptureFrame,
         evidence: ViolationEvidence | None,
-    ) -> dict[str, Any]:
+    ) -> VisualDecisionDraft:
         if evidence is None:
             return self._strong_primary_result(result, captured_frame)
-        box = None if evidence.bbox is None else list(evidence.bbox)
-        payload = dict(result)
-        payload.update(
-            {
-                "label": evidence.label,
-                "confidence": evidence.confidence,
-                "box": box,
-                "reason": (
-                    f"{evidence.label} "
-                    f"(score {evidence.confidence:.2f}, {evidence.model})"
-                ),
-                "evidence": list(result.get("evidence") or []) or [evidence],
-            }
+        payload = replace(
+            result,
+            label=evidence.label,
+            confidence=evidence.confidence,
+            box=evidence.bbox,
+            evidence=result.evidence or (evidence,),
         )
         decided = self._strong_primary_result(payload, captured_frame)
-        decided["source"] = (
+        decided.source = (
             "yolo_sexual_act"
             if evidence.evidence_type.value == "sexual_act"
             else f"{evidence.model}_full"
@@ -731,33 +627,23 @@ class DecisionEngine:
 
     @staticmethod
     def _with_metadata(
-        result: dict[str, Any],
+        result: VisualDecisionDraft,
         *,
         source: str,
         region: Region | None = None,
-        nudenet_label: str | None = None,
-        nudenet_score: float = 0.0,
         threshold: float | None = None,
         classification: VisualViolationClassification | None = None,
-    ) -> dict[str, Any]:
+    ) -> VisualDecisionDraft:
         if classification is None:
-            classification = result["classification"]
-        result.update(
-            {
-                "source": source,
-                "region": region,
-                "nudenet_label": nudenet_label,
-                "nudenet_score": nudenet_score,
-                "threshold": threshold,
-                "context_label": None,
-                "context_score": None,
-                "context_scores": None,
-                "rescue_tile_index": None,
-                "rescue_region": None,
-                "local_check_points": None,
-                "local_box": None,
-                "classification": classification,
-                "evidence": result["evidence"],
-            }
+            classification = result.classification
+        return replace(
+            result,
+            source=source,
+            region=region,
+            threshold=threshold,
+            context_label=None,
+            context_score=None,
+            rescue_tile_index=None,
+            recheck_performed=False,
+            classification=classification,
         )
-        return result

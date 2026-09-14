@@ -184,6 +184,7 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
         self.assertEqual(result.reason_codes, ("rescue_tile",))
         self.assertEqual(result.label, "FEMALE_BREAST_EXPOSED")
+        self.assertIs(result.evidence_type, ViolationEvidenceType.BREAST_EXPOSURE)
         self.assertEqual(result.primary_region, (0, 0, 2, 2))
         self.assertEqual(result.rescue_tile_index, 0)
 

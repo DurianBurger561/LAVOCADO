@@ -3,6 +3,7 @@
 import unittest
 
 from app.vision.temporal import TemporalVerifier
+from app.vision.violation_policy import ViolationEvidenceType
 
 
 class TemporalVerifierTests(unittest.TestCase):
@@ -79,12 +80,22 @@ class TemporalVerifierTests(unittest.TestCase):
     def test_visual_evidence_decays_when_fresh_frames_do_not_confirm(self) -> None:
         verifier = TemporalVerifier(window_size=3, required_hits=2)
 
-        verifier.update(True, frame_sequence=1, evidence_type="sexual_act")
-        verifier.update(False, frame_sequence=2, evidence_type="sexual_act")
+        verifier.update(True, frame_sequence=1, evidence_type=ViolationEvidenceType.SEXUAL_ACT)
+        verifier.update(False, frame_sequence=2, evidence_type=ViolationEvidenceType.SEXUAL_ACT)
 
-        self.assertEqual(verifier.evidence_history, ("sexual_act", None))
+        self.assertEqual(verifier.evidence_history, (ViolationEvidenceType.SEXUAL_ACT, None))
         verifier.update(False, frame_sequence=3)
-        self.assertEqual(verifier.evidence_history, ("sexual_act", None, None))
+        self.assertEqual(verifier.evidence_history, (ViolationEvidenceType.SEXUAL_ACT, None, None))
+
+    def test_rejects_source_string_as_temporal_evidence(self) -> None:
+        verifier = TemporalVerifier(window_size=3, required_hits=2)
+
+        with self.assertRaisesRegex(TypeError, "must be typed"):
+            verifier.update(
+                True,
+                frame_sequence=1,
+                evidence_type="nudenet",  # type: ignore[arg-type]
+            )
 
     def test_evidence_threshold_rejects_boolean_hits_with_weak_score(self) -> None:
         verifier = TemporalVerifier(

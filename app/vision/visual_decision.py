@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
 
 from app.vision.violation_policy import (
     DetectionTier,
@@ -12,9 +11,9 @@ from app.vision.violation_policy import (
     ViolationEvidence,
     VisualViolationClassification,
     VisualViolationDecision,
+    evidence_type_for_label,
     is_borderline_score,
     strongest_evidence,
-    visual_decision_from_engine_payload,
 )
 
 
@@ -36,6 +35,29 @@ class PrimaryAssessment:
 class BorderlineCandidate:
     evidence: ViolationEvidence
     threshold: float
+
+
+@dataclass(slots=True)
+class VisualDecisionDraft:
+    """Typed, per-frame orchestration state; never a JSON/IPC payload."""
+
+    classification: VisualViolationClassification
+    evidence: tuple[ViolationEvidence, ...]
+    source: str = ""
+    label: str | None = None
+    confidence: float = 0.0
+    box: tuple[float, float, float, float] | None = None
+    region: tuple[int, int, int, int] | None = None
+    threshold: float | None = None
+    context_label: str | None = None
+    context_score: float | None = None
+    rescue_tile_index: int | None = None
+    recheck_performed: bool = False
+    track_id: int | None = None
+    track_evidence: float | None = None
+    track_fresh_hits: int = 0
+    scan_mode: str | None = None
+    scan_interval_ms: float | None = None
 
 
 class VisualDecisionEngine:
@@ -118,8 +140,38 @@ class VisualDecisionEngine:
 
     @staticmethod
     def finalize(
-        payload: Mapping[str, Any], *, frame_sequence: int, monitor_index: int
+        draft: VisualDecisionDraft, *, frame_sequence: int, monitor_index: int
     ) -> VisualViolationDecision:
-        return visual_decision_from_engine_payload(
-            dict(payload), frame_sequence=frame_sequence, monitor_index=monitor_index
+        if not isinstance(draft, VisualDecisionDraft):
+            raise TypeError("Vision decision draft must be typed")
+        if not isinstance(draft.classification, VisualViolationClassification):
+            raise TypeError("Vision decision classification must be typed")
+        if not isinstance(draft.evidence, tuple) or not all(
+            isinstance(item, ViolationEvidence) for item in draft.evidence
+        ):
+            raise TypeError("Vision evidence must remain typed")
+        return VisualViolationDecision(
+            classification=draft.classification,
+            evidence=draft.evidence,
+            evidence_type=(
+                evidence_type_for_label(draft.label)
+                if draft.classification is VisualViolationClassification.VIOLATION
+                and draft.label is not None
+                else None
+            ),
+            reason_codes=(draft.source,) if draft.source else (),
+            primary_region=draft.region,
+            frame_sequence=frame_sequence,
+            label=draft.label,
+            confidence=draft.confidence,
+            track_id=draft.track_id,
+            track_evidence=draft.track_evidence,
+            track_fresh_hits=draft.track_fresh_hits,
+            monitor_index=monitor_index,
+            scan_mode=draft.scan_mode,
+            scan_interval_ms=draft.scan_interval_ms,
+            context_label=draft.context_label,
+            context_score=draft.context_score,
+            rescue_tile_index=draft.rescue_tile_index,
+            threshold=draft.threshold,
         )
