@@ -35,7 +35,6 @@ directory:
 
 - Windows: `%LOCALAPPDATA%\\LAVOCADO\\events.db`
 - macOS: `~/Library/Application Support/LAVOCADO/events.db`
-- Linux or WSL: `${XDG_DATA_HOME:-~/.local/share}/lavocado/events.db`
 
 Set `LAVOCADO_DATA_DIR` before starting the app to use a different directory.
 The same file also stores `application_rules` and `website_rules`. Website
@@ -56,9 +55,9 @@ Changes apply the next time protection starts:
 - Blocked websites
 - Whitelisted websites
 
-Use **Pick current app** to fill a stable executable name, desktop app ID, or
-bundle ID from the foreground window. Website fields accept a hostname or HTTPS
-URL; only the hostname is saved. Matching can be exact-host or include
+Use **Pick current app** to fill a stable executable name or bundle ID from the
+foreground window. Website fields accept a hostname or HTTPS URL; only the
+hostname is saved. Matching can be exact-host or include
 subdomains.
 
 Adding a whitelist asks you to confirm that visual protection will be skipped
@@ -70,7 +69,7 @@ not treat a whitelist as a safety certification.
 
 LAVOCADO first identifies the foreground application. If it is a supported
 browser, it also reads the active-tab hostname through the platform
-accessibility API (Windows UI Automation, macOS Accessibility, Linux AT-SPI).
+accessibility API (Windows UI Automation or macOS Accessibility).
 It never guesses a site from the window title. If the address cannot be read,
 website context stays UNKNOWN and only the application rule applies.
 
@@ -108,10 +107,7 @@ The durable product rules are in
 [context-first visual protection](docs/context-first-vision.md).
 
 On macOS, foreground-application details require Accessibility permission for
-the terminal or packaged application. On X11 Linux, install `xprop` and
-`xwininfo` (provided by `x11-utils` on Ubuntu). WSL can only inspect window
-metadata that WSLg exposes; use a native Windows build to match all Windows
-applications.
+the terminal or packaged application.
 
 ## Optional AI support message
 
@@ -125,7 +121,7 @@ $env:OPENAI_API_KEY="your-api-key"
 ```
 
 ```bash
-# macOS, Linux, or WSL
+# macOS
 export OPENAI_API_KEY="your-api-key"
 ```
 
@@ -138,11 +134,6 @@ included. API response storage is disabled for this request. Set
 
 - Windows 10/11
 - macOS
-- Linux with native X11 or Wayland screen capture, including WSLg
-
-Wayland uses the desktop's ScreenCast Portal and PipeWire. Approve the displays
-in the system picker when protection starts. Explicitly cancelling or denying
-that request stops capture instead of bypassing the decision through MSS.
 
 Runtime platform integration is isolated under `app/platforms/`:
 
@@ -150,13 +141,11 @@ Runtime platform integration is isolated under `app/platforms/`:
   Windows data paths, and native runtime guidance.
 - `macos.py` contains System Events foreground-window access, macOS data paths,
   and permission guidance.
-- `linux.py` contains X11 foreground-window access, XDG data paths, and the Qt
-  WebView setup used by Linux and WSLg.
 
 Website discovery is also platform-specific and lives under
-`app/platforms/website/`: Windows UI Automation, macOS `AXUIElement`, and
-Linux AT-SPI. A failed or unavailable reader never stops visual protection;
-the website side stays UNKNOWN.
+`app/platforms/website/`: Windows UI Automation and macOS `AXUIElement`. A
+failed or unavailable reader never stops visual protection; the website side
+stays UNKNOWN.
 
 Each process creates one `PlatformAdapter` and passes it to capture, overlay,
 storage, and dashboard composition. Business modules therefore do not select an
@@ -190,54 +179,6 @@ On first launch, allow Terminal or LAVOCADO under **System Settings → Privacy 
 Security → Screen & System Audio Recording**, then restart the application.
 Browser address-bar discovery also requires **Privacy & Security → Accessibility**;
 without that permission, website context remains UNKNOWN.
-
-### Ubuntu, Linux, or WSL
-
-```bash
-sudo apt install \
-  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 libxcb-shm0 \
-  gstreamer1.0-tools gstreamer1.0-pipewire \
-  gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-  libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
-  libxcb-render-util0 libxcb-util1 libxcb-xkb1 \
-  gcc libcairo2-dev pkg-config python3-dev \
-  libgirepository-2.0-dev gir1.2-atspi-2.0
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python scripts/download_models.py
-python main.py
-```
-
-Linux explicitly selects pywebview's Qt backend. PyGObject/AT-SPI is used only
-for foreground browser address-bar discovery; if desktop accessibility is
-unavailable, the website remains UNKNOWN and visual protection continues.
-Under WSLg, LAVOCADO defaults
-Qt WebEngine to software rendering to avoid Mesa/Zink failures when no DRM
-render node is exposed. User-provided Qt or Mesa environment values are not
-overwritten.
-
-Validate the current Linux capture route without opening a capture session:
-
-```bash
-python scripts/validate_linux_capture.py --self-check
-```
-
-Run the live validation on an actual X11, Wayland, or WSLg desktop with:
-
-```bash
-python scripts/validate_linux_capture.py
-```
-
-The live check requests two fresh frames from every selected display, validates
-their dimensions, BGR format, and advancing sequence, then discards them. It
-never saves or uploads pixels. On Wayland, approve every display in the system
-picker. Cancelling the picker reports `permission_denied` without trying MSS.
-The JSON result should report `linux_xshm` for X11,
-`linux_pipewire_portal` for Wayland, or `mss` with a fallback reason when a
-native backend is technically unavailable. See the complete
-[Linux capture validation checklist](docs/linux-capture-validation.md) for the
-GNOME, KDE, WSLg, permission, and multi-display matrix.
 
 The pinned 640m model is about 99 MiB and is downloaded from NudeNet's official
 GitHub release with byte-size and SHA-256 verification. It is excluded from Git.
@@ -390,12 +331,12 @@ python main.py dashboard
 
 The dashboard uses pywebview with local HTML, CSS, and JavaScript. It exposes
 only the fixed `DashboardAPI`, waits for `pywebviewready` before reading state,
-and uses private browsing mode. Linux installs use the Qt backend; Windows uses
-WebView2 when available, and macOS uses the system WebKit view. Closing the
-window stops and collects the dashboard-owned Protection child.
+and uses private browsing mode. Windows uses WebView2 when available, and
+macOS uses the system WebKit view. Closing the window stops and collects the
+dashboard-owned Protection child.
 
 The dashboard launches protection as a separate process so the overlay remains
-on the GUI main thread on Windows, macOS, and Linux. Closing the dashboard asks
+on the GUI main thread on Windows and macOS. Closing the dashboard asks
 the protection process to stop cleanly.
 
 On a headless machine, inspect recent local events in the terminal:
@@ -415,14 +356,13 @@ python -m PyInstaller --noconfirm --clean lavocado.spec
 ```
 
 The output is written under `dist/`. PyInstaller applications must be built on
-each target operating system; a Windows executable or macOS application cannot
-be produced directly from WSL/Linux.
+each target operating system.
 
-The **Package** workflow can build downloadable Windows, macOS, and Linux
-artifacts without requiring three local machines. Open the repository's
-**Actions** tab, select **Package**, choose **Run workflow**, and download the
-six User/Developer platform artifacts when all matrix jobs finish. It also runs automatically for
-tags beginning with `v`.
+The **Package** workflow can build downloadable Windows and macOS artifacts
+without requiring both local machines. Open the repository's **Actions** tab,
+select **Package**, choose **Run workflow**, and download the four
+User/Developer platform artifacts when all matrix jobs finish. It also runs
+automatically for tags beginning with `v`.
 
 Packaged applications open the dashboard when launched without arguments. The
 Windows and macOS artifacts are currently unsigned, so development machines may

@@ -22,7 +22,6 @@ SQLite 事件数据库存放在当前用户的应用数据目录下:
 
 - Windows:`%LOCALAPPDATA%\\LAVOCADO\\events.db`
 - macOS:`~/Library/Application Support/LAVOCADO/events.db`
-- Linux 或 WSL:`${XDG_DATA_HOME:-~/.local/share}/lavocado/events.db`
 
 启动前设置 `LAVOCADO_DATA_DIR` 环境变量,可指定其他目录。
 同一个文件还保存 `application_rules` 和 `website_rules`。网站输入在保存前会转成域名,路径与查询参数不会存入规则。请在保护停止时通过仪表盘编辑这些规则;Protection 进程启动时加载它们。
@@ -38,11 +37,11 @@ SQLite 事件数据库存放在当前用户的应用数据目录下:
 - 网站黑名单
 - 网站白名单
 
-使用 **Pick current app** 可从前台窗口填入稳定的可执行文件名、桌面应用 ID 或 bundle ID。网站输入接受域名或 HTTPS URL,只保存域名。匹配方式可以是精确主机名,也可以包含子域名。
+使用 **Pick current app** 可从前台窗口填入稳定的可执行文件名或 bundle ID。网站输入接受域名或 HTTPS URL,只保存域名。匹配方式可以是精确主机名,也可以包含子域名。
 
 加入白名单时会弹出确认:白名单中的应用和网站将完全跳过 LAVOCADO 的视觉保护。如果你需要查看医学、教育、艺术、新闻或其他非色情目的但可能包含裸露或明确人体内容的来源,可以将可靠来源加入白名单。你将自行负责白名单环境中显示的内容。白名单不是 LAVOCADO 对来源安全性的认证。
 
-LAVOCADO 会先识别前台应用。如果它是受支持的浏览器,再通过平台辅助功能 API 读取活动标签页的域名(Windows UI Automation、macOS Accessibility、Linux AT-SPI)。它不会根据窗口标题猜测网站。若无法读取地址栏,网站上下文保持 UNKNOWN,只应用应用规则。
+LAVOCADO 会先识别前台应用。如果它是受支持的浏览器,再通过平台辅助功能 API 读取活动标签页的域名(Windows UI Automation 或 macOS Accessibility)。它不会根据窗口标题猜测网站。若无法读取地址栏,网站上下文保持 UNKNOWN,只应用应用规则。
 
 应用规则与网站规则先独立计算,再统一合并:
 
@@ -65,7 +64,7 @@ VisionPipeline / VisualDecisionEngine 只判断视觉证据, TemporalEngine 确�
 
 正式产品规则见 [上下文优先的视觉保护](docs/context-first-vision.zh.md)。
 
-在 macOS 上,读取前台应用信息需要为终端或打包后的应用授予"辅助功能"权限。在 X11 的 Linux 上,需安装 `xprop` 和 `xwininfo`(Ubuntu 上由 `x11-utils` 提供)。WSL 只能读取 WSLg 暴露出来的窗口元数据;若要匹配所有 Windows 应用,请使用原生 Windows 构建版本。
+在 macOS 上,读取前台应用信息需要为终端或打包后的应用授予"辅助功能"权限。
 
 ## 可选的 AI 支持消息
 
@@ -77,7 +76,7 @@ $env:OPENAI_API_KEY="你的-api-key"
 ```
 
 ```bash
-# macOS、Linux 或 WSL
+# macOS
 export OPENAI_API_KEY="你的-api-key"
 ```
 
@@ -87,17 +86,13 @@ export OPENAI_API_KEY="你的-api-key"
 
 - Windows 10/11
 - macOS
-- 支持原生 X11 或 Wayland 屏幕捕获的 Linux(含 WSLg)
-
-Wayland 使用桌面的 ScreenCast Portal 和 PipeWire。保护启动时请在系统选择器中批准显示器。明确取消或拒绝该请求会停止捕获,而不会改走 MSS 绕过这一决定。
 
 运行时的平台集成被隔离在 `app/platforms/` 目录下:
 
 - `windows.py` 包含 User32/Kernel32 前台窗口访问、DPI 设置、Windows 数据路径,以及原生运行时指引。
 - `macos.py` 包含通过 System Events 访问前台窗口、macOS 数据路径,以及权限指引。
-- `linux.py` 包含 X11 前台窗口访问、XDG 数据路径,以及 Linux 和 WSLg 所用的 Qt WebView 配置。
 
-网站发现同样按平台实现,位于 `app/platforms/website/`:Windows UI Automation、macOS `AXUIElement`、Linux AT-SPI。读取失败或不可用时绝不会停止视觉保护,网站一侧保持 UNKNOWN。
+网站发现同样按平台实现,位于 `app/platforms/website/`:Windows UI Automation 和 macOS `AXUIElement`。读取失败或不可用时绝不会停止视觉保护,网站一侧保持 UNKNOWN。
 
 每个进程只创建一个 `PlatformAdapter`,并将其传递给截图、遮挡、存储和仪表盘等模块。因此各业务模块无需自行判断操作系统,也无需导入具体的平台实现。
 
@@ -127,41 +122,6 @@ python main.py
 
 首次启动时,请在 **系统设置 → 隐私与安全性 → 屏幕与系统音频录制** 中允许"终端"或 LAVOCADO,然后重启应用。
 浏览器地址栏发现还需要 **隐私与安全性 → 辅助功能**;没有该权限时,网站上下文保持 UNKNOWN。
-
-### Ubuntu、Linux 或 WSL
-
-```bash
-sudo apt install \
-  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 libxcb-shm0 \
-  gstreamer1.0-tools gstreamer1.0-pipewire \
-  gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-  libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
-  libxcb-render-util0 libxcb-util1 libxcb-xkb1 \
-  gcc libcairo2-dev pkg-config python3-dev \
-  libgirepository-2.0-dev gir1.2-atspi-2.0
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python scripts/download_models.py
-python main.py
-```
-
-Linux 会显式选择 pywebview 的 Qt 后端。PyGObject/AT-SPI 只用于前台浏览器地址栏发现;若桌面辅助功能不可用,网站保持 UNKNOWN,视觉保护继续运行。
-在 WSLg 环境下,当没有暴露 DRM 渲染节点时,LAVOCADO 会默认让 Qt WebEngine 使用软件渲染,以避免 Mesa/Zink 报错。用户自行提供的 Qt 或 Mesa 环境变量不会被覆盖。
-
-可在不打开捕获会话的情况下校验当前 Linux 捕获路径:
-
-```bash
-python scripts/validate_linux_capture.py --self-check
-```
-
-在真实的 X11、Wayland 或 WSLg 桌面上运行现场校验:
-
-```bash
-python scripts/validate_linux_capture.py
-```
-
-现场检查会向每个已选显示器请求两帧新画面,校验尺寸、BGR 格式和递增序号,然后丢弃它们。它不会保存或上传像素。在 Wayland 上,请在系统选择器中批准每一块显示器。取消选择器会报告 `permission_denied`,不会改试 MSS。JSON 结果在 X11 上应为 `linux_xshm`,在 Wayland 上应为 `linux_pipewire_portal`;原生后端技术上不可用时则为带降级原因的 `mss`。完整的 GNOME、KDE、WSLg、权限和多显示器矩阵见 [Linux 捕获校验清单](docs/linux-capture-validation.md)。
 
 固定版本的 640m 模型约 99 MiB,从 NudeNet 官方 GitHub release 下载,并做字节大小和 SHA-256 校验。该模型不纳入 Git。源码运行时若缺少它,LAVOCADO 会记录一条警告并降级到 NudeNet 320n;而打包构建版本则要求必须有经校验的 640m 文件。设置 `LAVOCADO_NUDENET_MODEL` 可指定使用位于其他路径的本地 640m 文件。
 
@@ -250,9 +210,9 @@ python main.py
 python main.py dashboard
 ```
 
-仪表盘使用 pywebview,搭配本地的 HTML、CSS 和 JavaScript。它只暴露固定的 `DashboardAPI`,在读取状态前会等待 `pywebviewready`,并使用隐私浏览模式。Linux 安装使用 Qt 后端;Windows 在可用时使用 WebView2,macOS 使用系统 WebKit 视图。关闭窗口会停止并回收由仪表盘托管的保护子进程。
+仪表盘使用 pywebview,搭配本地的 HTML、CSS 和 JavaScript。它只暴露固定的 `DashboardAPI`,在读取状态前会等待 `pywebviewready`,并使用隐私浏览模式。Windows 在可用时使用 WebView2,macOS 使用系统 WebKit 视图。关闭窗口会停止并回收由仪表盘托管的保护子进程。
 
-仪表盘会把保护作为独立进程启动,以便遮挡窗口在 Windows、macOS 和 Linux 上都保持在 GUI 主线程。关闭仪表盘会请求保护进程干净地退出。
+仪表盘会把保护作为独立进程启动,以便遮挡窗口在 Windows 和 macOS 上都保持在 GUI 主线程。关闭仪表盘会请求保护进程干净地退出。
 
 在无显示器的机器上,可在终端查看近期的本地事件:
 
@@ -270,9 +230,9 @@ python scripts/download_models.py
 python -m PyInstaller --noconfirm --clean lavocado.spec
 ```
 
-产物写入 `dist/` 目录。PyInstaller 应用必须在各自的目标操作系统上构建;无法直接从 WSL/Linux 生成 Windows 可执行文件或 macOS 应用。
+产物写入 `dist/` 目录。PyInstaller 应用必须在各自的目标操作系统上构建。
 
-**Package** 工作流可以构建可下载的 Windows、macOS 和 Linux 产物,无需三台本地机器。打开仓库的 **Actions** 标签页,选择 **Package**,点击 **Run workflow**,待所有矩阵任务完成后即可下载三个产物。以 `v` 开头的标签也会自动触发该工作流。
+**Package** 工作流可以构建可下载的 Windows 和 macOS 产物,无需同时拥有两台本地机器。打开仓库的 **Actions** 标签页,选择 **Package**,点击 **Run workflow**,待所有矩阵任务完成后即可下载四个 User/Developer 产物。以 `v` 开头的标签也会自动触发该工作流。
 
 打包后的应用在不带参数启动时会打开仪表盘。目前 Windows 和 macOS 产物尚未签名,因此开发机器可能会显示常见的"未知发布者"警告。在配置代码签名之前,请勿将它们作为可信版本分发。
 

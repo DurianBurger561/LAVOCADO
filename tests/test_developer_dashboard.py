@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from app.build_edition import DEVELOPER_APP_NAME
-from app.platforms.linux import LinuxPlatform
+from app.platforms.windows import WindowsPlatform
 from app.ui.api import DashboardAPI
 from developer.benchmark.ui.api import DeveloperDashboardAPI
 from developer.benchmark.ui.dashboard import (
@@ -16,6 +14,7 @@ from developer.benchmark.ui.dashboard import (
     prepare_developer_ui,
     run_developer_dashboard,
 )
+
 try:
     from test_web_dashboard import FakeController, FakeRecorder, FakeWebview
 except ImportError:
@@ -67,7 +66,7 @@ class DeveloperDashboardTests(unittest.TestCase):
 
     def test_window_title_is_developer_edition(self) -> None:
         webview = FakeWebview()
-        platform = LinuxPlatform(environ={}, release="generic-linux")
+        platform = WindowsPlatform(environ={})
         run_developer_dashboard(
             platform,
             webview_module=webview,

@@ -9,16 +9,16 @@ from lavocado_packaging.spec_common import (
     USER_APP_NAME,
     USER_EXCLUDES,
     macos_plist,
-    platform_collect,
+    platform_hiddenimports,
     user_datas,
 )
 
-platform_binaries, platform_data, platform_hidden_imports = platform_collect()
+platform_hidden_imports = platform_hiddenimports()
 analysis = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=platform_binaries,
-    datas=user_datas(Path(SPECPATH)) + platform_data,
+    binaries=[],
+    datas=user_datas(Path(SPECPATH)),
     hiddenimports=platform_hidden_imports,
     hookspath=[],
     hooksconfig={},

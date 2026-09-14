@@ -29,7 +29,7 @@ class MonitorTests(unittest.TestCase):
             },
         ]
 
-    def test_uses_origin_monitor_when_wslg_has_no_primary_flag(self) -> None:
+    def test_uses_origin_monitor_when_no_primary_flag(self) -> None:
         self.assertEqual(select_monitor_index(self.monitors), 2)
 
     def test_honours_an_explicit_monitor_override(self) -> None:

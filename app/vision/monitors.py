@@ -1,4 +1,4 @@
-"""Utilities for choosing a monitor consistently under Windows and WSLg."""
+"""Utilities for choosing a monitor consistently across displays."""
 
 from collections.abc import Mapping, Sequence
 
@@ -26,8 +26,7 @@ def select_monitor_index(
         if monitor.get("is_primary") is True:
             return index
 
-    # WSLg currently reports is_primary=False for every monitor. The Windows
-    # primary monitor normally owns virtual-desktop coordinate (0, 0).
+    # Some capture backends omit a primary flag; the origin is a useful fallback.
     for index, monitor in enumerate(monitors[1:], start=1):
         if _coordinate(monitor, "left") == 0 and _coordinate(monitor, "top") == 0:
             return index

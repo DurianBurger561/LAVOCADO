@@ -9,20 +9,10 @@ from app.platforms.capture.errors import (
     CaptureUnavailableError,
 )
 from app.platforms.capture.factory import (
-    create_linux_capture,
     create_macos_capture,
     create_windows_capture,
 )
 from app.platforms.capture.fallback import FallbackCaptureBackend
-from app.platforms.capture.linux_session import (
-    LinuxCaptureRoute,
-    LinuxDisplayProtocol,
-    LinuxSessionInfo,
-    LinuxSessionKind,
-    detect_linux_session,
-)
-from app.platforms.capture.linux_portal import PipeWirePortalCapture
-from app.platforms.capture.linux_xshm import XShmAvailability, XShmCapture
 from app.platforms.capture.macos_screencapturekit import ScreenCaptureKitCapture
 from app.platforms.capture.models import (
     CaptureBackendStatus,
@@ -50,25 +40,16 @@ __all__ = [
     "CaptureRecoverableError",
     "CaptureUnavailableError",
     "FallbackCaptureBackend",
-    "LinuxCaptureRoute",
-    "LinuxDisplayProtocol",
-    "LinuxSessionInfo",
-    "LinuxSessionKind",
     "MSSCapture",
     "MonitorInfo",
-    "PipeWirePortalCapture",
     "Rect",
     "ScreenCaptureBackend",
     "ScreenCaptureKitCapture",
     "WindowsDXGICapture",
-    "XShmAvailability",
-    "XShmCapture",
-    "create_linux_capture",
     "create_macos_capture",
     "create_windows_capture",
     "CAPTURE_BACKEND_ENV",
     "DEVELOPER_BUILD_ENV",
     "developer_capture_override_enabled",
-    "detect_linux_session",
     "resolve_capture_backend_mode",
 ]

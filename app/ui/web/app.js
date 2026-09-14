@@ -31,8 +31,6 @@ function humanize(value, fallback = "No candidate") {
 const captureBackendNames = {
   windows_dxgi: "Windows DXGI",
   macos_screencapturekit: "macOS ScreenCaptureKit",
-  linux_pipewire_portal: "Linux PipeWire Portal",
-  linux_xshm: "Linux XShm",
   mss: "MSS",
 };
 

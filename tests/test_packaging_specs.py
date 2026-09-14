@@ -82,6 +82,17 @@ class PackagingSpecTests(unittest.TestCase):
         )
         self.assertIn("python scripts/verify_model_bundle.py", workflow)
         self.assertIn("python scripts/verify_model_runtime.py", workflow)
+        self.assertEqual(workflow.count("os: windows-latest"), 2)
+        self.assertEqual(workflow.count("os: macos-latest"), 2)
+        self.assertEqual(workflow.count("          - os:"), 4)
+        tests_workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(
+            encoding="utf-8"
+        )
+        test_matrix = tests_workflow.split("        os:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertEqual(
+            test_matrix.splitlines(),
+            ["          - windows-latest", "          - macos-latest"],
+        )
         self.assertIn("-r requirements-context.txt", (ROOT / "requirements.txt").read_text())
         self.assertIn("-r requirements-yolo.txt", (ROOT / "requirements.txt").read_text())
         self.assertIn("ultralytics", MODEL_HIDDENIMPORTS)

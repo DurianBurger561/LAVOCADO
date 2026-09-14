@@ -28,13 +28,6 @@ DEFAULT_BROWSERS = (
     BrowserDefinition("com.brave.browser", "chromium"),
     BrowserDefinition("com.apple.safari", "safari"),
     BrowserDefinition("org.mozilla.firefox", "firefox"),
-    BrowserDefinition("google-chrome", "chromium"),
-    BrowserDefinition("google-chrome-stable", "chromium"),
-    BrowserDefinition("chromium", "chromium"),
-    BrowserDefinition("chromium-browser", "chromium"),
-    BrowserDefinition("brave-browser", "chromium"),
-    BrowserDefinition("microsoft-edge", "chromium"),
-    BrowserDefinition("org.chromium.chromium", "chromium"),
 )
 
 
@@ -54,4 +47,3 @@ class BrowserRegistry:
 
     def is_supported_browser(self, application: ApplicationContext) -> bool:
         return self.identify(application) is not None
-

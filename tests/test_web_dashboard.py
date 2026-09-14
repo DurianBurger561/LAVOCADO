@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.platforms.linux import LinuxPlatform
+from app.platforms.windows import WindowsPlatform
 from app.ui.api import DashboardAPI
 from app.ui.web_dashboard import dashboard_entry_path, run_web_dashboard
 
@@ -94,7 +94,7 @@ class WebDashboardTests(unittest.TestCase):
         webview = FakeWebview()
         controller = FakeController()
         recorder = FakeRecorder()
-        platform = LinuxPlatform(environ={}, release="generic-linux")
+        platform = WindowsPlatform(environ={})
 
         run_web_dashboard(
             platform,
@@ -111,7 +111,7 @@ class WebDashboardTests(unittest.TestCase):
         self.assertEqual(options["min_size"], (850, 600))
         self.assertEqual(
             webview.start_call,
-            {"http_server": True, "private_mode": True, "gui": "qt"},
+            {"http_server": True, "private_mode": True},
         )
         self.assertEqual(len(webview.window.events.closed.handlers), 1)
         webview.window.events.closed.handlers[0]()
@@ -274,8 +274,6 @@ class WebDashboardTests(unittest.TestCase):
             "MSS · Active",
             "Windows DXGI",
             "macOS ScreenCaptureKit",
-            "Linux PipeWire Portal",
-            "Linux XShm",
         ):
             with self.subTest(label=label):
                 self.assertIn(label, script)
@@ -284,7 +282,7 @@ class WebDashboardTests(unittest.TestCase):
         requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
 
         self.assertIn("pywebview>=6.2,<7", requirements)
-        self.assertIn('sys_platform == "linux"', requirements)
+        self.assertNotIn('pywebview[qt]', requirements)
 
     def test_pyinstaller_spec_bundles_all_web_resources(self) -> None:
         spec = _packaging_source()
@@ -301,13 +299,6 @@ class WebDashboardTests(unittest.TestCase):
         requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
         self.assertIn('"ApplicationServices"', spec)
         self.assertIn('pyobjc-framework-ApplicationServices', requirements)
-
-    def test_linux_packaging_includes_atspi_reader(self) -> None:
-        spec = _packaging_source()
-        requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
-        self.assertIn('"gi.repository.Atspi"', spec)
-        self.assertIn('get_gi_typelibs(', spec)
-        self.assertIn('PyGObject>=3.50', requirements)
 
 
 if __name__ == "__main__":

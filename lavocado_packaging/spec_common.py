@@ -82,9 +82,7 @@ def required_model_datas(specpath: Path) -> list[tuple[str, str]]:
     return data
 
 
-def platform_collect() -> tuple[list, list, list[str]]:
-    platform_binaries: list = []
-    platform_data: list = []
+def platform_hiddenimports() -> list[str]:
     if sys.platform == "win32":
         from comtypes.client import GetModule
 
@@ -109,20 +107,8 @@ def platform_collect() -> tuple[list, list, list[str]]:
             "objc",
         ]
     else:
-        from PyInstaller.utils.hooks.gi import get_gi_typelibs
-
-        platform_binaries, platform_data, atspi_hidden_imports = get_gi_typelibs(
-            "Atspi", "2.0"
-        )
-        hidden = [
-            "dbus_fast",
-            "dbus_fast.aio",
-            "gi",
-            "gi.repository.Atspi",
-            "mss.linux.xgetimage",
-            "mss.linux.xshmgetimage",
-        ] + atspi_hidden_imports
-    return platform_binaries, platform_data, hidden + list(MODEL_HIDDENIMPORTS)
+        raise RuntimeError("Packaging supports Windows and macOS only")
+    return hidden + list(MODEL_HIDDENIMPORTS)
 
 
 def user_datas(specpath: Path) -> list[tuple[str, str]]:

@@ -12,7 +12,7 @@ Available modes:
 | `native` | Native backend only; technical failures are not hidden by MSS |
 | `mss` | MSS only, for debugging, A/B checks, and capture benchmarks |
 
-## Linux and macOS
+## macOS
 
 Run one command from the repository root:
 

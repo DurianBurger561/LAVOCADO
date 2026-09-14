@@ -100,12 +100,12 @@ class DiagnosticsStoreTests(unittest.TestCase):
 
         store.record_capture(
             CaptureBackendStatus(
-                preferred_backend="linux_pipewire_portal",
+                preferred_backend="windows_dxgi",
                 active_backend="mss",
                 fallback=True,
-                fallback_reason="CaptureUnavailableError: portal unavailable",
+                fallback_reason="CaptureUnavailableError: DXGI unavailable",
                 healthy=True,
-                session="wayland",
+                session=None,
                 monitor_count=2,
                 frame_age_ms=12.34,
             )
@@ -114,15 +114,15 @@ class DiagnosticsStoreTests(unittest.TestCase):
         self.assertEqual(
             store.snapshot()["capture"],
             {
-                "preferred_backend": "linux_pipewire_portal",
+                "preferred_backend": "windows_dxgi",
                 "active_backend": "mss",
                 "fallback": True,
                 "fallback_reason": (
-                    "CaptureUnavailableError: portal unavailable"
+                    "CaptureUnavailableError: DXGI unavailable"
                 ),
                 "healthy": True,
                 "error": None,
-                "session": "wayland",
+                "session": None,
                 "monitor_count": 2,
                 "frame_age_ms": 12.3,
             },

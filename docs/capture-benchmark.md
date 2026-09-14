@@ -30,7 +30,7 @@ python scripts/benchmark_capture.py --backend native --frames 100
 python scripts/benchmark_capture.py --backend mss --frames 100
 ```
 
-On Wayland and macOS, approve the native system screen-capture request. If the
+On macOS, approve the native system screen-capture request. If the
 native run receives an explicit permission denial, a `both` comparison exits
 with code 2 and skips MSS. It never treats denial as a technical fallback.
 

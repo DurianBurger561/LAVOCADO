@@ -70,10 +70,6 @@ Complete the available rows before release:
 | --- | --- | --- | --- | --- |
 | Windows DXGI | Required | Required | Required | Recommended |
 | macOS ScreenCaptureKit | Required | Required | Required | Recommended |
-| Linux GNOME Wayland | Required | Required | Required where available | Recommended |
-| Linux KDE Wayland | Required | Required | Required where available | Recommended |
-| Linux X11/Xorg | Required | Required | Required | Recommended |
-| WSLg | Required | Required | Required | Recommended |
 
 During at least one run, test lock/unlock, display sleep/resume, fullscreen
 content, and connecting or disconnecting an external display. Record whether a
