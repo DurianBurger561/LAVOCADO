@@ -9,7 +9,7 @@ from app.settings.schema import default_vision_settings
 from app.vision.candidate_verifier import CandidateVerifier
 from app.vision.context.base import ContextResult
 from app.vision.preprocessor import FramePreprocessor
-from app.vision.scheduler import TileScheduler
+from app.vision.scheduler import ScanPlan, TileScheduler
 from app.vision.tiles import TileState
 from app.vision.viddexa_ranker import ViddexaRanker
 from app.vision.violation_policy import (
@@ -84,7 +84,9 @@ class VisionComponentTests(unittest.TestCase):
 
     def test_tile_scheduler_owns_change_state_and_reset(self) -> None:
         settings = default_vision_settings()
-        scheduler = TileScheduler(settings, rows=2, columns=2, overlap=0)
+        scheduler = TileScheduler(
+            settings, rows=2, columns=2, overlap=0, pin_followup_checks=2
+        )
         ranker = ViddexaRanker(None)
         first = prepared(np.zeros((8, 8, 3), dtype=np.uint8), 1)
         second_image = np.zeros((8, 8, 3), dtype=np.uint8)
@@ -99,10 +101,44 @@ class VisionComponentTests(unittest.TestCase):
         self.assertIsNotNone(change)
         self.assertGreater(second_tiles[0].change_score, second_tiles[1].change_score)
         self.assertEqual(scheduler.scan_id(1), 2)
-        scheduler.pin_tile(1, 0)
+        scheduler.record_rescue_attempt(1, 0, confirmed=True)
+        self.assertEqual(scheduler.rescue_status(1)["pinned_tile_index"], 0)
         scheduler.reset()
         self.assertEqual(scheduler.scan_id(1), 0)
         self.assertIsNone(scheduler.last_plan(1))
+
+    def test_scheduler_selects_rescue_tiles_and_isolates_monitor_state(self) -> None:
+        scheduler = TileScheduler(
+            default_vision_settings(), rows=2, columns=2, overlap=0,
+            pin_followup_checks=2,
+        )
+        source = prepared(np.zeros((8, 8, 3), dtype=np.uint8))
+        scheduler.tiles_for(1, source)[3].context_score = 0.9
+
+        ranked = scheduler.rescue_batch(1, source, plan=None, checks_per_scan=1)
+        planned = scheduler.rescue_batch(
+            1,
+            source,
+            plan=ScanPlan("monitoring", True, (1,), None, False, 640, 750),
+            checks_per_scan=1,
+        )
+        scheduler.record_rescue_attempt(1, 1, confirmed=True)
+        scheduler.mark_checked(1, planned.tiles, {1})
+        planned.tiles[2].skipped_scans = scheduler.max_skip
+        starved = scheduler.rescue_batch(1, source, plan=None, checks_per_scan=1)
+        scheduler.rescue_batch(2, source, plan=None, checks_per_scan=1)
+        scheduler.record_rescue_attempt(2, 3, confirmed=False)
+
+        self.assertEqual([tile.index for tile in ranked.selected], [3])
+        self.assertEqual([tile.index for tile in planned.selected], [1])
+        self.assertEqual([tile.index for tile in ranked.ranked], [3, 0, 1, 2])
+        self.assertEqual([tile.index for tile in starved.selected], [2])
+        self.assertEqual(scheduler.rescue_status(1)["next_tile_index"], 2)
+        self.assertEqual(scheduler.rescue_status(1)["pinned_tile_index"], 1)
+        self.assertIsNone(scheduler.rescue_status(2)["pinned_tile_index"])
+        self.assertEqual(scheduler.rescue_status(2)["next_tile_index"], 0)
+        self.assertEqual(planned.tiles[1].skipped_scans, 0)
+        self.assertEqual(planned.tiles[0].skipped_scans, 1)
 
 
 if __name__ == "__main__":

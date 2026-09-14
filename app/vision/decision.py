@@ -412,27 +412,25 @@ class DecisionEngine:
         ):
             return base
 
-        tiles = self.scheduler.tiles_for(monitor_index, prepared)
-        if not tiles:
+        batch = self.scheduler.rescue_batch(
+            monitor_index,
+            prepared,
+            plan=plan,
+            checks_per_scan=self.checks_per_scan,
+        )
+        if not batch.tiles:
             return base
-
-        tile_indexes = list(plan.tile_indexes) if plan is not None else []
-        if not tile_indexes:
-            ranked = self.scheduler.ranked_tiles(tiles)
-            tile_indexes = [item.index for item in ranked[: max(1, self.checks_per_scan)]]
 
         ranking_payload = [
             {"index": tile.index, "priority": tile.priority_score}
-            for tile in self.scheduler.ranked_tiles(list(tiles))
+            for tile in batch.ranked
         ]
         base["tile_ranking"] = ranking_payload
 
         checked: set[int] = set()
         decided = base
-        for tile_index in tile_indexes:
-            tile_state = next((item for item in tiles if item.index == tile_index), None)
-            if tile_state is None:
-                continue
+        for tile_state in batch.selected:
+            tile_index = tile_state.index
             crop = prepared.crop_xyxy(tile_state.region)
             if crop is None:
                 continue
@@ -445,7 +443,6 @@ class DecisionEngine:
                 )
             else:
                 context_label, context_score = "none", 0.0
-            self.scheduler.advance_tile(monitor_index, tile_index, len(tiles))
             decided["rescue_tile_index"] = tile_index
             decided["rescue_region"] = tile_state.region
             decided["context_label"] = context_label
@@ -453,9 +450,11 @@ class DecisionEngine:
             decided["context_scores"] = context_scores or None
 
             hit = self.candidate_verifier.strong_hit(crop, frame_sequence=captured_frame.sequence)
+            self.scheduler.record_rescue_attempt(
+                monitor_index, tile_index, confirmed=hit is not None
+            )
             decided["local_box"] = None if hit is None or hit.bbox is None else list(hit.bbox)
             if hit is not None:
-                self.scheduler.pin_tile(monitor_index, tile_index)
                 label = hit.label
                 confidence = float(hit.confidence)
                 threshold = threshold_for_label(str(label))
@@ -476,7 +475,7 @@ class DecisionEngine:
                         "tier": DetectionTier.STRONG.value,
                     }
                 )
-                self.scheduler.mark_checked(monitor_index, tiles, checked)
+                self.scheduler.mark_checked(monitor_index, batch.tiles, checked)
                 return decided
 
             if (
@@ -490,10 +489,10 @@ class DecisionEngine:
                 )
                 if subdivided["classification"] is VisualViolationClassification.VIOLATION:
                     checked.add(tile_index)
-                    self.scheduler.mark_checked(monitor_index, tiles, checked)
+                    self.scheduler.mark_checked(monitor_index, batch.tiles, checked)
                     return subdivided
 
-        self.scheduler.mark_checked(monitor_index, tiles, checked)
+        self.scheduler.mark_checked(monitor_index, batch.tiles, checked)
         return decided
 
     def reset(self) -> None:

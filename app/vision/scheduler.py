@@ -29,6 +29,13 @@ class ScanPlan:
     interval_ms: int
 
 
+@dataclass(frozen=True, slots=True)
+class RescueBatch:
+    tiles: list[TileState]
+    ranked: tuple[TileState, ...]
+    selected: tuple[TileState, ...]
+
+
 @dataclass(slots=True)
 class _MonitorBudget:
     aggressive_scans_remaining: int = 0
@@ -123,16 +130,45 @@ class TileScheduler:
     ) -> None:
         mark_checked(tiles, checked, self.scan_id(monitor_index))
 
-    def advance_tile(self, monitor_index: int, tile_index: int, tile_count: int) -> None:
-        schedule = self._rescue_schedules.setdefault(monitor_index, _RescueSchedule())
-        schedule.next_tile_index = (tile_index + 1) % max(1, tile_count)
+    def rescue_batch(
+        self,
+        monitor_index: int,
+        prepared: FramePreprocessor,
+        *,
+        plan: ScanPlan | None,
+        checks_per_scan: int,
+    ) -> RescueBatch:
+        """Resolve the selected tiles and stable priority order for this check."""
 
-    def pin_tile(self, monitor_index: int, tile_index: int) -> None:
-        if not self.pin_followup_checks:
-            return
+        tiles = self.tiles_for(monitor_index, prepared)
+        ranked = tuple(self.ranked_tiles(tiles))
+        indexes = (
+            plan.tile_indexes
+            if plan is not None and plan.tile_indexes
+            else tuple(tile.index for tile in ranked[: max(1, checks_per_scan)])
+        )
+        by_index = {tile.index: tile for tile in tiles}
+        return RescueBatch(
+            tiles=tiles,
+            ranked=ranked,
+            selected=tuple(by_index[index] for index in indexes if index in by_index),
+        )
+
+    def record_rescue_attempt(
+        self,
+        monitor_index: int,
+        tile_index: int,
+        *,
+        confirmed: bool,
+    ) -> None:
+        """Advance the per-monitor cursor and pin a confirmed tile when enabled."""
+
         schedule = self._rescue_schedules.setdefault(monitor_index, _RescueSchedule())
-        schedule.pinned_tile_index = tile_index
-        schedule.pinned_checks_remaining = self.pin_followup_checks
+        tile_count = len(self._tiles.get(monitor_index, ()))
+        schedule.next_tile_index = (tile_index + 1) % max(1, tile_count)
+        if confirmed and self.pin_followup_checks:
+            schedule.pinned_tile_index = tile_index
+            schedule.pinned_checks_remaining = self.pin_followup_checks
 
     def rescue_status(self, monitor_index: int) -> dict[str, int | None]:
         schedule = self._rescue_schedules.get(monitor_index, _RescueSchedule())
