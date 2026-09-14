@@ -25,8 +25,17 @@ from developer.benchmark.dataset import (
     update_sample,
 )
 from developer.benchmark.exporter import export_csv, export_json
+from developer.benchmark.high_recall import benchmark_report, load_cases
 from developer.benchmark.inference_cache import InferenceCache
+from developer.benchmark.jobs import (
+    LabProcessJob,
+    export_tool_run,
+    list_tool_runs,
+    save_scalar_report,
+)
+from developer.benchmark.matrix import job_count, matrix
 from developer.benchmark.preview import annotated_data_url, image_data_url
+from developer.benchmark.ranking_metrics import ranking_quality, recall_gain
 from developer.benchmark.runner import BenchmarkRunner
 from developer.benchmark.sweep import DEFAULT_PROPOSAL, DEFAULT_STRONG, sweep_thresholds
 from developer.benchmark.tags import catalog_payload
@@ -43,9 +52,16 @@ class DeveloperDashboardAPI(DashboardAPI):
         self._runner: BenchmarkRunner | None = None
         self._run = None
         self._error: str | None = None
+        self._tool_job: LabProcessJob | None = None
 
     def get_build_edition(self) -> dict[str, Any]:
         return {"ok": True, "edition": "developer", "app_name": "LAVOCADO Developer"}
+
+    def start_protection(self) -> dict[str, Any]:
+        with self._lab_lock:
+            if self._tool_job is not None and self._tool_job.running:
+                return {"ok": False, "message": "Finish or cancel the Lab tool before starting Protection."}
+            return super().start_protection()
 
     def lab_tag_catalog(self) -> dict[str, Any]:
         return {"ok": True, "tags": catalog_payload()}
@@ -159,6 +175,7 @@ class DeveloperDashboardAPI(DashboardAPI):
         expected: str | None = None,
         excluded: bool | None = None,
         tags: list[str] | None = None,
+        expected_visual: str | None = None,
     ) -> dict[str, Any]:
         try:
             dataset = self._require_dataset()
@@ -169,6 +186,8 @@ class DeveloperDashboardAPI(DashboardAPI):
                 kwargs["excluded"] = excluded
             if tags is not None:
                 kwargs["tags"] = tags
+            if expected_visual is not None:
+                kwargs["expected_visual"] = expected_visual
             sample = update_sample(dataset, sample_id, **kwargs)
             return {"ok": True, "sample": sample.to_dict(), "counts": dataset.counts()}
         except Exception as error:  # noqa: BLE001
@@ -211,6 +230,8 @@ class DeveloperDashboardAPI(DashboardAPI):
         try:
             dataset = self._require_dataset()
             with self._lab_lock:
+                if self._tool_job is not None and self._tool_job.running:
+                    return {"ok": False, "message": "A Lab tool is already running."}
                 if self._runner is not None and self._runner.progress().get("status") == "running":
                     return {"ok": False, "message": "A benchmark is already running."}
                 configs = expand_configs(selection_from_payload(payload))
@@ -229,6 +250,150 @@ class DeveloperDashboardAPI(DashboardAPI):
             return {"ok": True, "message": "Benchmark started.", "config_count": len(configs)}
         except Exception as error:  # noqa: BLE001
             return self._error_result("Could not start benchmark", error)
+
+    def lab_start_tool(self, kind: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Start one isolated diagnostic or capture task, never alongside Protection."""
+
+        try:
+            if self._data_dir is None:
+                raise DatasetError("No local data directory")
+            data = options if isinstance(options, dict) else {}
+            with self._lab_lock:
+                status = self.get_status()
+                if not status.get("ok") or not status.get("can_start"):
+                    return {"ok": False, "message": "Stop Protection before running Lab tools."}
+                if self._runner is not None and self._runner.progress().get("status") == "running":
+                    return {"ok": False, "message": "A dataset benchmark is already running."}
+                if self._tool_job is not None and self._tool_job.running:
+                    return {"ok": False, "message": "A Lab tool is already running."}
+                if self._tool_job is not None:
+                    self._tool_job.snapshot()
+                arguments = self._tool_arguments(kind, data)
+                self._tool_job = LabProcessJob(kind, arguments, self._data_dir)
+            return {"ok": True, "message": "Lab tool started.", "job_id": self._tool_job.id}
+        except ValueError as error:
+            return {"ok": False, "message": str(error)}
+        except Exception as error:  # noqa: BLE001
+            return self._error_result("Could not start Lab tool", error)
+
+    def _tool_arguments(self, kind: str, data: dict[str, Any]) -> list[str]:
+        if kind == "diagnostic":
+            mode = str(data.get("mode") or "")
+            if mode not in {"detector_compare", "ranker_signal", "preprocessor"}:
+                raise ValueError("Choose a diagnostic mode")
+            arguments = ["--mode", mode]
+            if mode != "preprocessor":
+                dataset = self._require_dataset()
+                arguments.extend(("--dataset", str(dataset.document_path)))
+            if mode == "ranker_signal":
+                model = str(data.get("model") or "viddexa_nano")
+                if model not in {"viddexa_nano", "viddexa_mini"}:
+                    raise ValueError("Choose Viddexa Nano or Mini")
+                arguments.extend(("--model", model))
+            if mode == "preprocessor":
+                dimensions: dict[str, int] = {}
+                for name, maximum in (("iterations", 1000), ("width", 8192), ("height", 8192), ("size", 2048)):
+                    value = int(data.get(name) or {"iterations": 30, "width": 1920, "height": 1080, "size": 640}[name])
+                    if not 1 <= value <= maximum:
+                        raise ValueError(f"{name} must be 1–{maximum}")
+                    dimensions[name] = value
+                    arguments.extend((f"--{name}", str(value)))
+                if dimensions["width"] * dimensions["height"] > 16_777_216:
+                    raise ValueError("Synthetic frame must be at most 16 megapixels")
+            return arguments
+        if kind == "capture":
+            backend = str(data.get("backend") or "both")
+            if backend not in {"auto", "native", "mss", "both"}:
+                raise ValueError("Unknown capture backend")
+            frames = int(data.get("frames") or 30)
+            warmup = int(data.get("warmup") if data.get("warmup") is not None else 3)
+            if not 1 <= frames <= 10000 or not 0 <= warmup <= 1000:
+                raise ValueError("Capture frame count is out of range")
+            return ["--backend", backend, "--frames", str(frames), "--warmup", str(warmup)]
+        if kind == "stability":
+            backend = str(data.get("backend") or "auto")
+            if backend not in {"auto", "native", "mss"}:
+                raise ValueError("Unknown capture backend")
+            duration = int(data.get("duration_seconds") or 3600)
+            if not 1 <= duration <= 28800:
+                raise ValueError("Stability duration must be 1–28800 seconds")
+            return ["--backend", backend, "--duration-seconds", str(duration)]
+        raise ValueError("Unknown Lab tool")
+
+    def lab_tool_progress(self) -> dict[str, Any]:
+        job = self._tool_job
+        return {"ok": True, "job": None if job is None else job.snapshot()}
+
+    def lab_cancel_tool(self) -> dict[str, Any]:
+        job = self._tool_job
+        if job is None or not job.running:
+            return {"ok": False, "message": "No Lab tool is running."}
+        job.cancel()
+        return {"ok": True, "message": "Lab tool cancelled.", "job": job.snapshot()}
+
+    def lab_tool_history(self) -> dict[str, Any]:
+        if self._data_dir is None:
+            return {"ok": True, "runs": []}
+        return {"ok": True, "runs": list_tool_runs(self._data_dir)}
+
+    def lab_export_tool(self, run_id: str, kind: str = "json", path: str | None = None) -> dict[str, Any]:
+        try:
+            if kind not in {"json", "csv"}:
+                raise ValueError("Choose JSON or CSV")
+            runs = list_tool_runs(self._data_dir) if self._data_dir is not None else []
+            record = next((item for item in runs if item.get("id") == run_id), None)
+            if record is None:
+                return {"ok": False, "message": "Lab tool result not found."}
+            destination = path or self._pick_save(f"lavocado-lab-{run_id}.{kind}")
+            if not destination:
+                return {"ok": False, "message": "Export cancelled."}
+            target = export_tool_run(record, Path(destination))
+            return {"ok": True, "path": str(target)}
+        except Exception as error:  # noqa: BLE001
+            return self._error_result("Could not export Lab tool result", error)
+
+    def lab_high_recall_report(self, path: str | None = None) -> dict[str, Any]:
+        try:
+            selected = path or self._pick_dataset_file()
+            if not selected:
+                return {"ok": False, "message": "No cases file selected."}
+            report = benchmark_report(load_cases(Path(selected)))
+            record = (
+                save_scalar_report(self._data_dir, "high_recall_cases", report)
+                if self._data_dir is not None else None
+            )
+            return {"ok": True, "report": report, "run_id": None if record is None else record["id"]}
+        except Exception as error:  # noqa: BLE001
+            return self._error_result("Could not read high-recall cases", error)
+
+    def lab_matrix_preview(self) -> dict[str, Any]:
+        return {"ok": True, "matrix": matrix(), "job_count": job_count()}
+
+    def lab_ranking_fixture(
+        self, tiles: list[dict[str, Any]], baseline_hits: int = 0,
+        with_tile_hits: int | None = None, positives: int = 0,
+    ) -> dict[str, Any]:
+        try:
+            if not isinstance(tiles, list) or len(tiles) > 100:
+                raise ValueError("Provide at most 100 tiles")
+            quality = ranking_quality(tiles)
+            gain = None if with_tile_hits is None else recall_gain(
+                baseline_hits=baseline_hits,
+                with_tile_hits=with_tile_hits,
+                positives=positives,
+            )
+            result = {"quality": quality, "recall_gain": gain}
+            record = (
+                save_scalar_report(self._data_dir, "ranking_fixture", result)
+                if self._data_dir is not None else None
+            )
+            return {"ok": True, **result, "run_id": None if record is None else record["id"]}
+        except Exception as error:  # noqa: BLE001
+            return self._error_result("Could not score ranking fixture", error)
+
+    def close_lab_tools(self) -> None:
+        if self._tool_job is not None:
+            self._tool_job.close()
 
     def lab_cancel_run(self) -> dict[str, Any]:
         runner = self._runner

@@ -132,51 +132,21 @@ NudeNet 640m、YOLO11 NSFW Small、Viddexa Nano 和 Viddexa Mini 都是 User 与
 python scripts/download_models.py --model yolo11_nsfw_small
 ```
 
-若想在本地对比 320n 和 640m 的延迟,且不保存任何分析结果:
+所有基准测试现已集中到 Developer Dashboard 的 Benchmark Lab:
 
 ```bash
-python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+python -m pip install -r requirements.txt -r requirements-developer.txt
+python developer_main.py dashboard
 ```
 
-开发者 Benchmark Lab 分为 Detector Only、Vision Pipeline、Context Policy 和
-Full Protection Pipeline 四种数据集目标。Vision Pipeline 只评估单帧视觉决策;
-Full Protection 先评估应用/网站规则夹具,仅在 NORMAL 时通过与正式保护相同的
-`VisionPipeline` 和 `ProtectionRuntime` 进行多帧确认。FORCE_BLOCK 与 FULL_BYPASS
-不调用 Vision。第五类 Capture Benchmark 使用真实显示器单独运行。medical、education、
-art、news 只是场景元数据,不会强制 Allow。夹具 JSON 格式及各项指标见
-[开发者基准说明](docs/developer-benchmark.md)。独立的视觉检测诊断命令:
+Lab 包含四类数据集测试、NudeNet 320n/640m 对比、Viddexa 信号与区域排序、
+High-recall 案例报告、合成图像预处理微基准,以及真实显示器上的 Capture 性能和稳定性测试。
+Native/MSS 对比在独立子进程中运行。运行工具前先停止 Protection。医学、教育、艺术等
+标签不会强制 Allow;“视觉违规”真值与产品 Block/Allow 分别标注和计分。所有捕获基准
+只保存标量指标,不保存或上传屏幕像素。详见 [开发者基准说明](docs/developer-benchmark.md)、
+[捕获基准指南](docs/capture-benchmark.md)及 [捕获稳定性指南](docs/capture-soak-testing.md)。
 
-```bash
-python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
-```
-
-若要在隔离的开发进程中对比原生捕获路径和 MSS:
-
-```bash
-python -m pip install -r requirements-benchmark.txt
-python scripts/benchmark_capture.py
-```
-
-捕获基准会汇总延迟、帧龄、CPU、常驻内存、显示器分辨率,以及从捕获到 NudeNet 决策的耗时。它不会保留或上传帧。各后端命令、权限行为和分辨率/显示器测试矩阵见 [捕获基准指南](docs/capture-benchmark.md)。
-
-发布稳定性校验时,请按平台和后端模式至少运行一小时捕获浸泡测试:
-
-```bash
-python scripts/soak_capture.py --backend auto --duration-seconds 3600
-```
-
-它会检测停滞序号、不健康后端、内存/资源增长、降级切换和未完成清理,且不保留帧。八小时命令、失败阈值和平台矩阵见 [捕获浸泡测试指南](docs/capture-soak-testing.md)。
-
-### 可选的区域排序基准测试
-
-Viddexa Nano 与 Mini 已包含在发布包中,运行时可选择是否启用 tile 排序。它们只让主检测器优先复检 porn/hentai 风险较高的区域,不判断观看目的、不能单独触发保护,也不会把 NudeNet 的边界结果提升为违规。测试排序延迟:
-
-```bash
-python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
-python scripts/benchmark_ranking.py --tiles '[{"index":0,"scores":{"porn":0.99},"primary_hit":false},{"index":1,"scores":{"porn":0.2},"primary_hit":true}]' --baseline-hits 6 --with-tile-hits 8 --positives 10
-```
-
-Viddexa Benchmark 只报告 tile 排序质量、候选优先级、召回增益和延迟。它不会把 Viddexa 的 porn 准确率当成产品 Block 准确率。NudeNet/YOLO 的 Detector Benchmark 仍然是召回、精确率、小目标召回、ROI 救援增益、tile 召回和延迟。
+Viddexa 只决定主检测器优先复检哪个区域,不能单独触发 Block。
 
 固定版本的模型文件从 Hugging Face 下载,推理则在本地运行。基准测试用的图片不会被上传或保存,该命令只打印编号结果,而非输入路径。若依赖或模型不可用,LAVOCADO 仍能以纯 NudeNet 模式运行。确认后的视觉违规仍需在 3 个新帧中命中 2 次才会保护。
 

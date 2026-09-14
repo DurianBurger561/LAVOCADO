@@ -1,4 +1,4 @@
-"""Viddexa ranking metrics. Porn scores never become product Block accuracy."""
+"""Developer ranking metrics. Viddexa never determines product Block."""
 
 from __future__ import annotations
 

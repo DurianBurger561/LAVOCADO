@@ -35,3 +35,14 @@ class DeveloperMainTests(unittest.TestCase):
         with patch("main.main") as user_main:
             developer_main.main(["protect"])
         user_main.assert_called_once_with(["protect"])
+
+    def test_hidden_benchmark_worker_dispatches_without_dashboard(self) -> None:
+        with (
+            patch("developer.benchmark.capture_benchmark.main", return_value=0) as worker,
+            patch("main.main") as user_main,
+            self.assertRaises(SystemExit) as result,
+        ):
+            developer_main.main(["--benchmark-worker", "capture", "--backend", "native"])
+        self.assertEqual(result.exception.code, 0)
+        worker.assert_called_once_with(["--backend", "native"])
+        user_main.assert_not_called()

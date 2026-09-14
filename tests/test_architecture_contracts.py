@@ -38,6 +38,11 @@ def _display(path: Path) -> str:
 
 
 class ArchitectureContractTests(unittest.TestCase):
+    def test_benchmarks_live_only_in_developer_lab(self) -> None:
+        self.assertEqual(list((ROOT / "scripts").glob("benchmark_*.py")), [])
+        self.assertFalse((ROOT / "scripts" / "soak_capture.py").exists())
+        self.assertEqual(list((APP / "vision").glob("*benchmark*.py")), [])
+
     def test_display_uses_platform_independent_paths(self) -> None:
         self.assertEqual(
             _display(ROOT / "app" / "platforms" / "capture" / "models.py"),

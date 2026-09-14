@@ -1,4 +1,4 @@
-"""Tests for long-run capture stability monitoring."""
+"""Tests for Lab long-run capture stability monitoring."""
 
 import json
 import time
@@ -12,7 +12,7 @@ from app.platforms.capture import (
     CapturePermissionDeniedError,
     MonitorInfo,
 )
-from scripts.soak_capture import ProcessSnapshot, soak_backend
+from developer.benchmark.capture_stability import ProcessSnapshot, soak_backend
 
 
 class FakeProcess:

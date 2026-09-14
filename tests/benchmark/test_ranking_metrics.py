@@ -1,8 +1,8 @@
-"""Viddexa ranking quality is not product Block accuracy."""
+"""Lab Viddexa ranking quality is not product Block accuracy."""
 
 import unittest
 
-from app.vision.ranking_benchmark import (
+from developer.benchmark.ranking_metrics import (
     detector_metrics,
     prioritize_tiles,
     ranking_quality,

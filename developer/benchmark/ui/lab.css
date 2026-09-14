@@ -173,3 +173,17 @@
 .lab-privacy {
   max-width: 42rem;
 }
+.lab-tool-output {
+  max-height: 26rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #151b2b;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+}
+
+#lab-ranking-tiles {
+  width: 100%;
+  box-sizing: border-box;
+}

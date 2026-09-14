@@ -11,7 +11,9 @@ from unittest.mock import patch
 
 from lavocado_packaging.spec_common import (
     MODEL_HIDDENIMPORTS,
+    USER_EXCLUDES,
     developer_datas,
+    developer_hiddenimports,
     required_model_datas,
     user_datas,
 )
@@ -21,6 +23,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackagingSpecTests(unittest.TestCase):
+    def test_lab_hardware_workers_are_developer_only(self) -> None:
+        hidden = developer_hiddenimports([])
+        for module in (
+            "developer.benchmark.capture_benchmark",
+            "developer.benchmark.capture_stability",
+            "developer.benchmark.diagnostic_worker",
+            "developer.benchmark.jobs",
+            "psutil",
+        ):
+            self.assertIn(module, hidden)
+        self.assertIn("developer", USER_EXCLUDES)
+
     def test_both_editions_collect_every_pinned_model_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch(
             "lavocado_packaging.spec_common.is_expected_nudenet_model",
@@ -52,9 +66,8 @@ class PackagingSpecTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir, patch(
             "lavocado_packaging.spec_common.is_expected_yolo_model",
             return_value=False,
-        ):
-            with self.assertRaisesRegex(SystemExit, "yolo11.pt"):
-                required_model_datas(Path(temp_dir))
+        ), self.assertRaisesRegex(SystemExit, "yolo11.pt"):
+            required_model_datas(Path(temp_dir))
 
     def test_artifact_validator_requires_all_four_models(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -67,9 +80,8 @@ class PackagingSpecTests(unittest.TestCase):
                 verify_model_bundle(Path(temp_dir))
             with patch("scripts.verify_model_bundle.is_expected_nudenet_model", return_value=True), patch(
                 "scripts.verify_model_bundle.is_expected_yolo_model", return_value=False
-            ):
-                with self.assertRaisesRegex(RuntimeError, "YOLO11"):
-                    verify_model_bundle(Path(temp_dir))
+            ), self.assertRaisesRegex(RuntimeError, "YOLO11"):
+                verify_model_bundle(Path(temp_dir))
 
     def test_package_matrix_downloads_all_models_before_build(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "package.yml").read_text(

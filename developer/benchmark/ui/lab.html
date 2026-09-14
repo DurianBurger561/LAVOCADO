@@ -15,6 +15,7 @@
             <button type="button" class="lab-tab" data-lab-tab="configure">Configure</button>
             <button type="button" class="lab-tab" data-lab-tab="run">Run</button>
             <button type="button" class="lab-tab" data-lab-tab="results">Results</button>
+            <button type="button" class="lab-tab" data-lab-tab="tools">Tools &amp; Hardware</button>
           </div>
 
           <p id="lab-message" class="rules-message" role="status" aria-live="polite"></p>
@@ -86,6 +87,14 @@
                   <button id="lab-mark-block" class="button danger" type="button">Block (B)</button>
                   <button id="lab-mark-allow" class="button primary" type="button">Allow (A)</button>
                 </div>
+                <label>
+                  Expected visual content (separate from Protection)
+                  <select id="lab-expected-visual">
+                    <option value="unlabelled">Unlabelled</option>
+                    <option value="violation">Visual violation</option>
+                    <option value="clear">Visually clear</option>
+                  </select>
+                </label>
                 <label class="lab-check">
                   <input id="lab-exclude" type="checkbox">
                   Exclude from Benchmark (E)
@@ -117,7 +126,7 @@
               <label class="lab-check"><input type="radio" name="lab-target" value="context_policy"> Context Policy</label>
               <label class="lab-check"><input type="radio" name="lab-target" value="full_protection_pipeline" checked> Full Protection Pipeline</label>
             </fieldset>
-            <p class="muted">Context fixtures and expected policy actions are stored per sample in dataset.json. Capture Benchmark runs separately with the real display and permissions.</p>
+            <p class="muted">Context fixtures and expected policy actions are stored per sample in dataset.json. Capture runs in Tools &amp; Hardware with the real display and permissions.</p>
             <div class="lab-config-grid">
               <fieldset class="lab-fieldset">
                 <legend>Primary</legend>
@@ -356,5 +365,85 @@
               <button id="lab-annotated-preview" class="button ghost" type="button">Annotated preview</button>
             </div>
             <img id="lab-annotated-image" alt="Annotated preview" hidden>
+          </div>
+
+          <div class="lab-pane" data-lab-pane="tools">
+            <p class="muted">Run one tool at a time with Protection stopped. Results contain only scalar metadata; no screen pixels are saved or uploaded. Hardware tools require Windows or macOS with a real desktop.</p>
+            <div class="lab-config-grid">
+              <fieldset class="lab-fieldset">
+                <legend>Dataset diagnostics</legend>
+                <label>Tool
+                  <select id="lab-tool-mode">
+                    <option value="detector_compare">NudeNet 320n vs 640m</option>
+                    <option value="ranker_signal">Viddexa signal latency</option>
+                    <option value="preprocessor">Synthetic preprocessor</option>
+                  </select>
+                </label>
+                <label>Viddexa model
+                  <select id="lab-tool-model">
+                    <option value="viddexa_nano">Nano</option>
+                    <option value="viddexa_mini">Mini</option>
+                  </select>
+                </label>
+                <label>Preprocessor iterations <input id="lab-tool-iterations" type="number" min="1" max="1000" value="30"></label>
+                <label>Frame width <input id="lab-tool-width" type="number" min="1" max="8192" value="1920"></label>
+                <label>Frame height <input id="lab-tool-height" type="number" min="1" max="8192" value="1080"></label>
+                <label>Input size <input id="lab-tool-size" type="number" min="1" max="2048" value="640"></label>
+                <button id="lab-start-diagnostic" class="button secondary" type="button">Run diagnostic</button>
+              </fieldset>
+              <fieldset class="lab-fieldset">
+                <legend>Capture performance</legend>
+                <label>Backend
+                  <select id="lab-capture-backend">
+                    <option value="both">Native then MSS (isolated)</option>
+                    <option value="auto">Auto</option>
+                    <option value="native">Native</option>
+                    <option value="mss">MSS</option>
+                  </select>
+                </label>
+                <label>Measured frames per display <input id="lab-capture-frames" type="number" min="1" max="10000" value="30"></label>
+                <label>Warmup frames <input id="lab-capture-warmup" type="number" min="0" max="1000" value="3"></label>
+                <button id="lab-start-capture" class="button secondary" type="button">Run Capture Benchmark</button>
+              </fieldset>
+              <fieldset class="lab-fieldset">
+                <legend>Capture stability</legend>
+                <label>Backend
+                  <select id="lab-stability-backend">
+                    <option value="auto">Auto</option>
+                    <option value="native">Native</option>
+                    <option value="mss">MSS</option>
+                  </select>
+                </label>
+                <label>Duration (seconds; 3600 = 1 hour) <input id="lab-stability-duration" type="number" min="1" max="28800" value="3600"></label>
+                <button id="lab-start-stability" class="button secondary" type="button">Run stability test</button>
+              </fieldset>
+            </div>
+            <div class="lab-toolbar">
+              <button id="lab-cancel-tool" class="button ghost" type="button">Cancel current tool</button>
+              <button id="lab-tool-export-json" class="button secondary" type="button">Export tool JSON</button>
+              <button id="lab-tool-export-csv" class="button secondary" type="button">Export tool CSV</button>
+            </div>
+            <p id="lab-tool-status" class="muted">No tool running</p>
+            <pre id="lab-tool-result" class="lab-tool-output"></pre>
+            <h3>Previous tool runs</h3>
+            <button id="lab-tool-history-refresh" class="button ghost" type="button">Refresh history</button>
+            <div id="lab-tool-history" class="lab-failures"></div>
+            <h3>Ranking fixture</h3>
+            <p class="muted">Viddexa tile order and optional primary-detector recall gain only; never product Block accuracy.</p>
+            <textarea id="lab-ranking-tiles" rows="3" placeholder='[{"index":0,"scores":{"porn":0.9},"primary_hit":false}]'></textarea>
+            <div class="lab-toolbar">
+              <label>Baseline hits <input id="lab-ranking-baseline" type="number" min="0" value="0"></label>
+              <label>With tile hits <input id="lab-ranking-with-tiles" type="number" min="0" value="0"></label>
+              <label>Positives <input id="lab-ranking-positives" type="number" min="0" value="0"></label>
+              <button id="lab-score-ranking" class="button secondary" type="button">Score fixture</button>
+            </div>
+            <pre id="lab-ranking-result" class="lab-tool-output"></pre>
+            <h3>High-recall case report</h3>
+            <p class="muted">Import scalar-labelled cases. Matrix entries are measurement targets, not completed runs or recommended defaults.</p>
+            <div class="lab-toolbar">
+              <button id="lab-import-high-recall" class="button secondary" type="button">Import cases JSON</button>
+              <button id="lab-show-matrix" class="button ghost" type="button">Show matrix target count</button>
+            </div>
+            <pre id="lab-high-recall-result" class="lab-tool-output"></pre>
           </div>
         </section>

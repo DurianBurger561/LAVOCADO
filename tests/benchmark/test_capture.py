@@ -1,4 +1,4 @@
-"""Tests for the privacy-safe capture benchmark."""
+"""Tests for the privacy-safe Lab capture benchmark."""
 
 import argparse
 import json
@@ -15,13 +15,13 @@ from app.platforms.capture import (
     MonitorInfo,
 )
 from app.vision.violation_policy import ViolationEvidence, ViolationEvidenceType
-from scripts.benchmark_capture import (
+from developer.benchmark.capture_benchmark import (
     EXIT_PERMISSION_DENIED,
-    RESULT_PREFIX,
     benchmark_backend,
     run_comparison,
     summarize,
 )
+from developer.benchmark.hardware_ipc import write_json
 
 
 class FakeMemory:
@@ -155,16 +155,13 @@ class CaptureBenchmarkTests(unittest.TestCase):
             "error": "permission_denied",
         }
 
+        def denied_worker(command, **_kwargs):
+            write_json(command[command.index("--result-file") + 1], denied)
+            return type("Completed", (), {"returncode": EXIT_PERMISSION_DENIED})()
+
         with patch(
-            "scripts.benchmark_capture.subprocess.run",
-            return_value=type(
-                "Completed",
-                (),
-                {
-                    "stdout": f"library log\n{RESULT_PREFIX}{json.dumps(denied)}\n",
-                    "returncode": EXIT_PERMISSION_DENIED,
-                },
-            )(),
+            "developer.benchmark.capture_benchmark.subprocess.run",
+            side_effect=denied_worker,
         ) as run:
             result, exit_code = run_comparison(arguments)
 

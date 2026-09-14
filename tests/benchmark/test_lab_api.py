@@ -5,6 +5,8 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
 from developer.benchmark.ui.api import DeveloperDashboardAPI
 
 try:
@@ -33,6 +35,37 @@ class FakeRecorder:
 
 
 class LabAPITests(unittest.TestCase):
+    def test_tool_start_checks_protection_and_builds_worker_arguments(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            api = DeveloperDashboardAPI(
+                FakeController(), FakeRecorder(), FakeController(), data_dir=Path(temp_dir)
+            )
+            denied = api.lab_start_tool("capture", {"backend": "both"})
+            self.assertFalse(denied["ok"])
+            with (
+                patch.object(api, "get_status", return_value={"ok": True, "can_start": True}),
+                patch("developer.benchmark.ui.api.LabProcessJob") as job_class,
+            ):
+                job_class.return_value.id = "job-id"
+                started = api.lab_start_tool("capture", {"backend": "both", "frames": 20})
+            self.assertTrue(started["ok"])
+            self.assertEqual(started["job_id"], "job-id")
+            self.assertEqual(job_class.call_args.args[0], "capture")
+            self.assertIn("--frames", job_class.call_args.args[1])
+
+    def test_preprocessor_tool_rejects_oversized_synthetic_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            api = DeveloperDashboardAPI(
+                FakeController(), FakeRecorder(), FakeController(), data_dir=Path(temp_dir)
+            )
+            with patch.object(api, "get_status", return_value={"ok": True, "can_start": True}):
+                result = api.lab_start_tool(
+                    "diagnostic",
+                    {"mode": "preprocessor", "width": 8192, "height": 8192},
+                )
+            self.assertFalse(result["ok"])
+            self.assertIn("16 megapixels", result["message"])
+
     def test_create_import_annotate_and_expand(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -55,6 +88,8 @@ class LabAPITests(unittest.TestCase):
                 ["non_pornographic_purpose", "education"],
             )
             self.assertEqual(annotated["sample"]["expected"], "allow")
+            visual = api.lab_annotate(sample_id, "allow", False, [], "violation")
+            self.assertEqual(visual["sample"]["expected_visual"], "violation")
             configs = api.lab_expand_configs(
                 {
                     "benchmark_target": "full_protection_pipeline",

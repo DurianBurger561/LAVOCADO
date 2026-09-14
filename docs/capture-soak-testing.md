@@ -1,44 +1,31 @@
 # Capture long-run stability testing
 
-The soak tool exercises one capture mode continuously while retaining only the
+The Developer Benchmark Lab's Capture stability tool exercises one capture mode while retaining only the
 latest in-memory frame. It emits privacy-safe progress metadata and a final JSON
 summary; it never saves, serializes, or uploads screen pixels.
 
-## Install the optional monitor
+## Open the Developer Benchmark Lab
 
 ```bash
-python -m pip install -r requirements-benchmark.txt
+python -m pip install -r requirements.txt -r requirements-developer.txt
+python developer_main.py dashboard
 ```
 
 ## Required one-hour runs
 
-Run the normal production policy for at least one hour on each platform:
+In Tools & Hardware → Capture stability, select Auto and 3600 seconds for the
+production-policy hour. Repeat with Native and MSS independently. For the
+recommended eight-hour run, select Auto and 28800 seconds. Stop Protection
+before starting the test.
 
-```bash
-python scripts/soak_capture.py --backend auto --duration-seconds 3600
-```
-
-Then exercise the developer-only paths independently:
-
-```bash
-python scripts/soak_capture.py --backend native --duration-seconds 3600
-python scripts/soak_capture.py --backend mss --duration-seconds 3600
-```
-
-The recommended eight-hour run is:
-
-```bash
-python scripts/soak_capture.py --backend auto --duration-seconds 28800
-```
-
-Progress lines are emitted every 60 seconds. They contain elapsed time, frame
+Progress metadata is updated every 60 seconds. It contains elapsed time, frame
 count, active backend, fallback state, RSS, thread count, and the platform's
-native handle or file-descriptor count. Redirecting stdout to a log file stores
+native handle or file-descriptor count. Lab history and JSON/CSV exports store
 only this scalar metadata, never screenshots.
 
 ## What constitutes a failure
 
-The command returns a non-zero exit code when:
+The Lab marks the run failed when:
 
 - a monitor stops producing an advancing sequence for 5 seconds;
 - a frame changes shape, dtype, channel format, or monitor identity;
@@ -46,16 +33,11 @@ The command returns a non-zero exit code when:
 - stopping does not release the active backend and monitor collection;
 - post-start or post-stop RSS growth exceeds 256 MiB;
 - post-stop threads, handles, or file descriptors grow beyond the configured
-  tolerance of 32;
+tolerance of 32;
 - capture permission is denied (exit code 2, with no automatic MSS bypass).
 
-Adjust thresholds only when recording the reason:
-
-```bash
-python scripts/soak_capture.py \
-  --max-memory-growth-mib 384 \
-  --max-resource-growth 48
-```
+The Lab currently uses fixed conservative growth thresholds. Record the
+reason if a future experiment changes them.
 
 The final result includes median/p95/max capture latency and frame age, running
 peak memory, running memory growth, estimated MiB/hour RSS trend, post-stop

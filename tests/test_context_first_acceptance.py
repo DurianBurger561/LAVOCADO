@@ -19,9 +19,9 @@ from app.context.policy.website import WebsitePolicy
 from app.context.store import ForegroundContextStore
 from app.service import LavocadoService, State
 from app.vision.decision import DecisionEngine
-from app.vision.ranking_benchmark import ranking_quality
 from app.vision.visual_decision import VisualDecisionEngine
 from developer.benchmark.ground_truth import visual_policy_classification
+from developer.benchmark.ranking_metrics import ranking_quality
 from tests.test_decision import (
     FakeContextClassifier,
     FakeLocalDetector,

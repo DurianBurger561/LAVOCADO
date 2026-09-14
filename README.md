@@ -205,76 +205,29 @@ To re-download only YOLO:
 python scripts/download_models.py --model yolo11_nsfw_small
 ```
 
-To compare 320n and 640m latency locally without saving any analysis output:
+All benchmarks now live in the Developer Dashboard's Benchmark Lab:
 
 ```bash
-python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
+python -m pip install -r requirements.txt -r requirements-developer.txt
+python developer_main.py dashboard
 ```
 
-Developer Benchmark Lab separates Detector Only, Vision Pipeline, Context
-Policy, and Full Protection Pipeline. Vision Pipeline scores one frame's visual
-decision without context or temporal confirmation. Full Protection first
-evaluates typed application/website fixtures; NORMAL then uses the same
-`VisionPipeline` and `ProtectionRuntime` as production, including fresh-frame
-temporal confirmation. FORCE_BLOCK and FULL_BYPASS skip Vision. Capture
-Benchmark is a fifth, separate hardware test. Scenario tags such as medical,
-education, art, or news are metadata and never force Allow. Fixture format,
-scoreboards, and the distinction between still-frame replay and live capture
-are documented in the [Developer benchmark guide](docs/developer-benchmark.md).
+The Lab contains the four dataset targets (Detector Only, Vision Pipeline,
+Context Policy, Full Protection Pipeline), NudeNet 320n/640m comparison,
+Viddexa signal and ranking diagnostics, high-recall case reports, a synthetic
+preprocessor microbenchmark, and real-display Capture performance and stability
+tests. Native and MSS Capture comparisons use isolated worker processes. Stop
+Protection before starting a Lab tool. Medical, education, art, and news tags
+never force Allow; visual-violation ground truth is annotated separately from
+product Block/Allow. No benchmark saves or uploads captured screen pixels.
+See the [Developer benchmark guide](docs/developer-benchmark.md),
+[capture benchmark guide](docs/capture-benchmark.md), and
+[capture stability guide](docs/capture-soak-testing.md).
 
-For local detector diagnostics outside the Lab:
-
-```bash
-python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
-```
-
-To compare the native capture path with MSS in isolated developer processes:
-
-```bash
-python -m pip install -r requirements-benchmark.txt
-python scripts/benchmark_capture.py
-```
-
-The capture benchmark reports aggregate latency, frame age, CPU, resident
-memory, display resolution, and capture-to-NudeNet-decision timing. It does not
-retain or upload frames. See the
-[capture benchmark guide](docs/capture-benchmark.md) for individual backend
-commands, permission behaviour, and the resolution/monitor test matrix.
-
-For release stability validation, run the capture soak tool for at least one
-hour per platform and backend mode:
-
-```bash
-python scripts/soak_capture.py --backend auto --duration-seconds 3600
-```
-
-It detects stalled sequences, unhealthy backends, memory/resource growth,
-fallback transitions, and incomplete cleanup without retaining frames. See the
-[capture soak-testing guide](docs/capture-soak-testing.md) for the eight-hour
-command, failure thresholds, and platform matrix.
-
-### Optional tile-ranking benchmark
-
-Viddexa Nano and Mini are included in release packages. The selected model only ranks
-tiles so the primary detector can recheck the highest porn/hentai-risk region
-first. Viddexa never confirms viewing purpose, never blocks on its own, and
-never promotes a borderline NudeNet result to a violation. Benchmark ranking latency with:
-
-```bash
-python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
-python scripts/benchmark_ranking.py --tiles '[{"index":0,"scores":{"porn":0.99},"primary_hit":false},{"index":1,"scores":{"porn":0.2},"primary_hit":true}]' --baseline-hits 6 --with-tile-hits 8 --positives 10
-```
-
-Viddexa Benchmark reports tile-ranking quality, candidate prioritization,
-recall gain, and latency. It does not treat Viddexa porn accuracy as product
-Block accuracy. NudeNet/YOLO Detector Benchmark remains recall, precision,
-small-target recall, ROI rescue gain, tile recall, and latency.
-
-The pinned model files are downloaded from Hugging Face, then inference runs
-locally. Benchmark images are not uploaded or saved, and the command prints
-only numbered results rather than input paths. If the dependencies or model are
-unavailable, LAVOCADO remains able to run in NudeNet-only mode. Confirmed
-visual violations still require 2-of-3 fresh frames before protection.
+Viddexa only prioritizes tiles for the primary detector; its signal is never
+product Block accuracy. A missing optional runtime model does not prevent
+NudeNet-only Protection. Confirmed visual violations still require 2-of-3
+fresh frames before protection.
 
 For small-content rescue, each monitor is divided into four tiles. Viddexa
 ranks those tiles by porn/hentai risk; a high rank only asks the same NudeNet

@@ -2,17 +2,32 @@
 
 from __future__ import annotations
 
-from app.build_edition import DEVELOPER_EDITION, set_build_edition
+import sys
+
 import main as user_main
+from app.build_edition import DEVELOPER_EDITION, set_build_edition
 
 
 def main(argv=None) -> None:
     """Run the full user app, replacing only the dashboard with Developer Lab."""
 
+    arguments = list(sys.argv[1:] if argv is None else argv)
     set_build_edition(DEVELOPER_EDITION)
-    args = user_main.build_parser().parse_args(argv)
+    if arguments[:1] == ["--benchmark-worker"]:
+        if len(arguments) < 2:
+            raise SystemExit("Missing benchmark worker kind")
+        if arguments[1] == "capture":
+            from developer.benchmark.capture_benchmark import main as worker_main
+        elif arguments[1] == "stability":
+            from developer.benchmark.capture_stability import main as worker_main
+        elif arguments[1] == "diagnostic":
+            from developer.benchmark.diagnostic_worker import main as worker_main
+        else:
+            raise SystemExit(f"Unknown benchmark worker: {arguments[1]}")
+        raise SystemExit(worker_main(arguments[2:]))
+    args = user_main.build_parser().parse_args(arguments)
     if getattr(args, "overlay_process", False):
-        user_main.main(argv)
+        user_main.main(arguments)
         return
     command = args.command or user_main.default_command()
     if command == "dashboard":
@@ -23,7 +38,7 @@ def main(argv=None) -> None:
         platform_adapter.prepare_environment()
         run_developer_dashboard(platform_adapter)
         return
-    user_main.main(argv)
+    user_main.main(arguments)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@ const lab = {
   configs: [],
   progressTimer: null,
   datasetPath: "",
+  toolRunId: "",
+  toolRuns: [],
 };
 
 const labEl = (id) => document.getElementById(id);
@@ -213,6 +215,8 @@ async function showCurrentSample() {
   }
   const exclude = labEl("lab-exclude");
   if (exclude) exclude.checked = Boolean(response.sample && response.sample.excluded);
+  const expectedVisual = labEl("lab-expected-visual");
+  if (expectedVisual) expectedVisual.value = response.sample.expected_visual || "unlabelled";
   document.querySelectorAll("#lab-tag-boxes input").forEach((input) => {
     input.checked = Boolean(response.sample && (response.sample.tags || []).includes(input.value));
   });
@@ -263,7 +267,7 @@ async function annotateCurrent(payload) {
   const sample = currentSample();
   if (!sample) return;
   const tags = Array.from(document.querySelectorAll("#lab-tag-boxes input:checked")).map((node) => node.value);
-  labAssert(await labInvoke("lab_annotate", sample.id, payload.expected ?? sample.expected, payload.excluded ?? sample.excluded, payload.tags || tags));
+  labAssert(await labInvoke("lab_annotate", sample.id, payload.expected ?? sample.expected, payload.excluded ?? sample.excluded, payload.tags || tags, payload.expected_visual || selectValue("lab-expected-visual", "unlabelled")));
   await refreshSamples();
 }
 
@@ -468,6 +472,45 @@ async function pollProgress() {
   }
 }
 
+async function pollToolProgress() {
+  const response = await labInvoke("lab_tool_progress");
+  if (!response || !response.ok || !response.job) return;
+  const job = response.job;
+  const progress = job.progress || {};
+  labText("lab-tool-status", `${job.kind}: ${job.status}${progress.completed != null ? ` · ${progress.completed}/${progress.total}` : ""}${progress.backend ? ` · ${progress.backend}` : ""}${progress.active_backend ? ` · ${progress.active_backend}` : ""}${progress.elapsed_seconds != null ? ` · ${progress.elapsed_seconds}s` : ""}${progress.frames != null ? ` · ${progress.frames} frames` : ""}`);
+  if (job.record) {
+    lab.toolRunId = job.record.id;
+    labText("lab-tool-result", JSON.stringify(job.record, null, 2));
+    if (!lab.toolRuns.some((item) => item.id === job.record.id)) refreshToolHistory().catch(() => {});
+  }
+}
+
+async function refreshToolHistory() {
+  const response = labAssert(await labInvoke("lab_tool_history"));
+  lab.toolRuns = response.runs || [];
+  const container = labEl("lab-tool-history");
+  container.replaceChildren();
+  for (const record of lab.toolRuns) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button ghost";
+    button.textContent = `${record.created_at || ""} · ${record.kind || "tool"} · ${record.status || ""}`;
+    button.addEventListener("click", () => {
+      lab.toolRunId = record.id;
+      labText("lab-tool-result", JSON.stringify(record, null, 2));
+    });
+    container.appendChild(button);
+  }
+}
+
+async function startTool(kind, options) {
+  const response = labAssert(await labInvoke("lab_start_tool", kind, options));
+  lab.toolRunId = response.job_id;
+  labText("lab-tool-result", "");
+  labMessage(response.message);
+  await pollToolProgress();
+}
+
 function initializeLab() {
   const nav = document.getElementById("app-nav");
   if (!nav) return;
@@ -530,6 +573,7 @@ function initializeLab() {
   labEl("lab-mark-block").addEventListener("click", () => annotateCurrent({ expected: "block" }).catch((error) => labMessage(error.message, true)));
   labEl("lab-mark-allow").addEventListener("click", () => annotateCurrent({ expected: "allow" }).catch((error) => labMessage(error.message, true)));
   labEl("lab-exclude").addEventListener("change", (event) => annotateCurrent({ excluded: event.target.checked }).catch((error) => labMessage(error.message, true)));
+  labEl("lab-expected-visual").addEventListener("change", (event) => annotateCurrent({ expected_visual: event.target.value }).catch((error) => labMessage(error.message, true)));
   labEl("lab-prev").addEventListener("click", async () => {
     lab.index = Math.max(0, lab.index - 1);
     await showCurrentSample();
@@ -587,6 +631,67 @@ function initializeLab() {
     } catch (error) {
       labMessage(error.message, true);
     }
+  });
+  labEl("lab-start-diagnostic").addEventListener("click", () => startTool("diagnostic", {
+    mode: selectValue("lab-tool-mode", "detector_compare"),
+    model: selectValue("lab-tool-model", "viddexa_nano"),
+    iterations: Number(selectValue("lab-tool-iterations", "30")),
+    width: Number(selectValue("lab-tool-width", "1920")),
+    height: Number(selectValue("lab-tool-height", "1080")),
+    size: Number(selectValue("lab-tool-size", "640")),
+  }).catch((error) => labMessage(error.message, true)));
+  labEl("lab-start-capture").addEventListener("click", () => startTool("capture", {
+    backend: selectValue("lab-capture-backend", "both"),
+    frames: Number(selectValue("lab-capture-frames", "30")),
+    warmup: Number(selectValue("lab-capture-warmup", "3")),
+  }).catch((error) => labMessage(error.message, true)));
+  labEl("lab-start-stability").addEventListener("click", () => startTool("stability", {
+    backend: selectValue("lab-stability-backend", "auto"),
+    duration_seconds: Number(selectValue("lab-stability-duration", "3600")),
+  }).catch((error) => labMessage(error.message, true)));
+  labEl("lab-cancel-tool").addEventListener("click", async () => {
+    try {
+      const response = labAssert(await labInvoke("lab_cancel_tool"));
+      labMessage(response.message);
+      await pollToolProgress();
+    } catch (error) { labMessage(error.message, true); }
+  });
+  labEl("lab-tool-history-refresh").addEventListener("click", () => refreshToolHistory().catch((error) => labMessage(error.message, true)));
+  for (const kind of ["json", "csv"]) {
+    labEl(`lab-tool-export-${kind}`).addEventListener("click", async () => {
+      try {
+        const response = labAssert(await labInvoke("lab_export_tool", lab.toolRunId, kind, null));
+        labMessage(`Exported ${response.path}`);
+      } catch (error) { labMessage(error.message, true); }
+    });
+  }
+  labEl("lab-score-ranking").addEventListener("click", async () => {
+    try {
+      const tiles = JSON.parse(labEl("lab-ranking-tiles").value || "[]");
+      const response = labAssert(await labInvoke(
+        "lab_ranking_fixture", tiles,
+        Number(selectValue("lab-ranking-baseline", "0")),
+        Number(selectValue("lab-ranking-with-tiles", "0")),
+        Number(selectValue("lab-ranking-positives", "0")),
+      ));
+      labText("lab-ranking-result", JSON.stringify(response, null, 2));
+      lab.toolRunId = response.run_id || "";
+      await refreshToolHistory();
+    } catch (error) { labMessage(error.message, true); }
+  });
+  labEl("lab-import-high-recall").addEventListener("click", async () => {
+    try {
+      const response = labAssert(await labInvoke("lab_high_recall_report", null));
+      labText("lab-high-recall-result", JSON.stringify(response.report, null, 2));
+      lab.toolRunId = response.run_id || "";
+      await refreshToolHistory();
+    } catch (error) { labMessage(error.message, true); }
+  });
+  labEl("lab-show-matrix").addEventListener("click", async () => {
+    try {
+      const response = labAssert(await labInvoke("lab_matrix_preview"));
+      labText("lab-high-recall-result", JSON.stringify({ job_count: response.job_count, measurement_targets_only: true, matrix: response.matrix }, null, 2));
+    } catch (error) { labMessage(error.message, true); }
   });
   labEl("lab-refresh-failures").addEventListener("click", () => refreshFailures().catch((error) => labMessage(error.message, true)));
   labEl("lab-refresh-compare").addEventListener("click", () => refreshCompare().catch((error) => labMessage(error.message, true)));
@@ -669,7 +774,11 @@ function initializeLab() {
   }).catch(() => {});
   refreshDatasets().catch(() => {});
   refreshConfigs().catch(() => {});
-  lab.progressTimer = window.setInterval(() => pollProgress().catch(() => {}), 1000);
+  refreshToolHistory().catch(() => {});
+  lab.progressTimer = window.setInterval(() => {
+    pollProgress().catch(() => {});
+    pollToolProgress().catch(() => {});
+  }, 1000);
   setView("home");
 }
 

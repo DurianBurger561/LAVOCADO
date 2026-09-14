@@ -38,6 +38,15 @@ USER_EXCLUDES = (
     "developer.benchmark.ui",
     "developer.benchmark.ui.api",
     "developer.benchmark.ui.dashboard",
+    "developer.benchmark.capture_benchmark",
+    "developer.benchmark.capture_stability",
+    "developer.benchmark.diagnostic_worker",
+    "developer.benchmark.hardware_ipc",
+    "developer.benchmark.jobs",
+    "developer.benchmark.preprocessor_benchmark",
+    "developer.benchmark.high_recall",
+    "developer.benchmark.matrix",
+    "developer.benchmark.ranking_metrics",
 )
 MODEL_HIDDENIMPORTS = (
     "ultralytics",
@@ -145,6 +154,16 @@ def developer_hiddenimports(platform_hidden: list[str]) -> list[str]:
         "developer.benchmark.ui",
         "developer.benchmark.ui.api",
         "developer.benchmark.ui.dashboard",
+        "developer.benchmark.capture_benchmark",
+        "developer.benchmark.capture_stability",
+        "developer.benchmark.diagnostic_worker",
+        "developer.benchmark.hardware_ipc",
+        "developer.benchmark.jobs",
+        "developer.benchmark.preprocessor_benchmark",
+        "developer.benchmark.high_recall",
+        "developer.benchmark.matrix",
+        "developer.benchmark.ranking_metrics",
+        "psutil",
     ]
 
 

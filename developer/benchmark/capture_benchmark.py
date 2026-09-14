@@ -8,17 +8,13 @@ import os
 import platform
 import statistics
 import subprocess
-import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Protocol
 
 import numpy as np
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.platforms import create_platform_adapter
 from app.platforms.capture import (
@@ -30,10 +26,10 @@ from app.platforms.capture import (
 )
 from app.vision.detectors.nudenet import NudeNetPrimaryDetector
 from app.vision.violation_policy import ViolationEvidence
+from developer.benchmark.hardware_ipc import read_json, worker_command, write_json
 
 EXIT_FAILED = 1
 EXIT_PERMISSION_DENIED = 2
-RESULT_PREFIX = "LAVOCADO_CAPTURE_BENCHMARK "
 
 
 class DetectorLike(Protocol):
@@ -58,7 +54,7 @@ class PsutilMemorySampler:
             import psutil
         except ImportError as error:
             raise RuntimeError(
-                "Capture benchmarks require requirements-benchmark.txt"
+                "Capture benchmarks require requirements-developer.txt"
             ) from error
         self._process = psutil.Process()
 
@@ -320,10 +316,9 @@ def run_single(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return result, 0
 
 
-def _child_command(args: argparse.Namespace, mode: str) -> list[str]:
-    return [
-        sys.executable,
-        str(Path(__file__).resolve()),
+def _child_command(args: argparse.Namespace, mode: str, result_file: Path) -> list[str]:
+    return worker_command(
+        "capture",
         "--backend",
         mode,
         "--frames",
@@ -333,47 +328,42 @@ def _child_command(args: argparse.Namespace, mode: str) -> list[str]:
         "--fresh-frame-timeout",
         str(args.fresh_frame_timeout),
         "--child",
-    ]
+        "--result-file",
+        str(result_file),
+    )
 
 
 def run_comparison(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     results: list[dict[str, Any]] = []
     exit_code = 0
-    for mode in ("native", "mss"):
-        completed = subprocess.run(
-            _child_command(args, mode),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        result_line = next(
-            (
-                line.removeprefix(RESULT_PREFIX)
-                for line in reversed(completed.stdout.splitlines())
-                if line.startswith(RESULT_PREFIX)
-            ),
-            None,
-        )
-        try:
-            result = json.loads(result_line) if result_line is not None else None
-        except json.JSONDecodeError:
-            result = None
-        if not isinstance(result, dict):
-            result = _error_result(
-                mode,
-                "benchmark_process_failed",
-                RuntimeError("Benchmark child returned invalid output"),
+    with TemporaryDirectory(prefix="lavocado-capture-") as temporary:
+        for mode in ("native", "mss"):
+            if getattr(args, "progress_file", None) is not None:
+                write_json(args.progress_file, {"backend": mode, "completed": len(results), "total": 2})
+            result_file = Path(temporary) / f"{mode}.json"
+            completed = subprocess.run(
+                _child_command(args, mode, result_file),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
             )
-        results.append(result)
-        if completed.returncode == EXIT_PERMISSION_DENIED:
-            return {
-                "ok": False,
-                "comparison": results,
-                "mss_skipped": True,
-                "reason": "permission_denied",
-            }, EXIT_PERMISSION_DENIED
-        if completed.returncode != 0:
-            exit_code = EXIT_FAILED
+            result = read_json(result_file)
+            if result is None:
+                result = _error_result(
+                    mode,
+                    "benchmark_process_failed",
+                    RuntimeError("Benchmark child returned invalid output"),
+                )
+            results.append(result)
+            if completed.returncode == EXIT_PERMISSION_DENIED:
+                return {
+                    "ok": False,
+                    "comparison": results,
+                    "mss_skipped": True,
+                    "reason": "permission_denied",
+                }, EXIT_PERMISSION_DENIED
+            if completed.returncode != 0:
+                exit_code = EXIT_FAILED
 
     return {
         "ok": all(result.get("ok") is True for result in results),
@@ -409,23 +399,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="seconds to wait for an advancing frame sequence (default: 5)",
     )
     parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--result-file", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--progress-file", type=Path, help=argparse.SUPPRESS)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.frames < 1 or args.warmup < 0 or args.fresh_frame_timeout <= 0:
-        print(
-            json.dumps(
-                _error_result(
-                    args.backend,
-                    "invalid_arguments",
-                    ValueError("invalid benchmark arguments"),
-                ),
-                indent=2,
-                sort_keys=True,
-            )
+        result = _error_result(
+            args.backend, "invalid_arguments", ValueError("invalid benchmark arguments")
         )
+        _emit(args, result)
         return EXIT_FAILED
 
     if args.backend == "both" and not args.child:
@@ -440,11 +425,15 @@ def main(argv: list[str] | None = None) -> int:
             exit_code = EXIT_FAILED
         else:
             result, exit_code = run_single(args)
-    if args.child:
-        print(f"{RESULT_PREFIX}{json.dumps(result, sort_keys=True)}")
+    _emit(args, result)
+    return exit_code
+
+
+def _emit(args: argparse.Namespace, result: dict[str, Any]) -> None:
+    if args.result_file is not None:
+        write_json(args.result_file, result)
     else:
         print(json.dumps(result, indent=2, sort_keys=True))
-    return exit_code
 
 
 if __name__ == "__main__":

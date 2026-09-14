@@ -1,34 +1,25 @@
 # Capture backend benchmark
 
-This source-development tool compares the platform-native capture backend with
+The Developer Benchmark Lab compares the platform-native capture backend with
 MSS in isolated child processes. It never saves screenshots, reports pixel
 data, or uploads captured frames.
 
 ## Install and run
 
-Install the optional cross-platform RSS sampler:
+Install Developer dependencies and open Benchmark Lab → Tools & Hardware:
 
 ```bash
-python -m pip install -r requirements-benchmark.txt
+python -m pip install -r requirements.txt -r requirements-developer.txt
+python developer_main.py dashboard
 ```
 
-Run the default comparison from the repository root:
-
-```bash
-python scripts/benchmark_capture.py
-```
-
-This runs `native` first and `mss` second, with 3 warmup frames and 30 measured
+Select Capture performance → Native then MSS → Run Capture Benchmark. This runs
+`native` first and `mss` second, with 3 warmup frames and 30 measured
 fresh frames per display. Each backend gets a new process so model and native
 resource allocation from one run cannot contaminate the other run.
 
-Run an individual mode or increase the sample size when needed:
-
-```bash
-python scripts/benchmark_capture.py --backend auto --frames 100
-python scripts/benchmark_capture.py --backend native --frames 100
-python scripts/benchmark_capture.py --backend mss --frames 100
-```
+Choose Auto, Native, or MSS for an individual run; adjust frame and warmup
+counts in the same panel. Export scalar JSON or CSV from the tool result.
 
 On macOS, approve the native system screen-capture request. If the
 native run receives an explicit permission denial, a `both` comparison exits
@@ -63,5 +54,5 @@ Record results on each supported platform for the available combinations:
 | Dual monitor | Required | Required |
 
 Keep the machine, display refresh rate, visible workload, model files, and frame
-count unchanged between runs. Phase 16 covers one-hour and eight-hour stability
-runs separately; this command is intended for bounded performance sampling.
+count unchanged between runs. The separate Capture stability panel covers
+one-hour and eight-hour runs; this tool is for bounded performance sampling.

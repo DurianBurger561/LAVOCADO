@@ -8,7 +8,6 @@ import json
 import os
 import platform
 import statistics
-import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -16,10 +15,6 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.platforms import create_platform_adapter
 from app.platforms.capture import (
@@ -31,6 +26,7 @@ from app.platforms.capture import (
     MonitorInfo,
     ScreenCaptureBackend,
 )
+from developer.benchmark.hardware_ipc import write_json
 
 EXIT_FAILED = 1
 EXIT_PERMISSION_DENIED = 2
@@ -60,7 +56,7 @@ class PsutilProcessSampler:
             import psutil
         except ImportError as error:
             raise RuntimeError(
-                "Capture soak tests require requirements-benchmark.txt"
+                "Capture stability tests require requirements-developer.txt"
             ) from error
         self._process = psutil.Process()
 
@@ -302,20 +298,19 @@ def soak_backend(
             if previous_capture is not None and (
                 capture["active_backend"] != previous_capture["active_backend"]
                 or capture["fallback"] != previous_capture["fallback"]
-            ):
-                if len(transition_events) < 100:
-                    transition_events.append(
-                        {
-                            "elapsed_seconds": round(
-                                (clock_ns() - started_ns) / 1_000_000_000,
-                                1,
-                            ),
-                            "from_backend": previous_capture["active_backend"],
-                            "to_backend": capture["active_backend"],
-                            "fallback": capture["fallback"],
-                            "fallback_reason": capture["fallback_reason"],
-                        }
-                    )
+            ) and len(transition_events) < 100:
+                transition_events.append(
+                    {
+                        "elapsed_seconds": round(
+                            (clock_ns() - started_ns) / 1_000_000_000,
+                            1,
+                        ),
+                        "from_backend": previous_capture["active_backend"],
+                        "to_backend": capture["active_backend"],
+                        "fallback": capture["fallback"],
+                        "fallback_reason": capture["fallback_reason"],
+                    }
+                )
             previous_capture = capture
 
             running_final = process.snapshot()
@@ -360,7 +355,7 @@ def soak_backend(
         cpu_finished = cpu_clock()
         try:
             backend.stop()
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - backend cleanup boundary
             if failure is None:
                 failure = ("cleanup_failed", type(error).__name__)
         gc.collect()
@@ -374,7 +369,7 @@ def soak_backend(
             stopped_capture["active_backend"] is None
             and stopped_capture["monitor_count"] == 0
         )
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - backend status boundary
         stopped_capture = {}
         backend_released = False
         if failure is None:
@@ -486,6 +481,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-stall-seconds", type=float, default=5.0)
     parser.add_argument("--max-memory-growth-mib", type=float, default=256.0)
     parser.add_argument("--max-resource-growth", type=int, default=32)
+    parser.add_argument("--result-file", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--progress-file", type=Path, help=argparse.SUPPRESS)
     return parser
 
 
@@ -511,7 +508,11 @@ def main(argv: list[str] | None = None) -> int:
             max_stall_seconds=args.max_stall_seconds,
             max_memory_growth_mib=args.max_memory_growth_mib,
             max_resource_growth=args.max_resource_growth,
-            progress=_print_progress,
+            progress=(
+                (lambda payload: write_json(args.progress_file, payload))
+                if args.progress_file is not None
+                else _print_progress
+            ),
         )
     except (CaptureError, RuntimeError, ValueError) as error:
         result = {
@@ -527,7 +528,10 @@ def main(argv: list[str] | None = None) -> int:
             },
         }
 
-    print(json.dumps(result, indent=2, sort_keys=True))
+    if args.result_file is not None:
+        write_json(args.result_file, result)
+    else:
+        print(json.dumps(result, indent=2, sort_keys=True))
     if result.get("error") == "permission_denied":
         return EXIT_PERMISSION_DENIED
     if result.get("error") == "interrupted":

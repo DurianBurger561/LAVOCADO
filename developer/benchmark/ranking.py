@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable, Mapping, Sequence
 from types import SimpleNamespace
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 import numpy as np
 
-from app.vision.ranking_benchmark import prioritize_tiles, ranking_quality
-from app.vision.regions import Region, crop_region, overlapping_tile_regions, tile_regions
+from app.vision.regions import (
+    Region,
+    crop_region,
+    overlapping_tile_regions,
+    tile_regions,
+)
+from developer.benchmark.ranking_metrics import prioritize_tiles, ranking_quality
 
 
 def box_overlaps_region(box: object, region: Region) -> bool:

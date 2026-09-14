@@ -123,13 +123,16 @@ def run_developer_dashboard(
             return
         closed = True
         try:
-            controller.close()
+            api.close_lab_tools()
         finally:
             try:
-                app_picker.close()
+                controller.close()
             finally:
-                recorder.close()
-                shutil.rmtree(entry.parent, ignore_errors=True)
+                try:
+                    app_picker.close()
+                finally:
+                    recorder.close()
+                    shutil.rmtree(entry.parent, ignore_errors=True)
 
     window = webview_module.create_window(
         DEVELOPER_APP_NAME,

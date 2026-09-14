@@ -1,4 +1,4 @@
-"""Screen-domain benchmark matrix. Defaults stay experimental until measured."""
+"""Developer screen-domain measurement matrix; no default is recommended."""
 
 from __future__ import annotations
 

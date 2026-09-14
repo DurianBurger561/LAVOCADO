@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import statistics
 from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
-from app.vision.benchmark_matrix import (
+from developer.benchmark.matrix import (
     ALGORITHM_STAGES,
     CONTEXT_CONFIGS,
     PRIMARY_CONFIGS,
@@ -29,6 +31,17 @@ FORBIDDEN_OUTPUT_KEYS = (
     "window_title",
     "app_name",
 )
+
+
+def load_cases(path: Path) -> list[dict[str, Any]]:
+    """Load manually labelled scalar cases without retaining private fields."""
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(payload, dict):
+        payload = payload.get("cases")
+    if not isinstance(payload, list):
+        raise TypeError("cases file must be a JSON list or an object with cases")
+    return [sanitize_case(item) for item in payload if isinstance(item, dict)]
 
 
 def percentile(values: Sequence[float], percent: float) -> float | None:

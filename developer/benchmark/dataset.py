@@ -18,6 +18,7 @@ from developer.benchmark.tags import normalize_tags
 EXPECTED_BLOCK = "block"
 EXPECTED_ALLOW = "allow"
 ALLOWED_EXPECTED = frozenset({EXPECTED_BLOCK, EXPECTED_ALLOW})
+ALLOWED_VISUAL_EXPECTED = frozenset({"violation", "clear"})
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp"})
 IMPORT_REFERENCE = "reference"
 IMPORT_COPY = "copy"
@@ -43,6 +44,7 @@ class BenchmarkSample:
     content_hash: str | None = None
     context_fixture: dict[str, Any] | None = None
     expected_policy: str | None = None
+    expected_visual: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -55,6 +57,7 @@ class BenchmarkSample:
             "content_hash": self.content_hash,
             "context_fixture": self.context_fixture,
             "expected_policy": self.expected_policy,
+            "expected_visual": self.expected_visual,
         }
 
     @classmethod
@@ -84,7 +87,17 @@ class BenchmarkSample:
             ),
             context_fixture=_context_fixture_from_payload(payload.get("context_fixture")),
             expected_policy=_expected_policy_from_payload(payload.get("expected_policy")),
+            expected_visual=_expected_visual_from_payload(payload.get("expected_visual")),
         )
+
+
+def _expected_visual_from_payload(value: Any) -> str | None:
+    if value in (None, "", "unlabelled"):
+        return None
+    normalized = str(value).strip().lower()
+    if normalized not in ALLOWED_VISUAL_EXPECTED:
+        raise DatasetError("expected_visual must be violation, clear, or unlabelled")
+    return normalized
 
 
 def _context_fixture_from_payload(value: Any) -> dict[str, Any] | None:
@@ -394,6 +407,7 @@ def update_sample(
     expected: str | None | object = ...,
     excluded: bool | object = ...,
     tags: object = ...,
+    expected_visual: str | None | object = ...,
 ) -> BenchmarkSample:
     sample = dataset.sample_by_id(sample_id)
     if expected is not ...:
@@ -408,6 +422,8 @@ def update_sample(
         sample.excluded = bool(excluded)
     if tags is not ...:
         sample.tags = normalize_tags(tags)
+    if expected_visual is not ...:
+        sample.expected_visual = _expected_visual_from_payload(expected_visual)
     save_dataset(dataset)
     return sample
 

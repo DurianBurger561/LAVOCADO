@@ -1,12 +1,11 @@
-"""High-recall benchmark records metrics and never selects Recommended."""
+"""Lab high-recall metrics never select Recommended."""
 
 from __future__ import annotations
 
 import json
 import unittest
 
-from app.vision.benchmark_matrix import REQUIRED_METRICS, job_count
-from app.vision.high_recall_benchmark import (
+from developer.benchmark.high_recall import (
     benchmark_report,
     matrix_jobs,
     percentile,
@@ -14,6 +13,7 @@ from app.vision.high_recall_benchmark import (
     select_recommended,
     summarize_cases,
 )
+from developer.benchmark.matrix import REQUIRED_METRICS, job_count
 
 
 class HighRecallBenchmarkTests(unittest.TestCase):

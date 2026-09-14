@@ -1,2 +1,0 @@
-# Optional development dependency for cross-platform process RSS measurements.
-psutil>=6,<8
