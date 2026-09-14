@@ -5,7 +5,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_dynamic_libs,
+    copy_metadata,
+)
 
 from app.vision.model_assets import (
     is_expected_nudenet_model,
@@ -54,11 +58,43 @@ USER_EXCLUDES = (
 )
 MODEL_HIDDENIMPORTS = (
     "ultralytics",
+    "transformers.pipelines",
     "transformers.pipelines.image_classification",
+    "transformers.models.auto.configuration_auto",
+    "transformers.models.auto.image_processing_auto",
+    "transformers.models.auto.modeling_auto",
     "transformers.models.efficientnet.configuration_efficientnet",
     "transformers.models.efficientnet.modeling_efficientnet",
     "transformers.models.efficientnet.image_processing_efficientnet",
 )
+MODEL_METADATA = (
+    "transformers",
+    "torch",
+    "torchvision",
+    "huggingface-hub",
+    "safetensors",
+    "tokenizers",
+)
+
+
+def model_dependency_metadata() -> list[tuple[str, str]]:
+    """Preserve metadata used by Transformers' frozen dependency checks."""
+
+    data: list[tuple[str, str]] = []
+    for distribution in MODEL_METADATA:
+        data.extend(copy_metadata(distribution))
+    return data
+
+
+def model_dependency_binaries() -> list[tuple[str, str]]:
+    """Bundle torchvision ops loaded by file path rather than Python import."""
+
+    binaries = collect_dynamic_libs(
+        "torchvision", search_patterns=["*.so", "*.pyd", "*.dll", "*.dylib"]
+    )
+    if not any(Path(source).stem.startswith("_C") for source, _ in binaries):
+        raise SystemExit("torchvision native ops are required for bundled Viddexa models")
+    return binaries
 
 
 def required_model_datas(specpath: Path) -> list[tuple[str, str]]:
@@ -122,7 +158,7 @@ def user_datas(specpath: Path) -> list[tuple[str, str]]:
     nudenet_data = collect_data_files("nudenet", includes=["*.onnx"])
     model_data = required_model_datas(specpath)
     web_data = [(str(specpath / "app" / "ui" / "web"), "app/ui/web")]
-    return nudenet_data + model_data + web_data
+    return nudenet_data + model_data + model_dependency_metadata() + web_data
 
 
 def developer_datas(specpath: Path) -> list[tuple[str, str]]:

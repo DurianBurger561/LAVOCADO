@@ -9,6 +9,7 @@ from lavocado_packaging.spec_common import (
     USER_APP_NAME,
     USER_EXCLUDES,
     macos_plist,
+    model_dependency_binaries,
     platform_hiddenimports,
     user_datas,
 )
@@ -17,7 +18,7 @@ platform_hidden_imports = platform_hiddenimports()
 analysis = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=[],
+    binaries=model_dependency_binaries(),
     datas=user_datas(Path(SPECPATH)),
     hiddenimports=platform_hidden_imports,
     hookspath=[],

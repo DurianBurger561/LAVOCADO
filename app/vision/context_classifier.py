@@ -41,7 +41,9 @@ def _create_transformers_pipeline(
 ) -> ClassificationPipeline:
     """Import the bundled heavyweight dependency only when requested."""
 
-    from transformers import pipeline
+    # Import the concrete module: the top-level ``transformers.pipeline`` is
+    # supplied by a lazy import that PyInstaller cannot reliably trace.
+    from transformers.pipelines import pipeline
 
     return pipeline(task, **kwargs)
 
@@ -122,7 +124,7 @@ def load_context_classifier(
             model_kwargs={"local_files_only": True},
         )
     except ImportError:
-        LOGGER.warning(
+        LOGGER.exception(
             "Viddexa dependencies are unavailable; continuing without region ranking"
         )
         return None

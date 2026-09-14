@@ -11,9 +11,11 @@ from unittest.mock import patch
 
 from lavocado_packaging.spec_common import (
     MODEL_HIDDENIMPORTS,
+    MODEL_METADATA,
     USER_EXCLUDES,
     developer_datas,
     developer_hiddenimports,
+    model_dependency_binaries,
     required_model_datas,
     user_datas,
 )
@@ -53,6 +55,9 @@ class PackagingSpecTests(unittest.TestCase):
             return_value=True,
         ), patch(
             "lavocado_packaging.spec_common.collect_data_files",
+            return_value=[],
+        ), patch(
+            "lavocado_packaging.spec_common.copy_metadata",
             return_value=[],
         ):
             data = user_datas(Path(temp_dir))
@@ -131,6 +136,50 @@ class PackagingSpecTests(unittest.TestCase):
             "transformers.models.efficientnet.modeling_efficientnet",
             MODEL_HIDDENIMPORTS,
         )
+        self.assertIn("transformers.pipelines", MODEL_HIDDENIMPORTS)
+        self.assertIn("torch", MODEL_METADATA)
+        self.assertIn("transformers", MODEL_METADATA)
+
+    def test_both_editions_bundle_transformers_runtime_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "lavocado_packaging.spec_common.required_model_datas",
+            return_value=[],
+        ), patch(
+            "lavocado_packaging.spec_common.collect_data_files",
+            return_value=[],
+        ), patch(
+            "lavocado_packaging.spec_common.copy_metadata",
+            side_effect=lambda name: [(f"/{name}.dist-info", f"{name}.dist-info")],
+        ) as metadata:
+            user_data = user_datas(Path(temp_dir))
+            developer_data = developer_datas(Path(temp_dir))
+
+        self.assertEqual(metadata.call_count, 2 * len(MODEL_METADATA))
+        for distribution in MODEL_METADATA:
+            item = (f"/{distribution}.dist-info", f"{distribution}.dist-info")
+            self.assertIn(item, user_data)
+            self.assertIn(item, developer_data)
+
+    def test_torchvision_dynamic_ops_enter_both_editions(self) -> None:
+        with patch(
+            "lavocado_packaging.spec_common.collect_dynamic_libs",
+            return_value=[("/wheel/torchvision/_C_stable.so", "torchvision")],
+        ) as collect:
+            binaries = model_dependency_binaries()
+
+        self.assertEqual(binaries, [("/wheel/torchvision/_C_stable.so", "torchvision")])
+        self.assertEqual(collect.call_args.args, ("torchvision",))
+        self.assertIn("*.so", collect.call_args.kwargs["search_patterns"])
+        self.assertIn("*.pyd", collect.call_args.kwargs["search_patterns"])
+        for filename in ("lavocado.spec", "lavocado-developer.spec"):
+            source = (ROOT / filename).read_text(encoding="utf-8")
+            self.assertIn("binaries=model_dependency_binaries()", source)
+
+        with patch(
+            "lavocado_packaging.spec_common.collect_dynamic_libs",
+            return_value=[],
+        ), self.assertRaisesRegex(SystemExit, "torchvision native ops"):
+            model_dependency_binaries()
 
     def test_project_build_helpers_do_not_shadow_pypi_packaging(self) -> None:
         output = subprocess.check_output(
