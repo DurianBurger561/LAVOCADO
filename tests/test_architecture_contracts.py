@@ -34,10 +34,16 @@ def _under(module: str, package: str) -> bool:
 
 
 def _display(path: Path) -> str:
-    return str(path.relative_to(ROOT))
+    return path.relative_to(ROOT).as_posix()
 
 
 class ArchitectureContractTests(unittest.TestCase):
+    def test_display_uses_platform_independent_paths(self) -> None:
+        self.assertEqual(
+            _display(ROOT / "app" / "platforms" / "capture" / "models.py"),
+            "app/platforms/capture/models.py",
+        )
+
     def test_no_legacy_blocklist_symbols(self) -> None:
         violations = []
         forbidden = ("BLOCKED_APPS", "blocklist")
