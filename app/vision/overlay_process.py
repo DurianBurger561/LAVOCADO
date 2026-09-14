@@ -15,6 +15,8 @@ from threading import Event, Thread
 from typing import TextIO
 
 from app.intervention.intervene import LOCAL_FALLBACK_MESSAGE
+from app.platforms.capture import MonitorInfo
+from app.ui.overlay.monitor_payload import encode_monitor
 
 LOGGER = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 0.05
@@ -23,7 +25,7 @@ STARTUP_TIMEOUT_SECONDS = 30.0
 HEARTBEAT_TOKEN = "LAVOCADO_OVERLAY_HEARTBEAT"
 
 
-def overlay_process_command(monitor_index: int | None) -> list[str]:
+def overlay_process_command(monitor: MonitorInfo) -> list[str]:
     """Build a source or PyInstaller command for the short-lived overlay app."""
 
     if getattr(sys, "frozen", False):
@@ -33,13 +35,12 @@ def overlay_process_command(monitor_index: int | None) -> list[str]:
         command = [sys.executable, str(project_root / "main.py")]
 
     command.append("--overlay-process")
-    if monitor_index is not None:
-        command.extend(("--monitor-index", str(monitor_index)))
+    command.extend(("--overlay-monitor", encode_monitor(monitor)))
     return command
 
 
 def show_overlay_process(
-    monitor_index: int | None,
+    monitor: MonitorInfo,
     support_message: Future[str] | None,
     *,
     process_factory=subprocess.Popen,
@@ -47,11 +48,12 @@ def show_overlay_process(
     clock=time.monotonic,
     heartbeat_timeout: float = HEARTBEAT_TIMEOUT_SECONDS,
     startup_timeout: float = STARTUP_TIMEOUT_SECONDS,
+    stop_event: Event | None = None,
 ) -> None:
     """Wait for the isolated overlay and forward its message when available."""
 
     process = process_factory(
-        overlay_process_command(monitor_index),
+        overlay_process_command(monitor),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
@@ -78,6 +80,8 @@ def show_overlay_process(
             heartbeat_reader.start()
 
         while process.poll() is None:
+            if stop_event is not None and stop_event.is_set():
+                break
             if _consume_heartbeat(heartbeat_events):
                 last_heartbeat = clock()
                 received_heartbeat = True
@@ -112,13 +116,12 @@ def show_overlay_process(
 
 
 def run_overlay_process_child(
-    platform_adapter,
-    monitor_index: int | None,
+    monitor: MonitorInfo,
     input_stream: TextIO,
 ) -> None:
     """Show the overlay and close it if the monitoring process disappears."""
 
-    from app.vision.overlay import Overlay
+    from app.ui.overlay.tk_backend import TkOverlayBackend
 
     support_message: Future[str] = Future()
     parent_closed = Event()
@@ -128,9 +131,9 @@ def run_overlay_process_child(
         daemon=True,
         name="lavocado-overlay-parent-watch",
     ).start()
-    overlay = Overlay(platform_adapter, isolate_macos_process=False)
+    overlay = TkOverlayBackend("Darwin")
     overlay.show(
-        monitor_index=monitor_index,
+        monitor,
         support_message=support_message,
         parent_closed_event=parent_closed,
         heartbeat_callback=_write_heartbeat,

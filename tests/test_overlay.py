@@ -3,10 +3,14 @@
 import unittest
 from concurrent.futures import Future
 from threading import Event
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from app.intervention.sequence import InterventionSequence, InterventionStep
-from app.vision.overlay import Overlay
+from app.platforms.capture import MonitorInfo
+from app.ui.overlay import create_overlay_backend
+from app.ui.overlay.macos_process_backend import MacOSProcessOverlayBackend
+from app.ui.overlay.tk_backend import TkOverlayBackend, tk_geometry
 
 
 class FakeRoot:
@@ -61,36 +65,53 @@ class FakeWidget:
         self.focus_count += 1
 
 
-class FakePlatform:
-    def __init__(self, name: str = "Test") -> None:
-        self.name = name
-        self.prepared_roots: list[object] = []
-        self.release_focus_count = 0
-
-    @staticmethod
-    def tkinter_help() -> str:
-        return "test Tkinter help"
-
-    def release_overlay_focus(self) -> None:
-        self.release_focus_count += 1
-
-    def prepare_overlay_window(self, root: object) -> None:
-        self.prepared_roots.append(root)
-
-
 class OverlayTests(unittest.TestCase):
+    def test_factory_selects_supported_backends(self) -> None:
+        self.assertIsInstance(create_overlay_backend("Windows"), TkOverlayBackend)
+        self.assertIsInstance(
+            create_overlay_backend("Darwin"), MacOSProcessOverlayBackend
+        )
+        with self.assertRaises(ValueError):
+            create_overlay_backend("Linux")
+
+    def test_tk_window_uses_passed_monitor_without_display_discovery(self) -> None:
+        monitor = MonitorInfo("secondary", 2, -1200, 50, 1200, 900)
+        root = Mock()
+        widget = Mock()
+        tkinter = SimpleNamespace(
+            Tk=Mock(return_value=root),
+            Frame=Mock(return_value=widget),
+            Label=Mock(return_value=widget),
+            Button=Mock(return_value=widget),
+        )
+
+        with patch.dict("sys.modules", {"tkinter": tkinter}):
+            TkOverlayBackend("Windows").show(monitor)
+
+        root.geometry.assert_called_once_with("1200x900-1200+50")
+
     def test_macos_overlay_uses_an_isolated_process(self) -> None:
-        overlay = Overlay(FakePlatform(name="Darwin"))
+        overlay = MacOSProcessOverlayBackend()
         message: Future[str] = Future()
+        monitor = MonitorInfo("secondary", 2, -1200, 0, 1200, 900)
 
-        with patch("app.vision.overlay_process.show_overlay_process") as show_process:
-            overlay.show(monitor_index=2, support_message=message)
+        with patch("app.ui.overlay.macos_process_backend.show_overlay_process") as show_process:
+            overlay.show(monitor, support_message=message)
 
-        show_process.assert_called_once_with(2, message)
+        show_process.assert_called_once_with(
+            monitor, message, stop_event=overlay._stop_event
+        )
         self.assertFalse(overlay.is_visible)
 
+    def test_macos_backend_hide_requests_child_shutdown(self) -> None:
+        overlay = MacOSProcessOverlayBackend()
+
+        overlay.hide()
+
+        self.assertTrue(overlay._stop_event.is_set())
+
     def test_dismiss_destroys_the_window(self) -> None:
-        overlay = Overlay(FakePlatform())
+        overlay = TkOverlayBackend("Windows")
         root = FakeRoot()
         overlay._root = root
 
@@ -105,7 +126,7 @@ class OverlayTests(unittest.TestCase):
         self.assertFalse(overlay.is_visible)
 
     def test_dismiss_only_schedules_once(self) -> None:
-        overlay = Overlay(FakePlatform())
+        overlay = TkOverlayBackend("Windows")
         root = FakeRoot()
         overlay._root = root
 
@@ -114,16 +135,13 @@ class OverlayTests(unittest.TestCase):
 
         self.assertEqual(len(root.scheduled), 1)
 
-    def test_cleanup_releases_overlay_focus(self) -> None:
-        platform = FakePlatform()
-        overlay = Overlay(platform)
+    def test_tk_geometry_uses_canonical_monitor_offsets(self) -> None:
+        monitor = MonitorInfo("secondary", 2, -1200, 50, 1200, 900)
 
-        overlay._release_overlay_focus()
-
-        self.assertEqual(platform.release_focus_count, 1)
+        self.assertEqual(tk_geometry(monitor), "1200x900-1200+50")
 
     def test_overlay_closes_when_parent_process_disappears(self) -> None:
-        overlay = Overlay(FakePlatform())
+        overlay = TkOverlayBackend("Windows")
         root = FakeRoot()
         parent_closed = Event()
         parent_closed.set()
@@ -136,7 +154,7 @@ class OverlayTests(unittest.TestCase):
         self.assertFalse(overlay.is_visible)
 
     def test_overlay_heartbeat_runs_on_tk_event_loop(self) -> None:
-        overlay = Overlay(FakePlatform())
+        overlay = TkOverlayBackend("Windows")
         root = FakeRoot()
         heartbeat_calls: list[bool] = []
         overlay._root = root
@@ -146,17 +164,8 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(heartbeat_calls, [True])
         self.assertEqual(root.scheduled[0][0], 1000)
 
-    def test_overlay_delegates_platform_window_preparation(self) -> None:
-        platform = FakePlatform()
-        overlay = Overlay(platform)
-        root = FakeRoot()
-
-        overlay._prepare_overlay_window(root)
-
-        self.assertEqual(platform.prepared_roots, [root])
-
     def test_macos_bring_to_front_does_not_force_focus(self) -> None:
-        overlay = Overlay(FakePlatform(name="Darwin"))
+        overlay = TkOverlayBackend("Darwin")
         root = FakeRoot()
         button = FakeWidget()
         overlay._root = root
@@ -167,7 +176,7 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(button.focus_count, 0)
 
     def test_escape_uses_the_same_dismiss_path(self) -> None:
-        overlay = Overlay(FakePlatform())
+        overlay = TkOverlayBackend("Windows")
         root = FakeRoot()
         overlay._root = root
 
@@ -179,7 +188,7 @@ class OverlayTests(unittest.TestCase):
         self.assertFalse(overlay.is_visible)
 
     def test_guided_dismiss_is_locked_until_final_step(self) -> None:
-        overlay = Overlay(FakePlatform())
+        overlay = TkOverlayBackend("Windows")
         root = FakeRoot()
         overlay._root = root
         overlay._sequence = InterventionSequence(
@@ -206,7 +215,7 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(root.destroy_count, 1)
 
     def test_render_schedules_each_stage_and_enables_final_button(self) -> None:
-        overlay = Overlay(FakePlatform())
+        overlay = TkOverlayBackend("Windows")
         root = FakeRoot()
         title = FakeWidget()
         body = FakeWidget()
@@ -244,7 +253,7 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(button.focus_count, 1)
 
     def test_ready_stage_displays_completed_support_message(self) -> None:
-        overlay = Overlay(FakePlatform())
+        overlay = TkOverlayBackend("Windows")
         root = FakeRoot()
         body = FakeWidget()
         message: Future[str] = Future()

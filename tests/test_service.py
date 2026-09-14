@@ -11,7 +11,7 @@ from unittest.mock import patch
 import numpy as np
 
 from app.intervention.recorder import ProtectionEvent
-from app.platforms.capture import CaptureBackendStatus, CaptureFrame, Rect
+from app.platforms.capture import CaptureBackendStatus, CaptureFrame, MonitorInfo, Rect
 from app.service import LavocadoService, State
 from app.ui.api import DashboardAPI
 from app.vision.change_scheduler import ChangeDecision
@@ -29,6 +29,17 @@ from app.vision.violation_policy import (
 
 
 class FakePlatform:
+    name = "Windows"
+
+    def default_data_dir(self) -> Path:
+        return Path(__file__).parent / "_nonexistent_data"
+
+    def get_foreground_application(self) -> None:
+        return None
+
+    def create_website_reader(self) -> object:
+        return object()
+
     def get_foreground_window(self) -> None:
         return None
 
@@ -92,6 +103,20 @@ class FakeCapturer:
     def monitor_index_at(self, _x: int, _y: int) -> int | None:
         return self.point_monitor_index
 
+    def monitor_for_index(self, monitor_index: int | None = None) -> MonitorInfo:
+        selected = self.monitor_indexes[0] if monitor_index is None else monitor_index
+        if selected not in self.monitor_indexes:
+            raise ValueError(f"Monitor {selected} is unavailable")
+        return MonitorInfo(
+            id=f"display-{selected}",
+            index=selected,
+            left=(selected - 1) * 100,
+            top=0,
+            width=100,
+            height=80,
+            is_primary=selected == self.monitor_indexes[0],
+        )
+
 
 class FakeDetector:
     def __init__(self, results_by_monitor: dict[int, list[bool]]) -> None:
@@ -154,15 +179,21 @@ class FakeChangeScheduler:
 class FakeOverlay:
     def __init__(self) -> None:
         self.shown_on: list[int] = []
+        self.shown_monitors: list[MonitorInfo] = []
         self.support_messages: list[Future[str] | None] = []
+        self.closed = False
 
     def show(
         self,
-        monitor_index: int,
+        monitor: MonitorInfo,
         support_message: Future[str] | None = None,
     ) -> None:
-        self.shown_on.append(monitor_index)
+        self.shown_on.append(monitor.index)
+        self.shown_monitors.append(monitor)
         self.support_messages.append(support_message)
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class FakeRecorder:
@@ -537,6 +568,27 @@ class ServiceTests(unittest.TestCase):
 
         self.assertEqual(overlay.shown_on, [1])
 
+    def test_runtime_clears_frame_identity_only_at_context_boundary(self) -> None:
+        detector = FakeDetector({1: [False, False]})
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=FakeCapturer(sequences={1: [7, 7, 7]}),
+            detector=detector,
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            intervention=FakeIntervention(),
+            change_scheduler=FakeChangeScheduler([True, True]),
+        )
+
+        service.check_once()
+        service.runtime.reset_vision()
+        service.check_once()
+        self.assertEqual(detector.checked_indexes, [1])
+
+        service.runtime.reset_for_context_boundary()
+        service.check_once()
+        self.assertEqual(detector.checked_indexes, [1, 1])
+
     def test_updates_in_memory_diagnostics_after_scan(self) -> None:
         scan_times = iter((10.0, 10.123))
         diagnostics = DiagnosticsStore(
@@ -721,6 +773,10 @@ class ServiceTests(unittest.TestCase):
         service.check_once()
 
         self.assertEqual(overlay.shown_on, [3])
+        self.assertEqual(
+            overlay.shown_monitors,
+            [capturer.monitor_for_index(3)],
+        )
         self.assertEqual([event.monitor_index for event in recorder.events], [3])
         self.assertEqual(
             capturer.grabbed_indexes,
@@ -729,13 +785,14 @@ class ServiceTests(unittest.TestCase):
 
     def test_start_closes_capture_and_recorder(self) -> None:
         capturer = FakeCapturer()
+        overlay = FakeOverlay()
         recorder = FakeRecorder()
         intervention = FakeIntervention()
         service = LavocadoService(
             FakePlatform(),
             capturer=capturer,
             detector=FakeDetector({1: [False]}),
-            overlay=FakeOverlay(),
+            overlay=overlay,
             recorder=recorder,
             intervention=intervention,
             sleeper=lambda _: service.stop(),
@@ -744,6 +801,7 @@ class ServiceTests(unittest.TestCase):
         service.start()
 
         self.assertTrue(capturer.closed)
+        self.assertTrue(overlay.closed)
         self.assertTrue(recorder.closed)
         self.assertTrue(intervention.closed)
         self.assertEqual(service.state, State.STOPPED)

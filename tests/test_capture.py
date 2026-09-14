@@ -83,6 +83,8 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(capturer.monitor_indexes, (1, 2))
         self.assertEqual(capturer.monitor_index_at(10, 2), 2)
         self.assertIsNone(capturer.monitor_index_at(20, 2))
+        self.assertEqual(capturer.monitor_for_index(2), FakeBackend().monitor_list[1])
+        self.assertEqual(capturer.monitor_for_index().id, "display-a")
 
     def test_close_stops_backend(self) -> None:
         backend = FakeBackend()
@@ -91,6 +93,15 @@ class CaptureTests(unittest.TestCase):
         capturer.close()
 
         self.assertFalse(backend.started)
+
+    def test_overlay_target_uses_latest_capture_topology(self) -> None:
+        backend = FakeBackend()
+        capturer = Capturer(FakePlatform(backend))
+        backend.monitor_list[1] = MonitorInfo(
+            "display-b", 2, -8, 4, 8, 4
+        )
+
+        self.assertEqual(capturer.monitor_for_index(2), backend.monitor_list[1])
 
 
 if __name__ == "__main__":

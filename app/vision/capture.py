@@ -89,6 +89,17 @@ class Capturer:
                 return monitor.index
         return None
 
+    def monitor_for_index(self, monitor_index: int | None = None) -> MonitorInfo:
+        """Return geometry from the active capture backend's monitor topology."""
+
+        self._monitors = self._capture.monitors()
+        self._monitor_by_index = {monitor.index: monitor for monitor in self._monitors}
+        selected = self._monitor_index if monitor_index is None else monitor_index
+        monitor = self._monitor_by_index.get(selected)
+        if monitor is None:
+            raise ValueError(f"Monitor {selected} is unavailable")
+        return monitor
+
     def close(self) -> None:
         """Release the selected platform capture backend."""
 

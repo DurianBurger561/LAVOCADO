@@ -204,15 +204,6 @@ class WindowsPlatform:
 
         return create_windows_capture(resolve_capture_backend_mode(self._environ))
 
-    def prepare_overlay_window(self, _root: object) -> None:
-        return None
-
-    def release_overlay_focus(self) -> None:
-        return None
-
-    def tkinter_help(self) -> str:
-        return tkinter_help()
-
     def screen_capture_help(self) -> str:
         return screen_capture_help()
 
@@ -247,10 +238,6 @@ def enable_dpi_awareness(user32: Any | None = None) -> bool:
 
 def prepare_desktop_environment() -> None:
     enable_dpi_awareness()
-
-
-def tkinter_help() -> str:
-    return "Repair the python.org installation and enable the Tcl/Tk feature."
 
 
 def screen_capture_help() -> str:

@@ -9,7 +9,9 @@ import sys
 import threading
 
 from app.platforms import PlatformAdapter, create_platform_adapter
+from app.platforms.capture import MonitorInfo
 from app.ui.controller import DIAGNOSTICS_PREFIX
+from app.ui.overlay.monitor_payload import decode_monitor
 
 
 def positive_int(value: str) -> int:
@@ -19,6 +21,13 @@ def positive_int(value: str) -> int:
     if parsed < 1:
         raise argparse.ArgumentTypeError("must be at least 1")
     return parsed
+
+
+def overlay_monitor_arg(value: str) -> MonitorInfo:
+    try:
+        return decode_monitor(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,8 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
-        "--monitor-index",
-        type=positive_int,
+        "--overlay-monitor",
+        type=overlay_monitor_arg,
         help=argparse.SUPPRESS,
     )
 
@@ -181,7 +190,7 @@ def run_protection(
     _write_status("LAVOCADO stopped.", control_output)
 
 
-def run_overlay(platform_adapter: PlatformAdapter, monitor_index: int | None) -> None:
+def run_overlay(monitor: MonitorInfo) -> None:
     """Run the isolated macOS overlay process."""
 
     from app.vision.overlay_process import run_overlay_process_child
@@ -189,7 +198,7 @@ def run_overlay(platform_adapter: PlatformAdapter, monitor_index: int | None) ->
     control_input = _standard_stream(sys.stdin, 0, "r")
     if control_input is None:
         raise RuntimeError("Overlay control pipe is unavailable")
-    run_overlay_process_child(platform_adapter, monitor_index, control_input)
+    run_overlay_process_child(monitor, control_input)
 
 
 def format_event(event) -> str:
@@ -224,11 +233,14 @@ def show_events(limit: int, platform_adapter: PlatformAdapter) -> None:
 
 
 def main(argv=None) -> None:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     platform_adapter = create_platform_adapter()
     if args.overlay_process:
+        if args.overlay_monitor is None:
+            parser.error("--overlay-monitor is required for the overlay process")
         platform_adapter.prepare_environment()
-        run_overlay(platform_adapter, args.monitor_index)
+        run_overlay(args.overlay_monitor)
         return
 
     command = args.command or default_command()

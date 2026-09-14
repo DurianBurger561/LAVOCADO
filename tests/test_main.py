@@ -21,6 +21,8 @@ from app.context.models import (
 )
 from app.context.settings import RuleSettings, RuleSettingsStore
 from app.intervention.recorder import RecordedEvent
+from app.platforms.capture import MonitorInfo
+from app.ui.overlay.monitor_payload import encode_monitor
 
 
 class MainTests(unittest.TestCase):
@@ -124,14 +126,15 @@ class MainTests(unittest.TestCase):
 
     def test_overlay_process_flag_runs_the_internal_entry_point(self) -> None:
         platform = Mock()
+        monitor = MonitorInfo("display-b", 2, -1200, 0, 1200, 900)
         with (
             patch("main.create_platform_adapter", return_value=platform),
             patch("main.run_overlay") as run_overlay,
         ):
-            main.main(["--overlay-process", "--monitor-index", "2"])
+            main.main(["--overlay-process", "--overlay-monitor", encode_monitor(monitor)])
 
         platform.prepare_environment.assert_called_once_with()
-        run_overlay.assert_called_once_with(platform, 2)
+        run_overlay.assert_called_once_with(monitor)
 
     def test_control_message_sets_stop_event(self) -> None:
         stop_event = threading.Event()

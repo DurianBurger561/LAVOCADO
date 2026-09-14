@@ -3,7 +3,6 @@
 import io
 import json
 import os
-import subprocess
 import sys
 import unittest
 from concurrent.futures import Future
@@ -13,12 +12,15 @@ from threading import Event
 from unittest.mock import patch
 
 from app.intervention.intervene import LOCAL_FALLBACK_MESSAGE
+from app.platforms.capture import MonitorInfo
+from app.ui.overlay.monitor_payload import encode_monitor
 from app.vision.overlay_process import (
     HEARTBEAT_TOKEN,
     _consume_heartbeat,
     _read_heartbeat_stream,
     _read_parent_messages,
     overlay_process_command,
+    run_overlay_process_child,
     show_overlay_process,
 )
 
@@ -52,18 +54,20 @@ class FakeProcess:
 
 
 class OverlayProcessTests(unittest.TestCase):
+    monitor = MonitorInfo("display-b", 2, -1200, 0, 1200, 900)
+
     def test_source_command_uses_project_entry_point(self) -> None:
         with (
             patch.object(sys, "frozen", False, create=True),
             patch.object(sys, "executable", "/python"),
         ):
-            command = overlay_process_command(3)
+            command = overlay_process_command(self.monitor)
 
         self.assertEqual(command[0], "/python")
         self.assertEqual(Path(command[1]).name, "main.py")
         self.assertEqual(
             command[2:],
-            ["--overlay-process", "--monitor-index", "3"],
+            ["--overlay-process", "--overlay-monitor", encode_monitor(self.monitor)],
         )
 
     def test_packaged_command_relaunches_the_frozen_executable(self) -> None:
@@ -71,9 +75,13 @@ class OverlayProcessTests(unittest.TestCase):
             patch.object(sys, "frozen", True, create=True),
             patch.object(sys, "executable", "/Applications/LAVOCADO"),
         ):
-            command = overlay_process_command(None)
+            command = overlay_process_command(self.monitor)
 
-        self.assertEqual(command, ["/Applications/LAVOCADO", "--overlay-process"])
+        self.assertEqual(
+            command,
+            ["/Applications/LAVOCADO", "--overlay-process",
+             "--overlay-monitor", encode_monitor(self.monitor)],
+        )
 
     def test_support_message_is_forwarded_to_child(self) -> None:
         process = FakeProcess()
@@ -81,7 +89,7 @@ class OverlayProcessTests(unittest.TestCase):
         message.set_result("Take one breath, then close that tab.")
 
         show_overlay_process(
-            2,
+            self.monitor,
             message,
             process_factory=lambda *_args, **_kwargs: process,
             sleeper=lambda _delay: None,
@@ -90,6 +98,17 @@ class OverlayProcessTests(unittest.TestCase):
         payload = json.loads(process.stdin.captured)
         self.assertEqual(payload["message"], "Take one breath, then close that tab.")
         self.assertTrue(process.stdin.closed)
+
+    def test_child_shows_passed_monitor_without_rediscovery(self) -> None:
+        with (
+            patch("app.ui.overlay.tk_backend.TkOverlayBackend") as backend_class,
+            patch("app.vision.overlay_process.Thread"),
+        ):
+            run_overlay_process_child(self.monitor, io.StringIO(""))
+
+        backend_class.assert_called_once_with("Darwin")
+        shown = backend_class.return_value.show.call_args
+        self.assertEqual(shown.args[0], self.monitor)
 
     def test_parent_pipe_closure_is_detected_after_message_delivery(self) -> None:
         message: Future[str] = Future()
@@ -118,7 +137,7 @@ class OverlayProcessTests(unittest.TestCase):
 
         with self.assertRaises(KeyboardInterrupt):
             show_overlay_process(
-                None,
+                self.monitor,
                 None,
                 process_factory=lambda *_args, **_kwargs: process,
                 sleeper=lambda _delay: (_ for _ in ()).throw(KeyboardInterrupt()),
@@ -132,12 +151,27 @@ class OverlayProcessTests(unittest.TestCase):
         now = [0.0]
 
         show_overlay_process(
-            None,
+            self.monitor,
             None,
             process_factory=lambda *_args, **_kwargs: process,
             sleeper=lambda delay: now.__setitem__(0, now[0] + delay),
             clock=lambda: now[0],
             startup_timeout=0.075,
+        )
+
+        self.assertTrue(process.terminated)
+
+    def test_hide_signal_terminates_the_isolated_child(self) -> None:
+        process = FakeProcess(polls_before_exit=100)
+        stop_event = Event()
+        stop_event.set()
+
+        show_overlay_process(
+            self.monitor,
+            None,
+            process_factory=lambda *_args, **_kwargs: process,
+            sleeper=lambda _delay: None,
+            stop_event=stop_event,
         )
 
         self.assertTrue(process.terminated)

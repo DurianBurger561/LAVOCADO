@@ -22,6 +22,8 @@ from app.platforms.windows import (
     WindowsWindowProvider,
     enable_dpi_awareness,
 )
+from app.ui.overlay.macos_tk import prepare_macos_overlay_window
+from app.ui.overlay.tk_backend import tkinter_help
 
 
 class FakeUser32:
@@ -175,12 +177,16 @@ class PlatformModuleTests(unittest.TestCase):
             Path("C:/Users/test/AppData/Local/LAVOCADO"),
         )
 
-    def test_adapters_expose_platform_specific_setup_help(self) -> None:
+    def test_platform_contract_has_no_tk_hooks(self) -> None:
         windows = WindowsPlatform(environ={})
         macos = MacOSPlatform(environ={})
 
-        self.assertIn("Tcl/Tk", windows.tkinter_help())
-        self.assertIn("python.org", macos.tkinter_help())
+        self.assertFalse(hasattr(windows, "prepare_overlay_window"))
+        self.assertFalse(hasattr(macos, "prepare_overlay_window"))
+        self.assertFalse(hasattr(windows, "tkinter_help"))
+        self.assertFalse(hasattr(macos, "tkinter_help"))
+        self.assertIn("Tcl/Tk", tkinter_help("Windows"))
+        self.assertIn("python.org", tkinter_help("Darwin"))
         self.assertIn("Privacy & Security", macos.screen_capture_help())
 
     def test_windows_enables_per_monitor_dpi_awareness(self) -> None:
@@ -248,7 +254,6 @@ class PlatformModuleTests(unittest.TestCase):
                 self.bindings.append((*args, kwargs))
 
         root = Root()
-        platform = MacOSPlatform(environ={})
         native_window = Mock()
         native_window.title.return_value = "LAVOCADO Protection"
         native_window.collectionBehavior.return_value = 8
@@ -265,8 +270,7 @@ class PlatformModuleTests(unittest.TestCase):
         )
 
         with patch.dict("sys.modules", {"AppKit": appkit}):
-            platform.prepare_overlay_window(root)
-        platform.release_overlay_focus()
+            prepare_macos_overlay_window(root)
 
         native_app.setActivationPolicy_.assert_called_once_with(1)
         native_window.setCollectionBehavior_.assert_called_once_with(

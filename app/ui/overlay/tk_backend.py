@@ -1,46 +1,59 @@
-"""Full-screen intervention overlay."""
+"""Tk implementation of the full-screen intervention overlay."""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from concurrent.futures import CancelledError, Future
 from threading import Event
 from typing import Any
-
-from mss import MSS
 
 from app import config
 from app.intervention.sequence import (
     InterventionSequence,
     default_intervention_sequence,
 )
-from app.platforms import PlatformAdapter
-from app.vision.monitors import monitor_geometry, select_monitor_index
+from app.platforms.capture import MonitorInfo
+from app.ui.overlay.macos_tk import prepare_macos_overlay_window
+
+LOGGER = logging.getLogger(__name__)
 
 
-class Overlay:
-    """Show one blocking, always-on-top intervention window."""
+def tk_geometry(monitor: MonitorInfo) -> str:
+    """Position Tk from the capture subsystem's canonical monitor geometry."""
+
+    if monitor.width < 1 or monitor.height < 1:
+        raise ValueError("Monitor width and height must be positive")
+    return (
+        f"{monitor.width}x{monitor.height}"
+        f"{monitor.left:+d}{monitor.top:+d}"
+    )
+
+
+def tkinter_help(platform_name: str) -> str:
+    if platform_name == "Darwin":
+        return "Install a current Python build from python.org with Tcl/Tk support."
+    if platform_name == "Windows":
+        return "Repair the python.org installation and enable the Tcl/Tk feature."
+    return "Install Python with Tcl/Tk support."
+
+
+class TkOverlayBackend:
+    """Show one blocking, always-on-top Tk window on a known monitor."""
 
     def __init__(
         self,
-        platform_adapter: PlatformAdapter,
-        monitor_index: int | None = config.MONITOR_INDEX,
+        platform_name: str,
         sequence_factory: Callable[
             [], InterventionSequence
         ] = default_intervention_sequence,
-        isolate_macos_process: bool = True,
     ) -> None:
         self._root: Any | None = None
-        self._platform = platform_adapter
-        self._monitor_index = monitor_index
+        self._platform_name = platform_name
         self._sequence_factory = sequence_factory
         self._sequence: InterventionSequence | None = None
         self._support_message: Future[str] | None = None
         self._dismiss_scheduled = False
-        self._isolate_macos_process = (
-            isolate_macos_process
-            and getattr(platform_adapter, "name", "") == "Darwin"
-        )
 
     @property
     def is_visible(self) -> bool:
@@ -48,7 +61,7 @@ class Overlay:
 
     def show(
         self,
-        monitor_index: int | None = None,
+        monitor: MonitorInfo,
         support_message: Future[str] | None = None,
         *,
         parent_closed_event: Event | None = None,
@@ -59,25 +72,12 @@ class Overlay:
         if self.is_visible:
             return
 
-        if self._isolate_macos_process:
-            from app.vision.overlay_process import show_overlay_process
-
-            show_overlay_process(monitor_index, support_message)
-            return
-
         try:
             import tkinter as tk
         except ModuleNotFoundError as error:
             raise RuntimeError(
-                f"Tkinter is required. {self._platform.tkinter_help()}"
+                f"Tkinter is required. {tkinter_help(self._platform_name)}"
             ) from error
-
-        with MSS() as display_capture:
-            selected_index = select_monitor_index(
-                display_capture.monitors,
-                self._monitor_index if monitor_index is None else monitor_index,
-            )
-            geometry = monitor_geometry(display_capture.monitors[selected_index])
 
         root = tk.Tk()
         self._root = root
@@ -88,9 +88,10 @@ class Overlay:
         root.withdraw()
         root.title("LAVOCADO Protection")
         root.configure(background=config.OVERLAY_BG)
-        self._prepare_overlay_window(root)
+        if self._platform_name == "Darwin":
+            prepare_macos_overlay_window(root)
         root.overrideredirect(True)
-        root.geometry(geometry)
+        root.geometry(tk_geometry(monitor))
         root.attributes("-topmost", True)
         root.protocol("WM_DELETE_WINDOW", self.dismiss)
         root.bind("<Escape>", self._dismiss_from_event)
@@ -163,7 +164,6 @@ class Overlay:
         try:
             root.mainloop()
         finally:
-            self._release_overlay_focus()
             self._root = None
             self._sequence = None
             self._support_message = None
@@ -187,6 +187,12 @@ class Overlay:
         self._dismiss_scheduled = True
         root.after(0, lambda: self._finish_dismiss(root))
 
+    def hide(self) -> None:
+        self.dismiss()
+
+    def close(self) -> None:
+        self.dismiss()
+
     def _finish_dismiss(self, root: Any) -> None:
         if self._root is root:
             self._root = None
@@ -207,18 +213,6 @@ class Overlay:
     def _request_dismiss_from_event(self, _event: object) -> str:
         self.request_dismiss()
         return "break"
-
-    def _release_overlay_focus(self) -> None:
-        try:
-            self._platform.release_overlay_focus()
-        except Exception:
-            return None
-
-    def _prepare_overlay_window(self, root: Any) -> None:
-        try:
-            self._platform.prepare_overlay_window(root)
-        except Exception:
-            return
 
     def _watch_parent_process(self, root: Any, parent_closed_event: Event) -> None:
         if self._root is not root:
@@ -241,7 +235,7 @@ class Overlay:
         try:
             heartbeat_callback()
         except Exception:
-            pass
+            LOGGER.debug("Overlay heartbeat failed", exc_info=True)
         root.after(1000, lambda: self._send_heartbeat(root, heartbeat_callback))
 
     def _render_step(
@@ -306,7 +300,7 @@ class Overlay:
         if self._root is None:
             return
         self._root.lift()
-        if getattr(self._platform, "name", "") == "Darwin":
+        if self._platform_name == "Darwin":
             return
         self._root.focus_force()
         if dismiss_button is not None:

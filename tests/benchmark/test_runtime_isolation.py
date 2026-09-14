@@ -26,7 +26,7 @@ class IsolationTests(unittest.TestCase):
         import developer.benchmark.session as session_mod
 
         source = Path(session_mod.__file__).read_text(encoding="utf-8")
-        self.assertNotIn("from app.vision.overlay", source)
+        self.assertNotIn("from app.ui.overlay", source)
         self.assertNotIn("from app.intervention.recorder", source)
         self.assertNotIn("import Overlay", source)
         self.assertNotIn("EventRecorder", source)
@@ -53,7 +53,7 @@ class IsolationTests(unittest.TestCase):
         overlay = Mock()
         recorder = Mock()
         with (
-            patch("app.vision.overlay.Overlay", overlay),
+            patch("app.ui.overlay.create_overlay_backend", overlay),
             patch("app.intervention.recorder.EventRecorder", recorder),
         ):
             session.run_full_pipeline(sample, image, sample_hash="abc")

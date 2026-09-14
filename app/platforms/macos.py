@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import subprocess
 from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
-from typing import Any
 
 from app.context.application import application_from_window
 from app.context.models import ApplicationContext
@@ -19,7 +17,6 @@ from app.platforms.base import (
 )
 
 NAME = "Darwin"
-LOGGER = logging.getLogger(__name__)
 MACOS_WINDOW_SCRIPT = """
 tell application "System Events"
     set frontProcess to first application process whose frontmost is true
@@ -77,7 +74,7 @@ class MacOSWindowProvider:
         bounds = _parse_bounds(left, top, width, height)
         try:
             native_name, bundle_id, process_id = self._identity_reader()
-        except Exception:
+        except Exception:  # noqa: BLE001 - optional native identity lookup
             native_name, bundle_id, process_id = None, None, None
         if not native_name or native_name.casefold() != app_name.casefold():
             bundle_id, process_id = None, None
@@ -136,64 +133,6 @@ class MacOSPlatform:
 
         return create_macos_capture(resolve_capture_backend_mode(self._environ))
 
-    def prepare_overlay_window(self, root: Any) -> None:
-        appkit = None
-        application = None
-        try:
-            import AppKit
-
-            appkit = AppKit
-            application = AppKit.NSApplication.sharedApplication()
-            application.setActivationPolicy_(
-                AppKit.NSApplicationActivationPolicyAccessory
-            )
-        except Exception:
-            LOGGER.debug("AppKit is unavailable for the macOS overlay", exc_info=True)
-
-        try:
-            root.tk.call("wm", "attributes", root._w, "-class", "nspanel")
-        except Exception:
-            LOGGER.debug("Could not create the Tk overlay as an NSPanel", exc_info=True)
-
-        try:
-            root.tk.call(
-                "::tk::unsupported::MacWindowStyle",
-                "style",
-                root._w,
-                "overlay",
-                ("canJoinAllSpaces", "nonActivating"),
-            )
-        except Exception:
-            # Keep the supported Tk fallback on older Aqua/Tk builds.
-            try:
-                root.tk.call(
-                    "::tk::unsupported::MacWindowStyle",
-                    "style",
-                    root._w,
-                    "overlay",
-                    "canJoinAllSpaces",
-                )
-            except Exception:
-                LOGGER.debug("Could not set Tk overlay window style", exc_info=True)
-
-        if appkit is None or application is None:
-            return
-
-        def configure_native_window(_event: object | None = None) -> None:
-            _configure_native_overlay_window(root, application, appkit)
-
-        configure_native_window()
-        try:
-            root.bind("<Map>", configure_native_window, add="+")
-        except Exception:
-            LOGGER.debug("Could not bind native overlay setup to map", exc_info=True)
-
-    def release_overlay_focus(self) -> None:
-        return None
-
-    def tkinter_help(self) -> str:
-        return tkinter_help()
-
     def screen_capture_help(self) -> str:
         return screen_capture_help()
 
@@ -232,38 +171,8 @@ def _frontmost_application_identity() -> tuple[str | None, str | None, int | Non
             running.bundleIdentifier(),
             int(running.processIdentifier()),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - optional AppKit identity lookup
         return None, None, None
-
-
-def _configure_native_overlay_window(root: Any, application: Any, appkit: Any) -> None:
-    """Allow the Tk overlay to participate in other apps' full-screen Spaces."""
-
-    try:
-        title = root.title()
-        window = next(
-            (
-                candidate
-                for candidate in application.windows()
-                if candidate.title() == title
-            ),
-            None,
-        )
-        if window is None:
-            return
-
-        collection_behavior = int(window.collectionBehavior())
-        collection_behavior |= (
-            appkit.NSWindowCollectionBehaviorCanJoinAllSpaces
-            | appkit.NSWindowCollectionBehaviorCanJoinAllApplications
-            | appkit.NSWindowCollectionBehaviorFullScreenAuxiliary
-        )
-        window.setCollectionBehavior_(collection_behavior)
-    except Exception:
-        LOGGER.warning(
-            "Could not enable macOS full-screen Space participation for the overlay",
-            exc_info=True,
-        )
 
 
 def create_window_provider() -> MacOSWindowProvider:
@@ -272,10 +181,6 @@ def create_window_provider() -> MacOSWindowProvider:
 
 def prepare_desktop_environment() -> None:
     return None
-
-
-def tkinter_help() -> str:
-    return "Install a current Python build from python.org with Tcl/Tk support."
 
 
 def screen_capture_help() -> str:
