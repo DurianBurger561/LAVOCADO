@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/神秘牛油果.png" height="300" width="300" alt="LAVOCADO logo">
+  <img src="assets/logo.png" height="300" width="300" alt="LAVOCADO logo">
 </p>
 
 <h1 align="center">LAVOCADO / 小油果</h1>
