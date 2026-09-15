@@ -47,6 +47,13 @@ class ForegroundContextWorker:
         reader = Thread(target=self._read_loop, name="lavocado-website-read", daemon=True)
         self._threads = (poller, reader)
         reader.start()
+        # Publish the first foreground application before protection performs
+        # its first vision check. This makes an application block rule active
+        # immediately instead of waiting for the polling thread's first tick.
+        try:
+            self.poll_once()
+        except Exception:  # noqa: BLE001 - keep protection alive on native errors
+            self._store.clear()
         poller.start()
 
     def stop(self) -> None:

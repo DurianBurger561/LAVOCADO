@@ -232,6 +232,47 @@ class PlatformModuleTests(unittest.TestCase):
                 self.assertEqual(application.process_id, 42)
                 self.assertNotIn("Private page title", repr(application))
 
+    @patch(
+        "app.platforms.macos._frontmost_application_identity",
+        return_value=("Safari", "com.apple.Safari", 42),
+    )
+    def test_macos_foreground_app_survives_system_events_failure(self, _identity) -> None:
+        provider = Mock(active_window=Mock(side_effect=RuntimeError("permission")))
+        platform = MacOSPlatform(environ={}, window_provider=provider)
+
+        application = platform.get_foreground_application()
+
+        self.assertIsNotNone(application)
+        self.assertEqual(application.identifier, "com.apple.Safari")
+        self.assertEqual(application.display_name, "Safari")
+        self.assertEqual(application.process_id, 42)
+        self.assertIsNone(application.window_center)
+
+    @patch(
+        "app.platforms.macos._frontmost_application_identity",
+        return_value=("Code", "com.microsoft.VSCode", 99),
+    )
+    def test_macos_recovers_known_browser_when_native_identity_is_stale(self, _identity) -> None:
+        window = WindowInfo(
+            title="",
+            app_name="Google Chrome",
+            left=10,
+            top=20,
+            width=800,
+            height=600,
+        )
+        platform = MacOSPlatform(
+            environ={},
+            window_provider=Mock(active_window=Mock(return_value=window)),
+        )
+
+        application = platform.get_foreground_application()
+
+        self.assertIsNotNone(application)
+        self.assertEqual(application.identifier, "com.google.chrome")
+        self.assertEqual(application.display_name, "Google Chrome")
+        self.assertEqual(application.window_center, (410, 320))
+
     def test_native_platforms_keep_pywebviews_default_backend(self) -> None:
         self.assertIsNone(WindowsPlatform(environ={}).prepare_webview_environment())
         self.assertIsNone(MacOSPlatform(environ={}).prepare_webview_environment())

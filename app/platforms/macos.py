@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
 
@@ -17,6 +18,15 @@ from app.platforms.base import (
 )
 
 NAME = "Darwin"
+
+_KNOWN_APPLICATION_BUNDLE_IDS = {
+    "brave browser": "com.brave.browser",
+    "firefox": "org.mozilla.firefox",
+    "google chrome": "com.google.chrome",
+    "microsoft edge": "com.microsoft.edgemac",
+    "safari": "com.apple.safari",
+}
+
 MACOS_WINDOW_SCRIPT = """
 tell application "System Events"
     set frontProcess to first application process whose frontmost is true
@@ -118,7 +128,61 @@ class MacOSPlatform:
         return self._window_provider.active_window()
 
     def get_foreground_application(self) -> ApplicationContext | None:
-        return application_from_window(self.get_foreground_window())
+        try:
+            window = self.get_foreground_window()
+        except Exception:  # noqa: BLE001 - native window lookup is optional
+            window = None
+        application = application_from_window(window)
+        if (
+            application is not None
+            and application.identifier
+            and application.process_id is not None
+        ):
+            return application
+
+        # System Events can still report the correct frontmost app when the
+        # NSWorkspace identity lookup is stale or belongs to another session.
+        # Only recover identifiers for a small, fixed browser/app allow-list;
+        # never turn an arbitrary window title into a rule key.
+        if application is not None:
+            mapped_identifier = _known_bundle_id(application.display_name)
+            if mapped_identifier is not None:
+                return ApplicationContext(
+                    identifier=mapped_identifier,
+                    display_name=application.display_name,
+                    process_name=application.process_name,
+                    window_id=application.window_id,
+                    captured_at=application.captured_at,
+                    process_id=application.process_id,
+                    window_center=application.window_center,
+                )
+
+        # System Events is only needed for window geometry and can fail when
+        # Accessibility/Automation permission is missing. NSWorkspace still
+        # provides the frontmost app identity, which is enough for app rules
+        # and lets the browser reader attempt its own accessibility lookup.
+        try:
+            native_name, bundle_id, process_id = _frontmost_application_identity()
+        except Exception:  # noqa: BLE001 - optional native identity fallback
+            native_name, bundle_id, process_id = None, None, None
+        identifier = bundle_id or native_name
+        if not identifier:
+            return application
+        captured_at = (
+            application.captured_at if application is not None else time.monotonic()
+        )
+        return ApplicationContext(
+            identifier=identifier,
+            display_name=(application.display_name if application is not None else None)
+            or native_name,
+            process_name=(application.process_name if application is not None else None)
+            or native_name,
+            window_id=application.window_id if application is not None else None,
+            captured_at=captured_at,
+            process_id=(application.process_id if application is not None else None)
+            or process_id,
+            window_center=application.window_center if application is not None else None,
+        )
 
     def create_website_reader(self):
         from app.platforms.website.macos_ax import MacOSAXWebsiteReader
@@ -173,6 +237,12 @@ def _frontmost_application_identity() -> tuple[str | None, str | None, int | Non
         )
     except Exception:  # noqa: BLE001 - optional AppKit identity lookup
         return None, None, None
+
+
+def _known_bundle_id(display_name: str | None) -> str | None:
+    if not display_name:
+        return None
+    return _KNOWN_APPLICATION_BUNDLE_IDS.get(display_name.strip().casefold())
 
 
 def create_window_provider() -> MacOSWindowProvider:

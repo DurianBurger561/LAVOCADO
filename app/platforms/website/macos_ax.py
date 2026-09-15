@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Callable
 from typing import Any
 
@@ -11,31 +12,90 @@ from app.context.website.accessibility import (
     TraversalLimitExceeded,
     find_address_hostname,
 )
+from app.context.website.normalization import normalize_hostname
+
+
+AppleScriptRunner = Callable[..., subprocess.CompletedProcess[str]]
+
+_BROWSER_APPLESCRIPTS = {
+    "com.apple.safari": """
+tell application "Safari"
+    if not (exists front document) then return ""
+    return URL of front document
+end tell
+""",
+    "com.google.chrome": """
+tell application "Google Chrome"
+    if (count of windows) is 0 then return ""
+    return URL of active tab of front window
+end tell
+""",
+    "com.microsoft.edgemac": """
+tell application "Microsoft Edge"
+    if (count of windows) is 0 then return ""
+    return URL of active tab of front window
+end tell
+""",
+    "com.brave.browser": """
+tell application "Brave Browser"
+    if (count of windows) is 0 then return ""
+    return URL of active tab of front window
+end tell
+""",
+}
 
 
 class MacOSAXWebsiteReader:
     source = "ax"
 
-    def __init__(self, bridge_factory: Callable[[], Any] | None = None) -> None:
+    def __init__(
+        self,
+        bridge_factory: Callable[[], Any] | None = None,
+        script_runner: AppleScriptRunner | None = None,
+    ) -> None:
         self._bridge_factory = bridge_factory or _NativeAXBridge
+        self._script_runner = script_runner or subprocess.run
 
     def read_active_hostname(
         self,
         application: ApplicationContext,
         _browser: BrowserDefinition,
     ) -> str | None:
-        if application.process_id is None or not application.identifier:
+        if not application.identifier:
+            return None
+        if application.process_id is not None:
+            try:
+                bridge = self._bridge_factory()
+                window = bridge.focused_window(
+                    application.process_id,
+                    application.identifier,
+                )
+                hostname = find_address_hostname(window, bridge)
+                if hostname is not None:
+                    return hostname
+            except Exception:
+                # AX errors can contain private attribute values. Do not log them.
+                pass
+        return self._read_hostname_via_browser_script(application.identifier)
+
+    def _read_hostname_via_browser_script(self, identifier: str) -> str | None:
+        script = _BROWSER_APPLESCRIPTS.get(identifier.casefold())
+        if script is None:
             return None
         try:
-            bridge = self._bridge_factory()
-            window = bridge.focused_window(
-                application.process_id,
-                application.identifier,
+            result = self._script_runner(
+                ["osascript", "-e", script],
+                capture_output=True,
+                text=True,
+                timeout=0.8,
+                check=False,
             )
-            return find_address_hostname(window, bridge)
         except Exception:
-            # AX errors can contain private attribute values. Do not log them.
             return None
+        if result.returncode != 0:
+            return None
+        # Normalize immediately so the full address never escapes this method.
+        return normalize_hostname(result.stdout)
 
 
 class _NativeAXBridge:

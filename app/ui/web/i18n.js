@@ -60,7 +60,7 @@ const ZH = Object.freeze({
   "Evidence score": "证据分数",
   "Evidence threshold": "证据阈值",
   "Exact host": "仅此域名",
-  "Executable name, desktop app ID, or bundle ID": "可执行文件名、桌面应用标识或程序包标识",
+  "Application name, executable name, desktop app ID, or bundle ID": "应用名称、可执行文件名、桌面应用标识或程序包标识",
   "Experimental Defaults": "实验性默认值",
   "Experimental defaults restored.": "已恢复实验性默认值。",
   "Experimental starting points. NudeNet and YOLO11 keep independent proposal/strong values.": "以下为实验性起始值。NudeNet 和 YOLO11 分别使用独立的候选阈值与强证据阈值。",

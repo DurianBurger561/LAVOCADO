@@ -31,7 +31,7 @@ class WebsitePolicy:
             domain = normalize_hostname(rule.domain)
             if domain is None:
                 continue
-            matches = host == domain or (
+            matches = _same_exact_host(host, domain) or (
                 rule.match_mode is WebsiteMatchMode.DOMAIN_AND_SUBDOMAINS
                 and host.endswith("." + domain)
             )
@@ -46,3 +46,9 @@ class WebsitePolicy:
     def evaluate(self, context: WebsiteContext) -> ContextPolicyAction:
         rule = self.match(context)
         return ContextPolicyAction.NORMAL if rule is None else rule.action
+
+
+def _same_exact_host(host: str, domain: str) -> bool:
+    """Treat the conventional apex/www pair as one exact website host."""
+
+    return host == domain or host.removeprefix("www.") == domain.removeprefix("www.")

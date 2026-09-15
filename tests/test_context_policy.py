@@ -136,11 +136,19 @@ class ContextPolicyTests(unittest.TestCase):
                 self.assertIsNone(result.matched_application_rule)
                 self.assertIsNone(result.matched_website_rule)
 
-    def test_application_match_uses_identifier_not_name_or_title(self) -> None:
+    def test_application_match_uses_identifier_or_native_name_not_title(self) -> None:
         policy = ApplicationPolicy([app_rule("steam.exe", Action.FORCE_BLOCK)])
         context = ApplicationContext("other.exe", "Steam", "steam.exe", None, 10.0)
         self.assertEqual(policy.evaluate(context), Action.NORMAL)
         self.assertEqual(policy.evaluate(ApplicationContext(None, "Steam", None, None, 10.0)), Action.NORMAL)
+
+    def test_application_name_matches_bundle_id_context(self) -> None:
+        policy = ApplicationPolicy([app_rule("Safari", Action.FORCE_BLOCK)])
+        context = ApplicationContext(
+            "com.apple.Safari", "Safari", "Safari", "window", 10.0
+        )
+
+        self.assertEqual(policy.evaluate(context), Action.FORCE_BLOCK)
 
     def test_conflicting_or_disabled_application_rules(self) -> None:
         policy = ApplicationPolicy([
@@ -155,6 +163,12 @@ class ContextPolicyTests(unittest.TestCase):
         subtree = WebsitePolicy([site_rule("example.com", Action.FULL_BYPASS)])
 
         self.assertEqual(exact.evaluate(foreground(hostname="WWW.EXAMPLE.COM").website), Action.FORCE_BLOCK)
+        self.assertEqual(
+            WebsitePolicy([
+                site_rule("example.com", Action.FORCE_BLOCK, WebsiteMatchMode.EXACT_HOST),
+            ]).evaluate(foreground(hostname="www.example.com").website),
+            Action.FORCE_BLOCK,
+        )
         self.assertEqual(exact.evaluate(foreground(hostname="a.www.example.com").website), Action.NORMAL)
         for host in ("example.com", "a.b.example.com", "EXAMPLE.COM."):
             with self.subTest(host=host):
