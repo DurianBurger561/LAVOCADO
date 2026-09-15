@@ -182,7 +182,12 @@ class LavocadoService:
             borderline_margin=self.vision_settings.recheck.proposal_margin,
         )
         self.overlay = (
-            overlay if overlay is not None else create_overlay_backend(platform_adapter.name)
+            overlay
+            if overlay is not None
+            else create_overlay_backend(
+                platform_adapter.name,
+                data_dir=data_dir,
+            )
         )
         self.recorder = (
             recorder

@@ -122,6 +122,23 @@ The dashboard can be used to:
 - Test the intervention
 - View recent protection events
 
+### AI typing meditation
+
+When the intervention reaches the Ready stage, an AI companion panel appears on the right. Without an API key, it uses a built-in local script and remains fully usable for the check-in and five typing-meditation rounds.
+
+To use OpenAI or another OpenAI-compatible provider such as DeepSeek, set these variables before starting LAVOCADO:
+
+```bash
+export LAVOCADO_LLM_API_KEY="your API key"
+export LAVOCADO_LLM_ENDPOINT="https://api.deepseek.com/v1"
+export LAVOCADO_LLM_MODEL="deepseek-chat"
+python main.py
+```
+
+For OpenAI, the endpoint and model variables can be omitted; the defaults are `https://api.openai.com/v1/chat/completions` and `gpt-4o-mini`. In Windows PowerShell, use `$env:LAVOCADO_LLM_API_KEY = "your API key"`. The key is used in memory for requests and is not written to the local database.
+
+Only today's trigger count, a coarse time-of-day bucket, and text the user actively enters are sent to the model. Screenshots, detection labels, confidence values, URLs, window titles, and browsing history are never sent.
+
 View recent events from the terminal:
 
 ```bash

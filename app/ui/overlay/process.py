@@ -22,7 +22,11 @@ STARTUP_TIMEOUT_SECONDS = 30.0
 HEARTBEAT_TOKEN = "LAVOCADO_OVERLAY_HEARTBEAT"
 
 
-def overlay_process_command(monitor: MonitorInfo) -> list[str]:
+def overlay_process_command(
+    monitor: MonitorInfo,
+    *,
+    data_dir: Path | None = None,
+) -> list[str]:
     """Build a source or PyInstaller command for the short-lived overlay app."""
 
     if getattr(sys, "frozen", False):
@@ -33,6 +37,8 @@ def overlay_process_command(monitor: MonitorInfo) -> list[str]:
 
     command.append("--overlay-process")
     command.extend(("--overlay-monitor", encode_monitor(monitor)))
+    if data_dir is not None:
+        command.extend(("--overlay-data-dir", str(data_dir)))
     return command
 
 
@@ -45,11 +51,12 @@ def show_overlay_process(
     heartbeat_timeout: float = HEARTBEAT_TIMEOUT_SECONDS,
     startup_timeout: float = STARTUP_TIMEOUT_SECONDS,
     stop_event: Event | None = None,
+    data_dir: Path | None = None,
 ) -> None:
     """Wait for the isolated overlay while monitoring its heartbeat."""
 
     process = process_factory(
-        overlay_process_command(monitor),
+        overlay_process_command(monitor, data_dir=data_dir),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
@@ -108,6 +115,7 @@ def show_overlay_process(
 def run_overlay_process_child(
     monitor: MonitorInfo,
     input_stream: TextIO,
+    data_dir: Path | None = None,
 ) -> None:
     """Show the overlay and close it if the monitoring process disappears."""
 
@@ -120,7 +128,11 @@ def run_overlay_process_child(
         daemon=True,
         name="lavocado-overlay-parent-watch",
     ).start()
-    overlay = TkOverlayBackend("Darwin")
+    overlay = (
+        TkOverlayBackend("Darwin")
+        if data_dir is None
+        else TkOverlayBackend("Darwin", data_dir=data_dir)
+    )
     overlay.show(
         monitor,
         parent_closed_event=parent_closed,

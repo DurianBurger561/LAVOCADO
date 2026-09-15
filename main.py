@@ -7,6 +7,7 @@ import json
 import sqlite3
 import sys
 import threading
+from pathlib import Path
 
 from app.platforms import PlatformAdapter, create_platform_adapter
 from app.platforms.capture import MonitorInfo
@@ -49,6 +50,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--overlay-monitor",
         type=overlay_monitor_arg,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--overlay-data-dir",
+        type=str,
         help=argparse.SUPPRESS,
     )
 
@@ -191,15 +197,21 @@ def run_protection(
     _write_status("LAVOCADO stopped.", control_output)
 
 
-def run_overlay(monitor: MonitorInfo) -> None:
+def run_overlay(monitor: MonitorInfo, data_dir: Path | None = None) -> None:
     """Run the isolated macOS overlay process."""
 
     from app.ui.overlay.process import run_overlay_process_child
 
+    if data_dir is None:
+        data_dir = create_platform_adapter().default_data_dir()
     control_input = _standard_stream(sys.stdin, 0, "r")
     if control_input is None:
         raise RuntimeError("Overlay control pipe is unavailable")
-    run_overlay_process_child(monitor, control_input)
+    run_overlay_process_child(
+        monitor,
+        control_input,
+        data_dir=data_dir,
+    )
 
 
 def format_event(event) -> str:
@@ -245,7 +257,10 @@ def main(argv=None) -> int | None:
         if args.overlay_monitor is None:
             parser.error("--overlay-monitor is required for the overlay process")
         platform_adapter.prepare_environment()
-        run_overlay(args.overlay_monitor)
+        if args.overlay_data_dir:
+            run_overlay(args.overlay_monitor, Path(args.overlay_data_dir))
+        else:
+            run_overlay(args.overlay_monitor)
         return
 
     command = args.command or default_command()

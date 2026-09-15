@@ -130,6 +130,23 @@ Dashboard 可以用于：
 - 测试干预界面
 - 查看最近的保护事件
 
+### AI 打字冥想
+
+遮挡进入 Ready 阶段后，会在右侧显示 AI 陪伴面板。没有配置 API Key 时，面板会使用本地内置引导，仍然可以完成状态提问和 5 轮打字冥想。
+
+如果要接入 OpenAI 或 DeepSeek 等 OpenAI-compatible 接口，在启动程序前设置：
+
+```bash
+export LAVOCADO_LLM_API_KEY="你的 API Key"
+export LAVOCADO_LLM_ENDPOINT="https://api.deepseek.com/v1"
+export LAVOCADO_LLM_MODEL="deepseek-chat"
+python main.py
+```
+
+OpenAI 可省略后两个变量，默认使用 `https://api.openai.com/v1/chat/completions` 和 `gpt-4o-mini`。Windows PowerShell 对应使用 `$env:LAVOCADO_LLM_API_KEY = "你的 API Key"`。Key 只在内存中用于本次请求，不写入本地数据库。
+
+发送给模型的内容仅包括今天触发次数、时间段和用户主动输入的对话文字，不包括截图、检测标签、置信度、URL、窗口标题或历史记录。
+
 在终端中查看最近事件：
 
 ```bash

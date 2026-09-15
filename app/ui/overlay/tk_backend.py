@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from threading import Event
 from typing import Any
 
@@ -46,12 +47,17 @@ class TkOverlayBackend:
         sequence_factory: Callable[
             [], InterventionSequence
         ] = default_intervention_sequence,
+        data_dir: Path | None = None,
     ) -> None:
         self._root: Any | None = None
         self._platform_name = platform_name
         self._sequence_factory = sequence_factory
+        self._data_dir = data_dir
         self._sequence: InterventionSequence | None = None
+        self._monitor: MonitorInfo | None = None
         self._dismiss_scheduled = False
+        self._ai_panel: Any | None = None
+        self._exit_button: Any | None = None
 
     @property
     def is_visible(self) -> bool:
@@ -78,6 +84,7 @@ class TkOverlayBackend:
 
         root = tk.Tk()
         self._root = root
+        self._monitor = monitor
         self._dismiss_scheduled = False
         self._sequence = self._sequence_factory()
 
@@ -91,6 +98,7 @@ class TkOverlayBackend:
         root.attributes("-topmost", True)
         root.protocol("WM_DELETE_WINDOW", self.dismiss)
         root.bind("<Escape>", self._dismiss_from_event)
+        root.bind_all("<Escape>", self._dismiss_from_event)
         root.bind("<Return>", self._request_dismiss_from_event)
 
         container = tk.Frame(root, background=config.OVERLAY_BG)
@@ -146,6 +154,22 @@ class TkOverlayBackend:
             font=("Arial", 10),
         ).pack(pady=(28, 0))
 
+        self._exit_button = tk.Button(
+            root,
+            text="Exit",
+            command=self.dismiss,
+            background=config.OVERLAY_BUTTON_BG,
+            foreground="#f38ba8",
+            activebackground="#45475a",
+            activeforeground=config.OVERLAY_TEXT_COLOR,
+            font=("Arial", 10, "bold"),
+            relief="flat",
+            cursor="hand2",
+            padx=12,
+            pady=6,
+        )
+        self._exit_button.place(relx=1.0, x=-24, y=24, anchor="ne")
+
         root.deiconify()
         self._render_step(title_label, body_label, dismiss_button)
         root.after_idle(self._bring_to_front)
@@ -160,7 +184,19 @@ class TkOverlayBackend:
         try:
             root.mainloop()
         finally:
+            self._hide_ai_panel()
+            if self._exit_button is not None:
+                try:
+                    self._exit_button.destroy()
+                except Exception:
+                    pass
+                self._exit_button = None
+            try:
+                root.unbind_all("<Escape>")
+            except Exception:
+                pass
             self._root = None
+            self._monitor = None
             self._sequence = None
             self._dismiss_scheduled = False
 
@@ -243,6 +279,10 @@ class TkOverlayBackend:
             return
 
         step = self._sequence.current
+        if step.name == "ready":
+            self._show_ai_panel()
+        else:
+            self._hide_ai_panel()
         title_label.configure(text=step.title)
         body_label.configure(text=step.body)
         dismiss_button.configure(
@@ -283,3 +323,26 @@ class TkOverlayBackend:
         self._root.focus_force()
         if dismiss_button is not None:
             dismiss_button.focus_set()
+
+    def _show_ai_panel(self) -> None:
+        if self._ai_panel is not None or self._root is None or self._monitor is None:
+            return
+        # Unit-test fakes do not own a Tk event loop; production roots do.
+        if not callable(getattr(self._root, "mainloop", None)):
+            return
+        from app.ui.overlay.ai_panel import MeditationChatPanel
+
+        self._ai_panel = MeditationChatPanel(
+            self._root,
+            self._monitor,
+            on_exit=self.dismiss,
+            data_dir=self._data_dir,
+        )
+
+    def _hide_ai_panel(self) -> None:
+        if self._ai_panel is None:
+            return
+        try:
+            self._ai_panel.close()
+        finally:
+            self._ai_panel = None
