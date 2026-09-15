@@ -15,6 +15,7 @@ from app.intervention.sequence import (
 )
 from app.platforms.capture import MonitorInfo
 from app.ui.overlay.macos_tk import prepare_macos_overlay_window
+from app.ui.overlay.widgets import FlatAction
 
 LOGGER = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class TkOverlayBackend:
         self._monitor: MonitorInfo | None = None
         self._dismiss_scheduled = False
         self._ai_panel: Any | None = None
+        self._main_container: Any | None = None
         self._exit_button: Any | None = None
 
     @property
@@ -93,7 +95,8 @@ class TkOverlayBackend:
         root.configure(background=config.OVERLAY_BG)
         if self._platform_name == "Darwin":
             prepare_macos_overlay_window(root)
-        root.overrideredirect(True)
+        else:
+            root.overrideredirect(True)
         root.geometry(tk_geometry(monitor))
         root.attributes("-topmost", True)
         root.protocol("WM_DELETE_WINDOW", self.dismiss)
@@ -103,6 +106,7 @@ class TkOverlayBackend:
 
         container = tk.Frame(root, background=config.OVERLAY_BG)
         container.place(relx=0.5, rely=0.5, anchor="center")
+        self._main_container = container
 
         tk.Label(
             container,
@@ -130,19 +134,19 @@ class TkOverlayBackend:
         )
         body_label.pack(pady=(0, 36))
 
-        dismiss_button = tk.Button(
+        dismiss_button = FlatAction(
+            tk,
             container,
+            text="",
             command=self.request_dismiss,
             background=config.OVERLAY_BUTTON_BG,
             foreground=config.OVERLAY_BUTTON_TEXT_COLOR,
             activebackground=config.OVERLAY_TITLE_COLOR,
-            activeforeground=config.OVERLAY_BG,
+            disabledbackground=config.OVERLAY_BUTTON_BG,
+            disabledforeground="#6c7086",
             font=("Arial", 15, "bold"),
             padx=28,
             pady=14,
-            relief="flat",
-            cursor="hand2",
-            takefocus=True,
         )
         dismiss_button.pack()
 
@@ -154,17 +158,17 @@ class TkOverlayBackend:
             font=("Arial", 10),
         ).pack(pady=(28, 0))
 
-        self._exit_button = tk.Button(
+        self._exit_button = FlatAction(
+            tk,
             root,
             text="Exit",
             command=self.dismiss,
             background=config.OVERLAY_BUTTON_BG,
             foreground="#f38ba8",
             activebackground="#45475a",
-            activeforeground=config.OVERLAY_TEXT_COLOR,
             font=("Arial", 10, "bold"),
-            relief="flat",
-            cursor="hand2",
+            disabledbackground=config.OVERLAY_BUTTON_BG,
+            disabledforeground="#f38ba8",
             padx=12,
             pady=6,
         )
@@ -197,6 +201,7 @@ class TkOverlayBackend:
                 pass
             self._root = None
             self._monitor = None
+            self._main_container = None
             self._sequence = None
             self._dismiss_scheduled = False
 
@@ -279,16 +284,25 @@ class TkOverlayBackend:
             return
 
         step = self._sequence.current
-        if step.name == "ready":
-            self._show_ai_panel()
-        else:
-            self._hide_ai_panel()
+        # Advancing to Ready must enable Continue even if optional AI setup
+        # fails (including an import error in the model configuration).
         title_label.configure(text=step.title)
         body_label.configure(text=step.body)
         dismiss_button.configure(
             text=step.button_label,
             state="normal" if step.can_dismiss else "disabled",
         )
+        if step.name == "ready":
+            try:
+                self._show_ai_panel()
+            except Exception:
+                LOGGER.exception("Could not open AI panel; Continue remains available")
+                self._place_main_container_center()
+            else:
+                self._place_main_container_below_panel()
+        else:
+            self._hide_ai_panel()
+            self._place_main_container_center()
 
         if step.can_dismiss:
             self._bring_to_front(dismiss_button)
@@ -318,6 +332,8 @@ class TkOverlayBackend:
         if self._root is None:
             return
         self._root.lift()
+        if self._ai_panel is not None:
+            return
         if self._platform_name == "Darwin":
             return
         self._root.focus_force()
@@ -332,11 +348,39 @@ class TkOverlayBackend:
             return
         from app.ui.overlay.ai_panel import MeditationChatPanel
 
-        self._ai_panel = MeditationChatPanel(
-            self._root,
-            self._monitor,
-            on_exit=self.dismiss,
-            data_dir=self._data_dir,
+        children_before = set(self._root.winfo_children())
+        try:
+            self._ai_panel = MeditationChatPanel(
+                self._root,
+                self._monitor,
+                on_exit=self.dismiss,
+                data_dir=self._data_dir,
+            )
+        except Exception:
+            for child in set(self._root.winfo_children()) - children_before:
+                child.destroy()
+            raise
+
+    def _place_main_container_below_panel(self) -> None:
+        if self._main_container is None or self._ai_panel is None:
+            return
+        self._main_container.place_configure(
+            relx=0.5,
+            rely=0,
+            x=0,
+            y=self._ai_panel.layout_bottom + 30,
+            anchor="n",
+        )
+
+    def _place_main_container_center(self) -> None:
+        if self._main_container is None:
+            return
+        self._main_container.place_configure(
+            relx=0.5,
+            rely=0.5,
+            x=0,
+            y=0,
+            anchor="center",
         )
 
     def _hide_ai_panel(self) -> None:

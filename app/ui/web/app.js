@@ -943,6 +943,148 @@ async function refreshVisionSettings() {
   }
 }
 
+function renderLLMSettings(settings) {
+  ui.latest.llmSettings = settings;
+  const endpoint = element("llm-endpoint");
+  const model = element("llm-model");
+  const enabled = element("llm-enabled");
+  const language = element("llm-language");
+  if (endpoint) endpoint.value = settings.endpoint || "";
+  if (model) model.value = settings.model || "";
+  if (enabled) enabled.checked = settings.enabled !== false;
+  if (language) language.value = settings.language || "";
+  const status = element("llm-status");
+  if (!status) return;
+  const connection = settings.connection || {};
+  const state = connection.state || "unverified";
+  const labels = {
+    unverified: "Configured · Not verified",
+    requesting: "Testing API…",
+    online: "Last test passed",
+    fallback: "API test failed",
+  };
+  const label = settings.enabled === false ? "LLM disabled"
+    : !settings.api_key_set ? "API not configured"
+    : labels[state] || "Configured · Not verified";
+  status.textContent = t(label);
+  status.className = `signal-tag ${state === "online" ? "capture-healthy" : state === "fallback" ? "capture-fallback" : "neutral"}`;
+  const detail = element("llm-connection-detail");
+  if (detail) {
+    const stamp = connection.checked_at ? new Date(connection.checked_at).toLocaleTimeString() : "";
+    detail.textContent = [stamp, connection.detail || ""].filter(Boolean).join(" · ");
+    detail.hidden = !detail.textContent;
+    detail.classList.toggle("error", state === "fallback");
+  }
+  const testButton = element("llm-test-button");
+  if (testButton) testButton.disabled = !settings.api_key_set || state === "requesting";
+}
+
+function showLLMMessage(message, isError = false) {
+  ui.latest.llmMessage = {message, isError};
+  const target = element("llm-settings-message");
+  if (!target) return;
+  target.textContent = message ? i18n.apiMessage(message, "Operation failed.") : "";
+  target.classList.toggle("error", isError);
+}
+
+function llmFormPayload() {
+  return {
+    api_key: element("llm-api-key").value,
+    endpoint: element("llm-endpoint").value,
+    model: element("llm-model").value,
+    enabled: element("llm-enabled").checked,
+    language: element("llm-language") ? element("llm-language").value : "",
+  };
+}
+
+async function saveLLMSettings(event) {
+  event.preventDefault();
+  if (llmSettingsBusy()) return;
+  ui.inFlight.add("llm-save");
+  setLLMFormBusy(true);
+  try {
+    const result = assertResponse(await invoke("save_llm_settings", llmFormPayload()));
+    renderLLMSettings(result);
+    element("llm-api-key").value = "";
+    showLLMMessage(result.message || "AI settings saved. They apply to the next intervention.");
+  } catch (error) {
+    showLLMMessage(error instanceof Error ? error.message : "Could not save AI settings.", true);
+  } finally {
+    ui.inFlight.delete("llm-save");
+    setLLMFormBusy(false);
+  }
+}
+
+async function clearLLMApiKey() {
+  if (llmSettingsBusy()) return;
+  ui.inFlight.add("llm-clear");
+  setLLMFormBusy(true);
+  try {
+    const result = assertResponse(await invoke("clear_llm_api_key"));
+    renderLLMSettings(result);
+    element("llm-api-key").value = "";
+    showLLMMessage(result.message || "Saved API key cleared.");
+  } catch (error) {
+    showLLMMessage(error instanceof Error ? error.message : "Could not clear the saved API key.", true);
+  } finally {
+    ui.inFlight.delete("llm-clear");
+    setLLMFormBusy(false);
+  }
+}
+
+function llmSettingsBusy() {
+  return ["llm-save", "llm-clear", "llm-test"].some(key => ui.inFlight.has(key));
+}
+
+function setLLMFormBusy(busy) {
+  element("llm-settings-form").querySelectorAll("input, select, button").forEach(node => {
+    node.disabled = busy;
+  });
+  if (!busy) element("llm-test-button").disabled = !ui.latest.llmSettings?.api_key_set;
+}
+
+function markLLMSettingsDirty() {
+  const status = element("llm-status");
+  status.textContent = t("Unsaved settings");
+  status.className = "signal-tag neutral";
+  element("llm-connection-detail").textContent = "";
+  element("llm-connection-detail").hidden = true;
+  element("llm-test-button").disabled = true;
+}
+
+async function testLLMConnection() {
+  if (llmSettingsBusy()) return;
+  ui.inFlight.add("llm-test");
+  setLLMFormBusy(true);
+  const status = element("llm-status");
+  status.textContent = t("Testing API…");
+  status.className = "signal-tag neutral";
+  element("llm-connection-detail").textContent = "";
+  element("llm-connection-detail").hidden = true;
+  try {
+    renderLLMSettings(assertResponse(await invoke("test_llm_connection")));
+  } catch (_error) {
+    status.textContent = t("API test failed");
+    status.className = "signal-tag capture-fallback";
+    showLLMMessage("Could not complete the connection test.", true);
+  } finally {
+    ui.inFlight.delete("llm-test");
+    setLLMFormBusy(false);
+  }
+}
+
+async function refreshLLMSettings() {
+  if (ui.inFlight.has("llm-settings")) return;
+  ui.inFlight.add("llm-settings");
+  try {
+    renderLLMSettings(assertResponse(await invoke("get_llm_settings")));
+  } catch (_error) {
+    renderLLMSettings({});
+  } finally {
+    ui.inFlight.delete("llm-settings");
+  }
+}
+
 function setAppView(view) {
   const known = new Set(["home", "protection", "history", "settings"]);
   if (!known.has(view)) {
@@ -963,7 +1105,7 @@ function setAppView(view) {
   document.querySelectorAll(".history").forEach((node) => {
     node.hidden = view !== "history";
   });
-  document.querySelectorAll(".language-settings, .rules, .vision-settings").forEach((node) => {
+  document.querySelectorAll(".language-settings, .rules, .vision-settings, .llm-settings").forEach((node) => {
     node.hidden = view !== "settings";
   });
 }
@@ -975,9 +1117,11 @@ function rerenderTranslatedState() {
   if (ui.latest.rules) renderRules(ui.latest.rules);
   if (ui.latest.settings) renderVisionSettings(ui.latest.settings);
   if (ui.latest.models) renderModelStatus(ui.latest.models);
+  if (ui.latest.llmSettings) renderLLMSettings(ui.latest.llmSettings);
   if (ui.latest.actionMessage) showMessage(ui.latest.actionMessage.message, ui.latest.actionMessage.isError);
   if (ui.latest.ruleMessage) showRuleMessage(ui.latest.ruleMessage.message, ui.latest.ruleMessage.isError);
   if (ui.latest.visionMessage) showVisionMessage(ui.latest.visionMessage.message, ui.latest.visionMessage.isError);
+  if (ui.latest.llmMessage) showLLMMessage(ui.latest.llmMessage.message, ui.latest.llmMessage.isError);
 }
 
 async function initializeLanguage() {
@@ -1013,6 +1157,16 @@ async function initializeDashboard() {
   element("refresh-history").addEventListener("click", refreshEvents);
   const visionForm = element("vision-settings-form");
   if (visionForm) visionForm.addEventListener("submit", saveVisionSettings);
+  const llmForm = element("llm-settings-form");
+  if (llmForm) {
+    llmForm.addEventListener("submit", saveLLMSettings);
+    llmForm.addEventListener("input", markLLMSettingsDirty);
+    llmForm.addEventListener("change", markLLMSettingsDirty);
+  }
+  const testLLMButton = element("llm-test-button");
+  if (testLLMButton) testLLMButton.addEventListener("click", testLLMConnection);
+  const clearLLMButton = element("llm-clear-key-button");
+  if (clearLLMButton) clearLLMButton.addEventListener("click", clearLLMApiKey);
   const resetButton = element("vision-reset-button");
   if (resetButton) resetButton.addEventListener("click", resetVisionSettings);
   const downloadAll = element("vision-download-all");
@@ -1042,6 +1196,7 @@ async function initializeDashboard() {
     refreshEvents(),
     refreshRules(),
     refreshVisionSettings(),
+    refreshLLMSettings(),
     refreshModelStatus(),
   ]);
   ui.timers.push(window.setInterval(refreshDiagnostics, 500));

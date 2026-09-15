@@ -380,12 +380,14 @@ main {
 }
 
 .rules,
-.vision-settings {
+.vision-settings,
+.llm-settings {
   padding: 26px 28px;
 }
 
 .rules > .muted,
-.vision-settings > .muted {
+.vision-settings > .muted,
+.llm-settings > .muted {
   margin: -12px 0 14px;
   font-size: 12px;
 }
@@ -408,7 +410,10 @@ main {
   font-size: 11px;
 }
 
-.vision-form select {
+.vision-form select,
+.vision-form input[type="text"],
+.vision-form input[type="url"],
+.vision-form input[type="password"] {
   min-height: 38px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
@@ -417,6 +422,31 @@ main {
   background: var(--panel-raised);
   font: inherit;
   font-size: 12px;
+}
+
+.vision-form input:focus-visible,
+.vision-form select:focus-visible {
+  outline: 2px solid var(--lavender);
+  outline-offset: 2px;
+}
+
+.llm-wide-field {
+  grid-column: 1 / -1;
+}
+
+.vision-form label.llm-enabled-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.llm-enabled-field input {
+  width: 16px;
+  min-height: 16px;
+  accent-color: var(--green-strong);
 }
 
 .vision-advanced {

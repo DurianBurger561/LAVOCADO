@@ -2,11 +2,14 @@
 
 import json
 import unittest
+import urllib.error
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from app.intervention.recorder import RecordedEvent
+from app.intervention.llm import LLMClient
+from tests.test_intervention_llm import FakeResponse
 from app.ui.api import DashboardAPI
 from app.ui.controller import DIAGNOSTICS_PREFIX, ProtectionController, ProtectionStatus
 
@@ -191,6 +194,108 @@ class DashboardAPITests(unittest.TestCase):
         self.assertEqual(payload["settings"]["detection_mode"]["id"], "visual_violation")
         self.assertEqual(payload["settings"]["intent_modes"], [])
         self.assertFalse(payload["settings"]["context_model"]["can_block"])
+
+    def test_llm_settings_never_return_the_api_key(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            api = DashboardAPI(self.controller, self.recorder, data_dir=data_dir)
+
+            saved = api.save_llm_settings(
+                {
+                    "api_key": "secret-key",
+                    "endpoint": "https://example.test/v1",
+                    "model": "test-model",
+                    "enabled": True,
+                }
+            )
+            self.assertTrue(saved["ok"])
+            self.assertTrue(saved["api_key_set"])
+            self.assertEqual(saved["connection"]["state"], "unverified")
+            self.assertEqual(saved["api_key_source"], "dashboard")
+            self.assertNotIn("secret-key", json.dumps(saved))
+
+            preserved = api.save_llm_settings(
+                {"api_key": "", "endpoint": "https://example.test/v2"}
+            )
+            self.assertTrue(preserved["api_key_set"])
+            self.assertEqual(preserved["endpoint"], "https://example.test/v2")
+            self.assertEqual(json.loads((data_dir / "llm_settings.json").read_text())["api_key"], "secret-key")
+
+            cleared = api.clear_llm_api_key()
+            self.assertTrue(cleared["ok"])
+            self.assertFalse(cleared["api_key_set"])
+            self.assertNotIn("secret-key", json.dumps(cleared))
+
+    def test_llm_conversation_language_is_saved_and_resolved(self) -> None:
+        with TemporaryDirectory() as temporary:
+            data_dir = Path(temporary)
+            (data_dir / "ui-language.json").write_text(
+                json.dumps({"language": "zh"}), encoding="utf-8"
+            )
+            api = DashboardAPI(self.controller, self.recorder, data_dir=data_dir)
+
+            following = api.get_llm_settings()
+            self.assertEqual(following["language"], "")
+            self.assertEqual(following["language_in_use"], "zh")
+
+            chosen = api.save_llm_settings({"language": "en"})
+            self.assertEqual(chosen["language"], "en")
+            self.assertEqual(chosen["language_in_use"], "en")
+            self.assertEqual(
+                json.loads((data_dir / "llm_settings.json").read_text())["language"], "en"
+            )
+
+            api.save_llm_settings({"language": "klingon"})
+            self.assertEqual(api.get_llm_settings()["language"], "")
+
+    def test_llm_probe_tests_saved_model_and_reports_failure_then_success(self) -> None:
+        with TemporaryDirectory() as temporary:
+            api = DashboardAPI(self.controller, self.recorder, data_dir=Path(temporary))
+            api.save_llm_settings({"api_key": "fake-key", "model": "chosen-model"})
+            captured = []
+            fail = True
+            def opener(request, timeout):
+                captured.append(json.loads(request.data))
+                if fail:
+                    raise urllib.error.HTTPError("https://test", 401, "fake-key", {}, None)
+                return FakeResponse({"choices": [{"message": {"content": "OK"}}]})
+            with patch("app.intervention.llm.urllib.request.urlopen", side_effect=opener):
+                failed = api.test_llm_connection()
+                self.assertTrue(failed["ok"])
+                self.assertEqual(failed["connection"]["state"], "fallback")
+                self.assertEqual(failed["connection"]["reason"], "authentication")
+                self.assertNotIn("fake-key", json.dumps(failed))
+                fail = False
+                passed = api.test_llm_connection()
+            self.assertEqual(passed["connection"]["state"], "online")
+            self.assertTrue(passed["connection"]["checked_at"])
+            self.assertEqual(api.get_llm_settings()["connection"]["state"], "online")
+            self.assertEqual(captured[0]["model"], "chosen-model")
+            self.assertEqual(captured[0]["messages"], [{"role": "user", "content": "Reply with OK only."}])
+            changed = api.save_llm_settings({"model": "different-model"})
+            self.assertEqual(changed["connection"]["state"], "unverified")
+
+    def test_disabled_llm_does_not_send_a_probe(self) -> None:
+        with TemporaryDirectory() as temporary:
+            api = DashboardAPI(self.controller, self.recorder, data_dir=Path(temporary))
+            api.save_llm_settings({"api_key": "fake-key", "enabled": False})
+            with patch("app.intervention.llm.urllib.request.urlopen") as request:
+                result = api.test_llm_connection()
+            request.assert_not_called()
+            self.assertFalse(result["api_key_set"])
+            self.assertEqual(result["connection"]["reason"], "no_key")
+
+    def test_stale_probe_does_not_validate_new_connection(self) -> None:
+        with TemporaryDirectory() as temporary:
+            api = DashboardAPI(self.controller, self.recorder, data_dir=Path(temporary))
+            api.save_llm_settings({"api_key": "fake-key", "model": "old"})
+            def opener(request, timeout):
+                api.save_llm_settings({"model": "new"})
+                return FakeResponse({"choices": [{"message": {"content": "OK"}}]})
+            with patch("app.intervention.llm.urllib.request.urlopen", side_effect=opener):
+                result = api.test_llm_connection()
+            self.assertEqual(result["model"], "new")
+            self.assertEqual(result["connection"]["state"], "unverified")
 
     def test_save_reports_restart_only_after_controller_confirms_it(self) -> None:
         with TemporaryDirectory() as temporary:

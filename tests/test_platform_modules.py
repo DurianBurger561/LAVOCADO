@@ -22,7 +22,10 @@ from app.platforms.windows import (
     WindowsWindowProvider,
     enable_dpi_awareness,
 )
-from app.ui.overlay.macos_tk import prepare_macos_overlay_window
+from app.ui.overlay.macos_tk import (
+    activate_macos_overlay_window,
+    prepare_macos_overlay_window,
+)
 from app.ui.overlay.tk_backend import tkinter_help
 
 
@@ -308,6 +311,7 @@ class PlatformModuleTests(unittest.TestCase):
             NSWindowCollectionBehaviorCanJoinAllSpaces=1,
             NSWindowCollectionBehaviorCanJoinAllApplications=262144,
             NSWindowCollectionBehaviorFullScreenAuxiliary=256,
+            NSWindowStyleMaskBorderless=0,
         )
 
         with patch.dict("sys.modules", {"AppKit": appkit}):
@@ -320,17 +324,38 @@ class PlatformModuleTests(unittest.TestCase):
         self.assertEqual(
             root.tk_calls,
             [
-                ("wm", "attributes", ".", "-class", "nspanel"),
                 (
                     "::tk::unsupported::MacWindowStyle",
                     "style",
                     ".",
-                    "overlay",
-                    ("canJoinAllSpaces", "nonActivating"),
+                    "plain",
+                    "canJoinAllSpaces",
                 ),
             ],
         )
         self.assertEqual(root.bindings[0][0], "<Map>")
+        native_window.setStyleMask_.assert_called_once_with(0)
+
+    def test_macos_overlay_activation_reaches_make_key(self) -> None:
+        root = Mock()
+        root.title.return_value = "LAVOCADO Protection"
+        window = Mock()
+        window.title.return_value = root.title()
+        window.collectionBehavior.return_value = 0
+        application = Mock()
+        application.windows.return_value = [window]
+        appkit = SimpleNamespace(
+            NSApplication=SimpleNamespace(sharedApplication=lambda: application),
+            NSWindowStyleMaskBorderless=0,
+            NSWindowCollectionBehaviorCanJoinAllSpaces=1,
+            NSWindowCollectionBehaviorFullScreenAuxiliary=256,
+        )
+
+        with patch.dict("sys.modules", {"AppKit": appkit}):
+            activate_macos_overlay_window(root)
+
+        application.activateIgnoringOtherApps_.assert_called_once_with(True)
+        window.makeKeyAndOrderFront_.assert_called_once_with(None)
 
     def test_windows_provider_reads_title_and_bounds(self) -> None:
         kernel32 = FakeKernel32()

@@ -385,6 +385,54 @@
           </div>
         </section>
 
+        <section class="panel llm-settings" aria-labelledby="llm-settings-heading" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="section-label">AI INTERVENTION</p>
+              <h2 id="llm-settings-heading">AI meditation</h2>
+            </div>
+            <span id="llm-status" class="signal-tag neutral">API not configured</span>
+          </div>
+          <p class="muted">Optional OpenAI-compatible connection for typing meditation. Screenshots, URLs, window titles, and detection results are never sent.</p>
+          <p class="muted">The companion asks a few questions, says back what it heard, then guides a typing meditation in the language chosen here.</p>
+          <p id="llm-settings-message" class="rules-message" role="status" aria-live="polite"></p>
+          <p id="llm-connection-detail" class="rules-message" role="status" aria-live="polite"></p>
+          <form id="llm-settings-form" class="vision-form">
+            <div class="vision-form-grid">
+              <label>
+                API key
+                <input id="llm-api-key" name="api_key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key">
+              </label>
+              <label>
+                Model
+                <input id="llm-model" name="model" type="text" maxlength="120" placeholder="gpt-4o-mini">
+              </label>
+              <label class="llm-wide-field">
+                OpenAI-compatible endpoint
+                <input id="llm-endpoint" name="endpoint" type="url" maxlength="500" placeholder="https://api.openai.com/v1/chat/completions">
+              </label>
+              <label>
+                Conversation language
+                <select id="llm-language" name="language" aria-label="Conversation language">
+                  <option value="">Follow dashboard language</option>
+                  <option value="en">English</option>
+                  <option value="zh">Chinese</option>
+                </select>
+              </label>
+              <label class="llm-enabled-field">
+                <input id="llm-enabled" name="enabled" type="checkbox" checked>
+                Enable LLM meditation
+              </label>
+            </div>
+            <div class="vision-form-actions">
+              <button id="llm-save-button" class="button primary" type="submit">Save AI settings</button>
+              <button id="llm-test-button" class="button ghost" type="button" title="Sends one short API request using saved settings; usage may be billed.">Test saved connection</button>
+              <button id="llm-clear-key-button" class="button ghost" type="button">Clear saved API key</button>
+            </div>
+          </form>
+          <p class="muted">API keys are stored locally for this device. The dashboard only shows whether a key is configured.</p>
+        </section>
+
         <section class="panel vision-settings" aria-labelledby="vision-settings-heading" hidden>
           <div class="section-heading">
             <div>
