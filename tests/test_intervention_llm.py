@@ -227,7 +227,7 @@ class LLMTests(unittest.TestCase):
                    "没有收到本次具体触发原因", "触发次数不是", "五轮", "随时退出"),
             "en": ("pornography-cessation app", "actively encourage the user to stop viewing pornography",
                    "close the pornography page", "Do not justify continued viewing",
-                   "blocklists", "false positive or a manual test",
+                   "blocking rules", "false positive or a manual test",
                    "not a psychologist or licensed therapist", "specific trigger reason",
                    "Trigger count is not", "five personalized", "exit at any time"),
         }
