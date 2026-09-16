@@ -17,6 +17,7 @@ import re
 import sqlite3
 import urllib.error
 import urllib.request
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -660,7 +661,7 @@ def today_trigger_count(data_dir: Path | None = None) -> int:
         .isoformat()
     )
     try:
-        with sqlite3.connect(database, timeout=0.2) as connection:
+        with closing(sqlite3.connect(database, timeout=0.2)) as connection:
             row = connection.execute(
                 "SELECT COUNT(*) FROM protection_events WHERE occurred_at >= ?",
                 (start,),

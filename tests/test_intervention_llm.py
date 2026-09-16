@@ -7,6 +7,7 @@ import sqlite3
 import tempfile
 import unittest
 import urllib.error
+from contextlib import closing
 from pathlib import Path
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -419,7 +420,7 @@ class LLMTests(unittest.TestCase):
     def test_today_trigger_count_reads_only_event_count(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             data_dir = Path(directory)
-            with sqlite3.connect(data_dir / "events.db") as connection:
+            with closing(sqlite3.connect(data_dir / "events.db")) as connection, connection:
                 connection.execute(
                     "CREATE TABLE protection_events (occurred_at TEXT NOT NULL)"
                 )
@@ -432,6 +433,28 @@ class LLMTests(unittest.TestCase):
                 )
 
             self.assertEqual(today_trigger_count(data_dir), 1)
+
+    def test_today_trigger_count_closes_connection_on_success_and_query_error(self) -> None:
+        for valid_schema in (True, False):
+            with self.subTest(valid_schema=valid_schema), tempfile.TemporaryDirectory() as directory:
+                data_dir = Path(directory)
+                with closing(sqlite3.connect(data_dir / "events.db")) as connection:
+                    if valid_schema:
+                        connection.execute(
+                            "CREATE TABLE protection_events (occurred_at TEXT NOT NULL)"
+                        )
+                        connection.executemany(
+                            "INSERT INTO protection_events VALUES (?)",
+                            [(datetime.now(timezone.utc).isoformat(),)] * 3,
+                        )
+                        connection.commit()
+                    with patch(
+                        "app.intervention.llm.sqlite3.connect", return_value=connection
+                    ):
+                        self.assertEqual(today_trigger_count(data_dir), 3 if valid_schema else 1)
+                    # Assert closure directly: macOS permits deleting open database files.
+                    with self.assertRaisesRegex(sqlite3.ProgrammingError, "closed"):
+                        connection.execute("SELECT 1")
 
     def test_remote_payload_contains_only_allowed_context(self) -> None:
         captured: list[dict[str, object]] = []
