@@ -11,13 +11,10 @@ from app.platforms.base import (
     UnsupportedPlatformError,
     WindowInfo,
 )
-from app.platforms.linux import LinuxPlatform
 from app.platforms.macos import MacOSPlatform
 from app.platforms.windows import WindowsPlatform
 
-SUPPORTED_SYSTEMS = frozenset(
-    {WindowsPlatform.name, MacOSPlatform.name, LinuxPlatform.name}
-)
+SUPPORTED_SYSTEMS = frozenset({WindowsPlatform.name, MacOSPlatform.name})
 
 
 def create_platform_adapter(
@@ -33,17 +30,14 @@ def create_platform_adapter(
         return WindowsPlatform(environ=environ, home=home)
     if current == MacOSPlatform.name:
         return MacOSPlatform(environ=environ, home=home)
-    if current == LinuxPlatform.name:
-        return LinuxPlatform(environ=environ, home=home)
     raise UnsupportedPlatformError(
         f"LAVOCADO does not currently support {current or 'this OS'}. "
-        "Supported systems: Windows, macOS, and Linux."
+        "Supported systems: Windows and macOS."
     )
 
 
 __all__ = [
     "SUPPORTED_SYSTEMS",
-    "LinuxPlatform",
     "MacOSPlatform",
     "PlatformAdapter",
     "UnsupportedPlatformError",

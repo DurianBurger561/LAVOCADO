@@ -63,6 +63,17 @@ class ContextWorkerTests(unittest.TestCase):
         self.assertEqual(reader.calls, 1)
         self.assertEqual(store.latest().website.hostname, "trusted.example")
 
+    def test_start_publishes_initial_application_before_returning(self) -> None:
+        service = ForegroundContextService(lambda: application("safari"), Reader())
+        store = ForegroundContextStore()
+        worker = ForegroundContextWorker(service, store)
+
+        worker.start()
+        try:
+            self.assertEqual(store.latest().application.identifier, "safari")
+        finally:
+            worker.stop()
+
     def test_nonbrowser_never_schedules_address_bar_read(self) -> None:
         reader = Reader()
         service = ForegroundContextService(lambda: application("steam.exe"), reader)

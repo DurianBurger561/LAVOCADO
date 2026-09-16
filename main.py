@@ -7,9 +7,12 @@ import json
 import sqlite3
 import sys
 import threading
+from pathlib import Path
 
 from app.platforms import PlatformAdapter, create_platform_adapter
+from app.platforms.capture import MonitorInfo
 from app.ui.controller import DIAGNOSTICS_PREFIX
+from app.ui.overlay.monitor_payload import decode_monitor
 
 
 def positive_int(value: str) -> int:
@@ -21,8 +24,16 @@ def positive_int(value: str) -> int:
     return parsed
 
 
+def overlay_monitor_arg(value: str) -> MonitorInfo:
+    try:
+        return decode_monitor(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Local, private screen intervention")
+    parser.add_argument("--self-check", action="store_true", help="verify the local build without opening a window")
     subparsers = parser.add_subparsers(dest="command")
 
     protect = subparsers.add_parser("protect", help="start screen protection")
@@ -37,8 +48,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
-        "--monitor-index",
-        type=positive_int,
+        "--overlay-monitor",
+        type=overlay_monitor_arg,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--overlay-data-dir",
+        type=str,
         help=argparse.SUPPRESS,
     )
 
@@ -81,7 +97,7 @@ def _listen_for_control(
             test_intervention_event.set()
         elif command == "diagnostics" and diagnostics is not None:
             payload = json.dumps(
-                diagnostics.snapshot(),
+                diagnostics.snapshot().to_dict(),
                 ensure_ascii=True,
                 separators=(",", ":"),
             )
@@ -129,21 +145,18 @@ def run_protection(
         if control_input is None or control_output is None:
             raise RuntimeError("Dashboard control pipes are unavailable")
 
-    from app import config
-    from app.blocklist.watcher import WindowWatcher
     from app.context.policy.application import ApplicationPolicy
     from app.context.policy.resolver import ContextPolicyService
     from app.context.policy.website import WebsitePolicy
-    from app.context.settings import RuleSettingsStore, unmigrated_legacy_terms
+    from app.context.settings import RuleSettingsStore
     from app.service import LavocadoService
 
     try:
         settings = RuleSettingsStore(
             platform_adapter.default_data_dir() / "events.db",
-            legacy_blocked_apps=config.BLOCKED_APPS,
         ).load()
     except (OSError, sqlite3.Error, TypeError, ValueError):
-        # A damaged rule schema must not disable the legacy watcher or vision.
+        # A damaged rule schema must not disable vision.
         service = LavocadoService(platform_adapter)
     else:
         service = LavocadoService(
@@ -151,10 +164,6 @@ def run_protection(
             context_policy=ContextPolicyService(
                 ApplicationPolicy(settings.application_rules),
                 WebsitePolicy(settings.website_rules),
-            ),
-            watcher=WindowWatcher(
-                platform_adapter,
-                blocked_terms=unmigrated_legacy_terms(config.BLOCKED_APPS),
             ),
         )
     stop_event = threading.Event()
@@ -188,15 +197,21 @@ def run_protection(
     _write_status("LAVOCADO stopped.", control_output)
 
 
-def run_overlay(platform_adapter: PlatformAdapter, monitor_index: int | None) -> None:
+def run_overlay(monitor: MonitorInfo, data_dir: Path | None = None) -> None:
     """Run the isolated macOS overlay process."""
 
-    from app.vision.overlay_process import run_overlay_process_child
+    from app.ui.overlay.process import run_overlay_process_child
 
+    if data_dir is None:
+        data_dir = create_platform_adapter().default_data_dir()
     control_input = _standard_stream(sys.stdin, 0, "r")
     if control_input is None:
         raise RuntimeError("Overlay control pipe is unavailable")
-    run_overlay_process_child(platform_adapter, monitor_index, control_input)
+    run_overlay_process_child(
+        monitor,
+        control_input,
+        data_dir=data_dir,
+    )
 
 
 def format_event(event) -> str:
@@ -230,12 +245,22 @@ def show_events(limit: int, platform_adapter: PlatformAdapter) -> None:
         print(format_event(event))
 
 
-def main(argv=None) -> None:
-    args = build_parser().parse_args(argv)
+def main(argv=None) -> int | None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.self_check:
+        from app.self_check import print_self_check
+
+        return print_self_check()
     platform_adapter = create_platform_adapter()
     if args.overlay_process:
+        if args.overlay_monitor is None:
+            parser.error("--overlay-monitor is required for the overlay process")
         platform_adapter.prepare_environment()
-        run_overlay(platform_adapter, args.monitor_index)
+        if args.overlay_data_dir:
+            run_overlay(args.overlay_monitor, Path(args.overlay_data_dir))
+        else:
+            run_overlay(args.overlay_monitor)
         return
 
     command = args.command or default_command()
@@ -255,4 +280,4 @@ def main(argv=None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any
-
-import numpy as np
 
 from app.vision.detectors.base import (
-    DetectionEvidence,
-    check_result_from_evidence,
-    to_detection_evidence,
+    to_violation_evidence,
 )
+from app.vision.preprocessor import PreparedFrame
+from app.vision.violation_policy import ViolationEvidence
 from app.vision.yolo_adapter import (
     Yolo11Adapter,
     YoloDetectionModel,
@@ -32,51 +29,31 @@ class Yolo11NsfwDetector:
         self.default_input_size = int(default_input_size)
         self.model_variant = "yolo11-nsfw-small"
         self.inference_resolution = self.default_input_size
-        self._last_raw: list[dict[str, Any]] = []
 
     @property
     def name(self) -> str:
         return "yolo11_nsfw_small"
 
-    @property
-    def inner(self) -> Yolo11Adapter:
-        return self._adapter
-
     def detect(
         self,
-        frame: np.ndarray,
-        *,
-        input_size: int,
-    ) -> list[DetectionEvidence]:
-        if not isinstance(frame, np.ndarray):
-            self._last_raw = []
-            return []
+        prepared: PreparedFrame,
+    ) -> tuple[ViolationEvidence, ...]:
         model = self._adapter.model
         previous = getattr(model, "imgsz", None)
         if hasattr(model, "imgsz"):
-            model.imgsz = int(input_size)
+            model.imgsz = prepared.input_size
         try:
-            detections = list(model.detect(frame))
+            detections = list(model.detect(prepared.image))
         except Exception:  # noqa: BLE001 - inference must not crash protection
-            self._last_raw = []
-            return []
+            return ()
         finally:
             if hasattr(model, "imgsz"):
                 model.imgsz = previous
-        self._last_raw = detections
-        return to_detection_evidence(detections, model=self.name)
-
-    def check(self, image: np.ndarray) -> dict[str, Any]:
-        """Compatibility wrapper: apply YOLO's independent label policy."""
-
-        evidence = self.detect(image, input_size=self.default_input_size)
-        return check_result_from_evidence(
-            evidence,
-            raw_detections=self._last_raw,
+        return tuple(
+            to_violation_evidence(
+                detections, model=self.name, frame_sequence=prepared.frame_sequence
+            )
         )
-
-    def last_raw_detections(self) -> list[dict[str, Any]]:
-        return list(self._last_raw)
 
 
 def load_yolo11_nsfw_detector(

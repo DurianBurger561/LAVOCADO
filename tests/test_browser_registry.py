@@ -11,7 +11,7 @@ def application(identifier: str | None, display_name: str = "Browser") -> Applic
 
 
 class BrowserRegistryTests(unittest.TestCase):
-    def test_windows_macos_and_linux_identifiers(self) -> None:
+    def test_windows_and_macos_identifiers(self) -> None:
         registry = BrowserRegistry()
         for identifier, family in (
             ("CHROME.EXE", "chromium"),
@@ -20,8 +20,6 @@ class BrowserRegistryTests(unittest.TestCase):
             ("com.apple.Safari", "safari"),
             ("com.google.Chrome", "chromium"),
             ("org.mozilla.firefox", "firefox"),
-            ("google-chrome-stable", "chromium"),
-            ("chromium", "chromium"),
         ):
             with self.subTest(identifier=identifier):
                 self.assertEqual(registry.identify(application(identifier)).family, family)

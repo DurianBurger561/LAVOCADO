@@ -15,7 +15,6 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
           - windows-latest
           - macos-latest
 
@@ -28,24 +27,22 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
 
-      - name: Install Linux AT-SPI build libraries
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            gcc libcairo2-dev pkg-config python3-dev \
-            libgirepository-2.0-dev gir1.2-atspi-2.0
+      - name: Install CPU PyTorch for Windows tests
+        if: runner.os == 'Windows'
+        run: python -m pip install "torch>=2.4,<3" torchvision --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -r requirements.txt -r requirements-build.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q app developer lavocado_packaging scripts tests main.py developer_main.py
+        run: python -m compileall -q app lavocado_packaging scripts tests main.py
 
-      - name: Validate Linux capture routing
-        if: runner.os == 'Linux'
-        run: python scripts/validate_linux_capture.py --self-check
+      - name: Check architecture contracts
+        run: python -m unittest tests.test_architecture_contracts -v
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v

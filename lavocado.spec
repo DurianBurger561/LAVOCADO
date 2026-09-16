@@ -7,28 +7,25 @@ sys.path.insert(0, SPECPATH)
 
 from lavocado_packaging.spec_common import (
     USER_APP_NAME,
-    USER_EXCLUDES,
     macos_plist,
-    platform_collect,
+    model_dependency_binaries,
+    platform_hiddenimports,
     user_datas,
 )
 
-platform_binaries, platform_data, platform_hidden_imports = platform_collect()
+platform_hidden_imports = platform_hiddenimports()
 analysis = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=platform_binaries,
-    datas=user_datas(Path(SPECPATH)) + platform_data,
+    binaries=model_dependency_binaries(),
+    datas=user_datas(Path(SPECPATH)),
     hiddenimports=platform_hidden_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=list(USER_EXCLUDES),
+    excludes=[],
     noarchive=False,
     optimize=0,
-)
-analysis.pure = type(analysis.pure)(
-    [item for item in analysis.pure if not str(item[0]).startswith("developer")]
 )
 pyz = PYZ(analysis.pure)
 

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LAVOCADO</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="i18n.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -31,7 +32,20 @@
       </nav>
 
       <main>
-        <section class="hero panel" aria-labelledby="protection-heading">
+        <section class="panel home-overview" aria-labelledby="home-heading">
+          <p class="section-label">OVERVIEW</p>
+          <h2 id="home-heading">Protection at a glance</h2>
+          <p class="muted">Screen analysis stays on this device. Open Protection to control monitoring and view live diagnostics.</p>
+          <dl class="home-summary">
+            <div><dt>Status</dt><dd id="home-protection-state">Stopped</dd></div>
+            <div><dt>Live state</dt><dd id="home-runtime-state">Not started</dd></div>
+            <div><dt>Last scan</dt><dd id="home-last-scan">Waiting for first scan</dd></div>
+            <div><dt>Capture</dt><dd id="home-capture-mode">Not started</dd></div>
+          </dl>
+          <button id="open-protection-button" class="button primary" type="button">Open Protection</button>
+        </section>
+
+        <section class="hero panel" aria-labelledby="protection-heading" hidden>
           <div>
             <p class="section-label">PROTECTION</p>
             <div class="status-heading">
@@ -41,6 +55,7 @@
             <p id="status-detail" class="muted">
               Start monitoring when you are ready. Every connected display is checked locally.
             </p>
+            <p class="runtime-phase">Live state: <strong id="protection-runtime-state">Not started</strong></p>
           </div>
           <div class="actions">
             <button id="start-button" class="button primary" type="button">Start protection</button>
@@ -50,7 +65,7 @@
           <p id="action-message" class="action-message" aria-live="polite"></p>
         </section>
 
-        <div class="dashboard-grid">
+        <div class="dashboard-grid" hidden>
           <section class="panel diagnostics" aria-labelledby="diagnostics-heading">
             <div class="section-heading">
               <div>
@@ -71,10 +86,6 @@
               <div>
                 <dt>Tile-rank model</dt>
                 <dd id="diag-context-model">Not started</dd>
-              </div>
-              <div>
-                <dt>YOLO11</dt>
-                <dd id="diag-yolo">Disabled</dd>
               </div>
               <div>
                 <dt>Monitor</dt>
@@ -212,6 +223,10 @@
                   <dd id="scan-interval-ms">—</dd>
                 </div>
                 <div>
+                  <dt>Preprocess / primary / YOLO / Viddexa / decision / temporal</dt>
+                  <dd id="scan-stage-ms">—</dd>
+                </div>
+                <div>
                   <dt>Full detector</dt>
                   <dd id="scan-full">None</dd>
                 </div>
@@ -288,7 +303,18 @@
           </aside>
         </div>
 
-        <section class="panel rules" aria-labelledby="rules-heading">
+        <section class="panel language-settings" aria-labelledby="language-heading" hidden>
+          <p class="section-label">DISPLAY</p>
+          <h2 id="language-heading">Language</h2>
+          <label for="language-select">Dashboard language</label>
+          <select id="language-select" name="language" aria-label="Dashboard language">
+            <option value="en">English</option>
+            <option value="zh">Chinese</option>
+          </select>
+          <p id="language-message" class="muted" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="panel rules" aria-labelledby="rules-heading" hidden>
           <div class="section-heading">
             <div>
               <p class="section-label">LOCAL POLICY</p>
@@ -303,7 +329,7 @@
               <p class="muted">Force an intervention when this app is active.</p>
               <ul id="blocked-applications-list" class="rule-list"></ul>
               <form class="rule-form" data-rule-group="blocked_applications">
-                <label for="blocked-applications-input">Executable name, desktop app ID, or bundle ID</label>
+                <label for="blocked-applications-input">Application name, executable name, desktop app ID, or bundle ID</label>
                 <div class="rule-entry">
                   <input id="blocked-applications-input" name="value" type="text" maxlength="255" placeholder="chrome.exe" required>
                   <button class="button ghost pick-app" type="button">Pick current app</button>
@@ -316,7 +342,7 @@
               <p class="muted">Completely bypass visual protection for trusted apps (medical, education, art, news). You are responsible for content displayed in this context.</p>
               <ul id="whitelisted-applications-list" class="rule-list"></ul>
               <form class="rule-form" data-rule-group="whitelisted_applications">
-                <label for="whitelisted-applications-input">Executable name, desktop app ID, or bundle ID</label>
+                <label for="whitelisted-applications-input">Application name, executable name, desktop app ID, or bundle ID</label>
                 <div class="rule-entry">
                   <input id="whitelisted-applications-input" name="value" type="text" maxlength="255" placeholder="org.example.viewer" required>
                   <button class="button ghost pick-app" type="button">Pick current app</button>
@@ -359,7 +385,55 @@
           </div>
         </section>
 
-        <section class="panel vision-settings" aria-labelledby="vision-settings-heading">
+        <section class="panel llm-settings" aria-labelledby="llm-settings-heading" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="section-label">AI INTERVENTION</p>
+              <h2 id="llm-settings-heading">AI meditation</h2>
+            </div>
+            <span id="llm-status" class="signal-tag neutral">API not configured</span>
+          </div>
+          <p class="muted">Optional OpenAI-compatible connection for typing meditation. Screenshots, URLs, window titles, and detection results are never sent.</p>
+          <p class="muted">The companion asks a few questions, says back what it heard, then guides a typing meditation in the language chosen here.</p>
+          <p id="llm-settings-message" class="rules-message" role="status" aria-live="polite"></p>
+          <p id="llm-connection-detail" class="rules-message" role="status" aria-live="polite"></p>
+          <form id="llm-settings-form" class="vision-form">
+            <div class="vision-form-grid">
+              <label>
+                API key
+                <input id="llm-api-key" name="api_key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key">
+              </label>
+              <label>
+                Model
+                <input id="llm-model" name="model" type="text" maxlength="120" placeholder="gpt-4o-mini">
+              </label>
+              <label class="llm-wide-field">
+                OpenAI-compatible endpoint
+                <input id="llm-endpoint" name="endpoint" type="url" maxlength="500" placeholder="https://api.openai.com/v1/chat/completions">
+              </label>
+              <label>
+                Conversation language
+                <select id="llm-language" name="language" aria-label="Conversation language">
+                  <option value="">Follow dashboard language</option>
+                  <option value="en">English</option>
+                  <option value="zh">Chinese</option>
+                </select>
+              </label>
+              <label class="llm-enabled-field">
+                <input id="llm-enabled" name="enabled" type="checkbox" checked>
+                Enable LLM meditation
+              </label>
+            </div>
+            <div class="vision-form-actions">
+              <button id="llm-save-button" class="button primary" type="submit">Save AI settings</button>
+              <button id="llm-test-button" class="button ghost" type="button" title="Sends one short API request using saved settings; usage may be billed.">Test saved connection</button>
+              <button id="llm-clear-key-button" class="button ghost" type="button">Clear saved API key</button>
+            </div>
+          </form>
+          <p class="muted">API keys are stored locally for this device. The dashboard only shows whether a key is configured.</p>
+        </section>
+
+        <section class="panel vision-settings" aria-labelledby="vision-settings-heading" hidden>
           <div class="section-heading">
             <div>
               <p class="section-label">VISUAL DETECTION</p>
@@ -383,33 +457,11 @@
           <form id="vision-settings-form" class="vision-form">
             <div class="vision-form-grid">
               <label>
-                Primary detector
-                <select id="vision-primary-select" name="primary">
-                  <option value="nudenet_640m">NudeNet 640m</option>
-                  <option value="yolo11_nsfw_small">YOLO11 NSFW Small</option>
-                </select>
-              </label>
-              <label>
-                Context model
-                <select id="vision-context-select" name="context">
-                  <option value="off">Off</option>
-                  <option value="viddexa_nano">Viddexa Nano</option>
-                  <option value="viddexa_mini">Viddexa Mini</option>
-                </select>
-              </label>
-              <label>
                 Detection mode
                 <select id="vision-preset-select" name="preset">
                   <option value="low_cpu">Low CPU</option>
                   <option value="balanced">Balanced</option>
                   <option value="high_recall">High Recall</option>
-                </select>
-              </label>
-              <label>
-                Tile detection
-                <select id="vision-tile-enabled-select" name="tiles_enabled">
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
                 </select>
               </label>
               <label>
@@ -420,17 +472,39 @@
                   <option value="fast">Fast</option>
                 </select>
               </label>
-              <label>
-                Tile grid
-                <select id="vision-grid-select" name="grid">
-                  <option value="2x2">2 × 2</option>
-                  <option value="3x3">3 × 3</option>
-                </select>
-              </label>
             </div>
             <details class="vision-advanced">
               <summary>Advanced detection settings</summary>
               <div class="vision-form-grid">
+                <label>
+                  Primary detector
+                  <select id="vision-primary-select" name="primary">
+                    <option value="nudenet_640m">NudeNet 640m</option>
+                    <option value="yolo11_nsfw_small">YOLO11 NSFW Small</option>
+                  </select>
+                </label>
+                <label>
+                  Region ranking model
+                  <select id="vision-context-select" name="context">
+                    <option value="off">Off</option>
+                    <option value="viddexa_nano">Viddexa Nano</option>
+                    <option value="viddexa_mini">Viddexa Mini</option>
+                  </select>
+                </label>
+                <label>
+                  Tile detection
+                  <select id="vision-tile-enabled-select" name="tiles_enabled">
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                  </select>
+                </label>
+                <label>
+                  Tile grid
+                  <select id="vision-grid-select" name="grid">
+                    <option value="2x2">2 × 2</option>
+                    <option value="3x3">3 × 3</option>
+                  </select>
+                </label>
                 <label>
                   Full-screen input size
                   <select id="vision-full-input-select" name="full_input_size">
@@ -581,11 +655,7 @@
               <dd id="vision-primary-detector">NudeNet</dd>
             </div>
             <div>
-              <dt>YOLO11</dt>
-              <dd id="vision-yolo">Off</dd>
-            </div>
-            <div>
-              <dt>Context model</dt>
+              <dt>Region ranking model</dt>
               <dd id="vision-context-model">Tile ranking</dd>
             </div>
             <div>
@@ -611,7 +681,7 @@
           </dl>
         </section>
 
-        <section class="panel history" aria-labelledby="history-heading">
+        <section class="panel history" aria-labelledby="history-heading" hidden>
           <div class="section-heading history-heading">
             <div>
               <p class="section-label">LOCAL RECORD</p>

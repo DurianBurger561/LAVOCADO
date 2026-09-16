@@ -4,20 +4,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from app import config
 from app.settings.schema import VisionSettings, default_vision_settings
-from app.vision.yolo_adapter import yolo_is_requested
+from app.vision.model_manifest import ModelRole, spec_by_id
 
 
 def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str, Any]:
     """Return the Vision Settings group, never medical/art/education modes."""
 
     current = settings or default_vision_settings()
-    yolo_requested = (
-        current.detector.primary == "yolo11_nsfw_small" or yolo_is_requested()
-    )
+    yolo_requested = current.detector.primary == "yolo11_nsfw_small"
     primary = current.detector.primary
-    tile_ranking = bool(current.tiles.enabled and current.context.model != "off")
+    tile_ranking = bool(
+        current.tiles.enabled
+        and current.context.model != "off"
+        and current.context.tile_ranking
+    )
+    ranker_spec = spec_by_id(current.context.model)
     return {
         "primary_detector": primary,
         "primary_detectors": [primary],
@@ -28,13 +30,11 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
         "context_model": {
             "name": current.context.model,
             "huggingface_id": (
-                config.CONTEXT_NANO_MODEL_NAME
-                if current.context.model == "viddexa_nano"
-                else config.CONTEXT_MINI_MODEL_NAME
-                if current.context.model == "viddexa_mini"
+                ranker_spec.huggingface_id
+                if ranker_spec is not None and ranker_spec.role is ModelRole.REGION_RANKER
                 else "off"
             ),
-            "enabled": current.context.model != "off",
+            "enabled": tile_ranking,
             "role": "tile_ranking",
             "can_block": False,
         },
@@ -47,9 +47,6 @@ def vision_settings_snapshot(settings: VisionSettings | None = None) -> dict[str
             "tile_ranking": tile_ranking,
         },
         "thresholds": {
-            "legacy_strong": {
-                label: float(score) for label, score in config.BLOCK_THRESHOLDS.items()
-            },
             "nudenet_640m": dict(current.thresholds.nudenet_640m),
             "yolo11_nsfw_small": dict(current.thresholds.yolo11_nsfw_small),
         },

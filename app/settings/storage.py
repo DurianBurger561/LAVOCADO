@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from app.settings.schema import VisionSettings, sanitize_vision_settings
+from app.settings.schema import SCHEMA_VERSION, VisionSettings, sanitize_vision_settings
 
 SETTINGS_FILENAME = "vision_settings.json"
 _LOCK = Lock()
+LOGGER = logging.getLogger(__name__)
 
 
 def settings_path(data_dir: Path) -> Path:
@@ -19,7 +21,7 @@ def settings_path(data_dir: Path) -> Path:
 
 
 def load_vision_settings(data_dir: Path | None = None) -> VisionSettings:
-    """Load sanitized settings. Missing or corrupt files become defaults."""
+    """Load validated settings; missing, invalid, or incompatible files use defaults."""
 
     if data_dir is None:
         return sanitize_vision_settings(None)
@@ -32,6 +34,9 @@ def load_vision_settings(data_dir: Path | None = None) -> VisionSettings:
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return sanitize_vision_settings(None)
     if not isinstance(payload, dict):
+        return sanitize_vision_settings(None)
+    if payload.get("schema_version") != SCHEMA_VERSION:
+        LOGGER.warning("Unsupported vision settings schema; using typed defaults")
         return sanitize_vision_settings(None)
     return sanitize_vision_settings(payload)
 
@@ -66,7 +71,7 @@ def public_settings_view(settings: VisionSettings) -> dict[str, Any]:
     payload["recommended_locked"] = True
     payload["disclaimer"] = (
         "Experimental Defaults. Reset to Recommended stays locked until "
-        "screen-domain benchmark selects values."
+        "validated calibration values are available."
     )
     payload["options"] = {
         "primary": ["nudenet_640m", "yolo11_nsfw_small"],

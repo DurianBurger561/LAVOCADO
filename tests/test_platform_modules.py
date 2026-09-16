@@ -1,22 +1,89 @@
 """Tests for the process-scoped PlatformAdapter implementations."""
 
+import ctypes
+import subprocess
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.platforms import (
+    SUPPORTED_SYSTEMS,
     UnsupportedPlatformError,
     WindowInfo,
     create_platform_adapter,
 )
-from app.platforms.capture import FallbackCaptureBackend, MSSCapture
-from app.platforms.linux import LinuxPlatform
-from app.platforms.macos import MacOSPlatform
-from app.platforms.windows import WindowsPlatform, enable_dpi_awareness
-from app.platforms.website.windows_uia import WindowsUIAWebsiteReader
+from app.platforms.capture import FallbackCaptureBackend
+from app.platforms.macos import MacOSPlatform, MacOSWindowProvider
 from app.platforms.website.macos_ax import MacOSAXWebsiteReader
-from app.platforms.website.linux_atspi import LinuxAtspiWebsiteReader
+from app.platforms.website.windows_uia import WindowsUIAWebsiteReader
+from app.platforms.windows import (
+    WindowsPlatform,
+    WindowsWindowProvider,
+    enable_dpi_awareness,
+)
+from app.ui.overlay.macos_tk import (
+    activate_macos_overlay_window,
+    prepare_macos_overlay_window,
+)
+from app.ui.overlay.tk_backend import tkinter_help
+
+
+class FakeUser32:
+    title = "Blocked Site - Browser"
+
+    def GetForegroundWindow(self) -> int:
+        return 123
+
+    def GetWindowTextLengthW(self, _window_handle: int) -> int:
+        return len(self.title)
+
+    def GetWindowTextW(
+        self,
+        _window_handle: int,
+        buffer: ctypes.Array[ctypes.c_wchar],
+        _length: int,
+    ) -> int:
+        buffer.value = self.title
+        return len(self.title)
+
+    def GetWindowRect(self, _window_handle: int, rectangle_pointer: object) -> int:
+        rectangle = rectangle_pointer._obj
+        rectangle.left = 100
+        rectangle.top = 200
+        rectangle.right = 900
+        rectangle.bottom = 800
+        return 1
+
+    def GetWindowThreadProcessId(
+        self,
+        _window_handle: int,
+        process_id_pointer: object,
+    ) -> int:
+        process_id_pointer._obj.value = 42
+        return 1
+
+
+class FakeKernel32:
+    def __init__(self) -> None:
+        self.closed_handles: list[int] = []
+
+    def OpenProcess(self, _access: int, _inherit: bool, _process_id: int) -> int:
+        return 456
+
+    def QueryFullProcessImageNameW(
+        self,
+        _process_handle: int,
+        _flags: int,
+        path_buffer: ctypes.Array[ctypes.c_wchar],
+        _path_length_pointer: object,
+    ) -> int:
+        path_buffer.value = r"C:\Program Files\Browser\browser.exe"
+        return 1
+
+    def CloseHandle(self, process_handle: int) -> int:
+        self.closed_handles.append(process_handle)
+        return 1
 
 
 class SuccessfulUser32:
@@ -68,83 +135,10 @@ class PlatformModuleTests(unittest.TestCase):
             MacOSAXWebsiteReader,
         )
 
-    def test_linux_x11_creates_xshm_capture_with_mss_fallback(self) -> None:
-        capture = LinuxPlatform(
-            environ={"XDG_SESSION_TYPE": "x11", "DISPLAY": ":0"},
-            release="generic-linux",
-        ).create_screen_capture()
-
-        self.assertIsInstance(capture, FallbackCaptureBackend)
-        self.assertEqual(capture.status().preferred_backend, "linux_xshm")
-
-    def test_linux_unknown_session_remains_on_mss(self) -> None:
-        capture = LinuxPlatform(
-            environ={},
-            release="generic-linux",
-        ).create_screen_capture()
-
-        self.assertIsInstance(capture, MSSCapture)
-
-    def test_linux_adapter_creates_atspi_website_reader(self) -> None:
-        self.assertIsInstance(
-            LinuxPlatform(environ={}).create_website_reader(),
-            LinuxAtspiWebsiteReader,
-        )
-
-    def test_wayland_uses_atspi_active_pid_when_x11_has_no_window(self) -> None:
-        provider = Mock(active_window=Mock(return_value=None))
-        adapter = LinuxPlatform(environ={}, window_provider=provider)
-        with (
-            patch("app.platforms.website.linux_atspi._NativeAtspiBridge") as bridge,
-            patch("app.platforms.linux._linux_executable_for_pid", return_value="/usr/bin/firefox"),
-        ):
-            bridge.return_value.active_process_id.return_value = 42
-            application = adapter.get_foreground_application()
-
-        self.assertEqual(application.identifier, "firefox")
-        self.assertEqual(application.process_id, 42)
-        self.assertIsNone(application.window_id)
-
-    def test_missing_linux_atspi_does_not_guess_application(self) -> None:
-        adapter = LinuxPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=None)))
-        with patch("app.platforms.website.linux_atspi._NativeAtspiBridge", side_effect=ImportError):
-            self.assertIsNone(adapter.get_foreground_application())
-
-    def test_linux_wayland_creates_portal_capture_with_mss_fallback(self) -> None:
-        capture = LinuxPlatform(
-            environ={
-                "XDG_SESSION_TYPE": "wayland",
-                "WAYLAND_DISPLAY": "wayland-0",
-                "DISPLAY": ":0",
-            },
-            release="generic-linux",
-        ).create_screen_capture()
-
-        self.assertIsInstance(capture, FallbackCaptureBackend)
-        self.assertEqual(
-            capture.status().preferred_backend,
-            "linux_pipewire_portal",
-        )
-
-    def test_linux_adapter_exposes_runtime_capture_route(self) -> None:
-        platform = LinuxPlatform(
-            environ={
-                "WSL_DISTRO_NAME": "Ubuntu-24.04",
-                "WAYLAND_DISPLAY": "wayland-0",
-                "DISPLAY": ":0",
-            },
-            release="microsoft-standard-WSL2",
-        )
-
-        session = platform.desktop_session()
-
-        self.assertEqual(session.kind.value, "wsl")
-        self.assertEqual(session.capture_route.value, "pipewire_portal")
-
     def test_factory_returns_one_adapter_for_the_requested_system(self) -> None:
+        self.assertEqual(SUPPORTED_SYSTEMS, frozenset({"Windows", "Darwin"}))
         self.assertIsInstance(create_platform_adapter("Windows"), WindowsPlatform)
         self.assertIsInstance(create_platform_adapter("Darwin"), MacOSPlatform)
-        self.assertIsInstance(create_platform_adapter("Linux"), LinuxPlatform)
 
     def test_factory_rejects_an_unknown_system(self) -> None:
         with self.assertRaises(UnsupportedPlatformError):
@@ -154,7 +148,6 @@ class PlatformModuleTests(unittest.TestCase):
         home = Path("/users/test")
         windows = WindowsPlatform(environ={}, home=home)
         macos = MacOSPlatform(environ={}, home=home)
-        linux = LinuxPlatform(environ={}, home=home, release="generic-linux")
 
         self.assertEqual(
             windows.default_data_dir(),
@@ -164,21 +157,16 @@ class PlatformModuleTests(unittest.TestCase):
             macos.default_data_dir(),
             home / "Library" / "Application Support" / "LAVOCADO",
         )
-        self.assertEqual(
-            linux.default_data_dir(),
-            home / ".local" / "share" / "lavocado",
-        )
 
     def test_explicit_data_directory_override_has_priority(self) -> None:
-        platform = LinuxPlatform(
-            environ={"LAVOCADO_DATA_DIR": "/tmp/private-lavocado"},
+        platform = WindowsPlatform(
+            environ={"LAVOCADO_DATA_DIR": "C:/private-lavocado"},
             home=Path("/users/test"),
-            release="generic-linux",
         )
 
         self.assertEqual(
             platform.default_data_dir(),
-            Path("/tmp/private-lavocado"),
+            Path("C:/private-lavocado"),
         )
 
     def test_native_data_directory_environment_variables_are_used(self) -> None:
@@ -186,31 +174,23 @@ class PlatformModuleTests(unittest.TestCase):
             environ={"LOCALAPPDATA": "C:/Users/test/AppData/Local"},
             home=Path("C:/Users/test"),
         )
-        linux = LinuxPlatform(
-            environ={"XDG_DATA_HOME": "/tmp/xdg-data"},
-            home=Path("/home/test"),
-            release="generic-linux",
-        )
 
         self.assertEqual(
             windows.default_data_dir(),
             Path("C:/Users/test/AppData/Local/LAVOCADO"),
         )
-        self.assertEqual(
-            linux.default_data_dir(),
-            Path("/tmp/xdg-data/lavocado"),
-        )
 
-    def test_adapters_expose_platform_specific_setup_help(self) -> None:
+    def test_platform_contract_has_no_tk_hooks(self) -> None:
         windows = WindowsPlatform(environ={})
         macos = MacOSPlatform(environ={})
-        linux = LinuxPlatform(environ={}, release="generic-linux")
 
-        self.assertIn("Tcl/Tk", windows.tkinter_help())
-        self.assertIn("python.org", macos.tkinter_help())
-        self.assertIn("python3-tk", linux.tkinter_help())
+        self.assertFalse(hasattr(windows, "prepare_overlay_window"))
+        self.assertFalse(hasattr(macos, "prepare_overlay_window"))
+        self.assertFalse(hasattr(windows, "tkinter_help"))
+        self.assertFalse(hasattr(macos, "tkinter_help"))
+        self.assertIn("Tcl/Tk", tkinter_help("Windows"))
+        self.assertIn("python.org", tkinter_help("Darwin"))
         self.assertIn("Privacy & Security", macos.screen_capture_help())
-        self.assertIn("Wayland", linux.screen_capture_help())
 
     def test_windows_enables_per_monitor_dpi_awareness(self) -> None:
         user32 = SuccessfulUser32()
@@ -228,9 +208,8 @@ class PlatformModuleTests(unittest.TestCase):
         window = WindowInfo(title="Example", app_name="Browser")
         provider = Mock()
         provider.active_window.return_value = window
-        platform = LinuxPlatform(
+        platform = WindowsPlatform(
             environ={},
-            release="generic-linux",
             window_provider=provider,
         )
 
@@ -248,7 +227,6 @@ class PlatformModuleTests(unittest.TestCase):
         for platform in (
             WindowsPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=window))),
             MacOSPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=window))),
-            LinuxPlatform(environ={}, window_provider=Mock(active_window=Mock(return_value=window))),
         ):
             with self.subTest(platform=platform.name):
                 application = platform.get_foreground_application()
@@ -257,32 +235,46 @@ class PlatformModuleTests(unittest.TestCase):
                 self.assertEqual(application.process_id, 42)
                 self.assertNotIn("Private page title", repr(application))
 
-    def test_linux_explicitly_selects_the_qt_webview_backend(self) -> None:
-        environment: dict[str, str] = {}
-        platform = LinuxPlatform(
-            environ=environment,
-            release="generic-linux",
+    @patch(
+        "app.platforms.macos._frontmost_application_identity",
+        return_value=("Safari", "com.apple.Safari", 42),
+    )
+    def test_macos_foreground_app_survives_system_events_failure(self, _identity) -> None:
+        provider = Mock(active_window=Mock(side_effect=RuntimeError("permission")))
+        platform = MacOSPlatform(environ={}, window_provider=provider)
+
+        application = platform.get_foreground_application()
+
+        self.assertIsNotNone(application)
+        self.assertEqual(application.identifier, "com.apple.Safari")
+        self.assertEqual(application.display_name, "Safari")
+        self.assertEqual(application.process_id, 42)
+        self.assertIsNone(application.window_center)
+
+    @patch(
+        "app.platforms.macos._frontmost_application_identity",
+        return_value=("Code", "com.microsoft.VSCode", 99),
+    )
+    def test_macos_recovers_known_browser_when_native_identity_is_stale(self, _identity) -> None:
+        window = WindowInfo(
+            title="",
+            app_name="Google Chrome",
+            left=10,
+            top=20,
+            width=800,
+            height=600,
+        )
+        platform = MacOSPlatform(
+            environ={},
+            window_provider=Mock(active_window=Mock(return_value=window)),
         )
 
-        gui = platform.prepare_webview_environment()
+        application = platform.get_foreground_application()
 
-        self.assertEqual(gui, "qt")
-        self.assertNotIn("LIBGL_ALWAYS_SOFTWARE", environment)
-
-    def test_wsl_uses_software_rendering_without_overwriting_user_values(self) -> None:
-        environment = {
-            "WSL_DISTRO_NAME": "Ubuntu-24.04",
-            "QT_OPENGL": "desktop",
-        }
-        platform = LinuxPlatform(environ=environment, release="microsoft-standard")
-
-        gui = platform.prepare_webview_environment()
-
-        self.assertEqual(gui, "qt")
-        self.assertEqual(environment["QT_OPENGL"], "desktop")
-        self.assertEqual(environment["LIBGL_ALWAYS_SOFTWARE"], "1")
-        self.assertEqual(environment["QT_QUICK_BACKEND"], "software")
-        self.assertIn("--disable-gpu", environment["QTWEBENGINE_CHROMIUM_FLAGS"])
+        self.assertIsNotNone(application)
+        self.assertEqual(application.identifier, "com.google.chrome")
+        self.assertEqual(application.display_name, "Google Chrome")
+        self.assertEqual(application.window_center, (410, 320))
 
     def test_native_platforms_keep_pywebviews_default_backend(self) -> None:
         self.assertIsNone(WindowsPlatform(environ={}).prepare_webview_environment())
@@ -306,7 +298,6 @@ class PlatformModuleTests(unittest.TestCase):
                 self.bindings.append((*args, kwargs))
 
         root = Root()
-        platform = MacOSPlatform(environ={})
         native_window = Mock()
         native_window.title.return_value = "LAVOCADO Protection"
         native_window.collectionBehavior.return_value = 8
@@ -320,11 +311,11 @@ class PlatformModuleTests(unittest.TestCase):
             NSWindowCollectionBehaviorCanJoinAllSpaces=1,
             NSWindowCollectionBehaviorCanJoinAllApplications=262144,
             NSWindowCollectionBehaviorFullScreenAuxiliary=256,
+            NSWindowStyleMaskBorderless=0,
         )
 
         with patch.dict("sys.modules", {"AppKit": appkit}):
-            platform.prepare_overlay_window(root)
-        platform.release_overlay_focus()
+            prepare_macos_overlay_window(root)
 
         native_app.setActivationPolicy_.assert_called_once_with(1)
         native_window.setCollectionBehavior_.assert_called_once_with(
@@ -333,17 +324,64 @@ class PlatformModuleTests(unittest.TestCase):
         self.assertEqual(
             root.tk_calls,
             [
-                ("wm", "attributes", ".", "-class", "nspanel"),
                 (
                     "::tk::unsupported::MacWindowStyle",
                     "style",
                     ".",
-                    "overlay",
-                    ("canJoinAllSpaces", "nonActivating"),
+                    "plain",
+                    "canJoinAllSpaces",
                 ),
             ],
         )
         self.assertEqual(root.bindings[0][0], "<Map>")
+        native_window.setStyleMask_.assert_called_once_with(0)
+
+    def test_macos_overlay_activation_reaches_make_key(self) -> None:
+        root = Mock()
+        root.title.return_value = "LAVOCADO Protection"
+        window = Mock()
+        window.title.return_value = root.title()
+        window.collectionBehavior.return_value = 0
+        application = Mock()
+        application.windows.return_value = [window]
+        appkit = SimpleNamespace(
+            NSApplication=SimpleNamespace(sharedApplication=lambda: application),
+            NSWindowStyleMaskBorderless=0,
+            NSWindowCollectionBehaviorCanJoinAllSpaces=1,
+            NSWindowCollectionBehaviorFullScreenAuxiliary=256,
+        )
+
+        with patch.dict("sys.modules", {"AppKit": appkit}):
+            activate_macos_overlay_window(root)
+
+        application.activateIgnoringOtherApps_.assert_called_once_with(True)
+        window.makeKeyAndOrderFront_.assert_called_once_with(None)
+
+    def test_windows_provider_reads_title_and_bounds(self) -> None:
+        kernel32 = FakeKernel32()
+        window = WindowsWindowProvider(FakeUser32(), kernel32).active_window()
+
+        self.assertIsNotNone(window)
+        self.assertEqual(window.title, "Blocked Site - Browser")
+        self.assertEqual(window.app_name, "browser")
+        self.assertEqual(window.center, (500, 500))
+        self.assertEqual(kernel32.closed_handles, [456])
+
+    def test_macos_provider_parses_app_title_and_bounds(self) -> None:
+        def runner(*_args: object, **_kwargs: object):
+            return subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="Safari\x1fBlocked Site\x1f10\x1f20\x1f800\x1f600\n",
+                stderr="",
+            )
+
+        window = MacOSWindowProvider(runner=runner).active_window()
+
+        self.assertIsNotNone(window)
+        self.assertEqual(window.app_name, "Safari")
+        self.assertEqual(window.title, "Blocked Site")
+        self.assertEqual(window.center, (410, 320))
 
 
 if __name__ == "__main__":

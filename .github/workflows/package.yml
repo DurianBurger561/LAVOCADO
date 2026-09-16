@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   package:
-    name: Package ${{ matrix.edition }} for ${{ matrix.label }}
+    name: Package for ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,46 +19,18 @@ jobs:
         include:
           - os: windows-latest
             label: Windows
-            edition: user
             spec: lavocado.spec
             dist: dist/LAVOCADO
+            executable: dist/LAVOCADO/LAVOCADO.exe
             archive: LAVOCADO-Windows.zip
             artifact: LAVOCADO-Windows
-          - os: windows-latest
-            label: Windows
-            edition: developer
-            spec: lavocado-developer.spec
-            dist: dist/LAVOCADO-Developer
-            archive: LAVOCADO-Developer-Windows.zip
-            artifact: LAVOCADO-Developer-Windows
           - os: macos-latest
             label: macOS
-            edition: user
             spec: lavocado.spec
             dist: dist/LAVOCADO.app
+            executable: dist/LAVOCADO.app/Contents/MacOS/LAVOCADO
             archive: LAVOCADO-macOS.zip
             artifact: LAVOCADO-macOS
-          - os: macos-latest
-            label: macOS
-            edition: developer
-            spec: lavocado-developer.spec
-            dist: dist/LAVOCADO Developer.app
-            archive: LAVOCADO-Developer-macOS.zip
-            artifact: LAVOCADO-Developer-macOS
-          - os: ubuntu-latest
-            label: Linux
-            edition: user
-            spec: lavocado.spec
-            dist: dist/LAVOCADO
-            archive: LAVOCADO-Linux.tar.gz
-            artifact: LAVOCADO-Linux
-          - os: ubuntu-latest
-            label: Linux
-            edition: developer
-            spec: lavocado-developer.spec
-            dist: dist/LAVOCADO-Developer
-            archive: LAVOCADO-Developer-Linux.tar.gz
-            artifact: LAVOCADO-Developer-Linux
 
     steps:
       - name: Check out repository
@@ -72,67 +44,49 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-build.txt
-            requirements-developer.txt
-
-      - name: Install Linux WebView libraries
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            gstreamer1.0-pipewire \
-            gstreamer1.0-tools \
-            libpulse0 \
-            libxcb-shm0 \
-            libxcb-cursor0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-render-util0 \
-            libxcb-util1 \
-            libxcb-xkb1 \
-            libxkbcommon-x11-0 \
-            gcc libcairo2-dev pkg-config python3-dev \
-            libgirepository-2.0-dev gir1.2-atspi-2.0
 
       - name: Install user dependencies
+        if: runner.os == 'macOS'
         run: python -m pip install -r requirements.txt -r requirements-build.txt
 
-      - name: Install developer dependencies
-        if: matrix.edition == 'developer'
-        run: python -m pip install -r requirements-developer.txt
+      - name: Install CPU PyTorch for Windows packages
+        if: runner.os == 'Windows'
+        run: python -m pip install "torch>=2.4,<3" torchvision --index-url https://download.pytorch.org/whl/cpu
 
-      - name: Verify Linux PipeWire capture plugin
-        if: runner.os == 'Linux'
-        run: gst-inspect-1.0 --exists pipewiresrc
+      - name: Install Windows user dependencies with CPU PyTorch
+        if: runner.os == 'Windows'
+        run: python -m pip install -r requirements.txt -r requirements-build.txt
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
-      - name: Download and verify NudeNet 640m
+      - name: Download and verify all bundled models
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/download_models.py
+        run: python scripts/download_models.py --model all
+
+      - name: Load all required models offline
+        env:
+          HF_HUB_OFFLINE: "1"
+        run: python scripts/verify_model_runtime.py
 
       - name: Build native application
         run: python -m PyInstaller --noconfirm --clean ${{ matrix.spec }}
 
+      - name: Run frozen offline self-check
+        shell: bash
+        run: '"${{ matrix.executable }}" --self-check'
+
       - name: Verify bundled dashboard resources
         run: >-
           python -c "from pathlib import Path;
-          expected={'index.html','styles.css','app.js'};
+          expected={'index.html','styles.css','i18n.js','app.js'};
           found={path.name for path in Path('dist').rglob('*') if path.parent.name == 'web'};
           missing=expected-found;
           assert not missing, f'Missing dashboard resources: {sorted(missing)}'"
 
-      - name: Verify User bundle excludes Benchmark Lab
-        if: matrix.edition == 'user'
-        run: python scripts/verify_user_bundle.py "${{ matrix.dist }}"
-
-      - name: Verify Developer bundle includes Benchmark Lab
-        if: matrix.edition == 'developer'
-        run: python scripts/verify_developer_bundle.py "${{ matrix.dist }}"
+      - name: Verify all bundled model files and digests
+        run: python scripts/verify_model_bundle.py "${{ matrix.dist }}"
 
       - name: Archive Windows application
         if: runner.os == 'Windows'
@@ -142,10 +96,6 @@ jobs:
       - name: Archive macOS application
         if: runner.os == 'macOS'
         run: ditto -c -k --sequesterRsrc --keepParent "${{ matrix.dist }}" ${{ matrix.archive }}
-
-      - name: Archive Linux application
-        if: runner.os == 'Linux'
-        run: tar -C dist -czf ${{ matrix.archive }} "$(basename "${{ matrix.dist }}")"
 
       - name: Upload application
         uses: actions/upload-artifact@v7

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.vision.violation_policy import threshold_for_label
+from app.vision.violation_policy import ThresholdPolicy
 
 PROPOSAL_EVIDENCE = 0.6
 STRONG_EVIDENCE = 1.2
@@ -14,12 +14,14 @@ def evidence_from_confidence(
     *,
     proposal_weight: float = PROPOSAL_EVIDENCE,
     strong_weight: float = STRONG_EVIDENCE,
+    policy: ThresholdPolicy | None = None,
+    model: str | None = None,
 ) -> float:
     """Strong detections contribute more evidence than proposal-level scores."""
 
     if label is None:
         return 0.0
-    threshold = threshold_for_label(label)
+    threshold = (policy or ThresholdPolicy.from_settings()).strong(label, model)
     if threshold is None:
         return 0.0
     score = max(0.0, float(confidence))

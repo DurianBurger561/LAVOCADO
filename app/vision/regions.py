@@ -53,19 +53,19 @@ def overlapping_tile_regions(
     if overlap <= 0:
         return tile_regions(image_shape, rows, columns)
 
-    tile_width = min(image_width, max(1, int(round((image_width / columns) * (1 + overlap)))))
-    tile_height = min(image_height, max(1, int(round((image_height / rows) * (1 + overlap)))))
+    tile_width = min(image_width, max(1, round((image_width / columns) * (1 + overlap))))
+    tile_height = min(image_height, max(1, round((image_height / rows) * (1 + overlap))))
     stride_x = 0 if columns == 1 else (image_width - tile_width) / (columns - 1)
     stride_y = 0 if rows == 1 else (image_height - tile_height) / (rows - 1)
 
     regions: list[Region] = []
     for row in range(rows):
-        top = int(round(row * stride_y))
+        top = round(row * stride_y)
         bottom = image_height if row == rows - 1 else min(image_height, top + tile_height)
         if row == rows - 1:
             top = max(0, bottom - tile_height)
         for column in range(columns):
-            left = int(round(column * stride_x))
+            left = round(column * stride_x)
             right = image_width if column == columns - 1 else min(image_width, left + tile_width)
             if column == columns - 1:
                 left = max(0, right - tile_width)
@@ -130,15 +130,15 @@ def xywh_to_xyxy(box: Sequence[int | float]) -> Region | None:
     if width <= 0 or height <= 0:
         return None
     return (
-        int(math.floor(x)),
-        int(math.floor(y)),
-        int(math.ceil(x + width)),
-        int(math.ceil(y + height)),
+        math.floor(x),
+        math.floor(y),
+        math.ceil(x + width),
+        math.ceil(y + height),
     )
 
 
 def crop_region(image: np.ndarray, region: Region) -> np.ndarray | None:
-    """Copy a clamped XYXY region from an in-memory image."""
+    """Return a clamped XYXY view; model adapters copy only if required."""
 
     if image.ndim < 2:
         return None
@@ -150,7 +150,7 @@ def crop_region(image: np.ndarray, region: Region) -> np.ndarray | None:
     bottom = max(0, min(image_height, bottom))
     if right <= left or bottom <= top:
         return None
-    crop = np.ascontiguousarray(image[top:bottom, left:right])
+    crop = image[top:bottom, left:right]
     return crop if crop.size else None
 
 
@@ -191,7 +191,6 @@ def map_box_to_original(
         return None
     return left, top, right, bottom
 
-
 def expand_region(
     region: Region,
     image_shape: Sequence[int],
@@ -217,23 +216,3 @@ def expand_region(
     if expanded_right <= expanded_left or expanded_bottom <= expanded_top:
         return None
     return expanded_left, expanded_top, expanded_right, expanded_bottom
-
-
-def make_context_crop(
-    original_frame: np.ndarray,
-    box: Sequence[int | float],
-    model_shape: Sequence[int],
-    expansion: float,
-) -> tuple[np.ndarray, Region] | None:
-    """Map, expand, and copy a local context crop from an original frame."""
-
-    mapped_region = map_box_to_original(box, model_shape, original_frame.shape)
-    if mapped_region is None:
-        return None
-    context_region = expand_region(mapped_region, original_frame.shape, expansion)
-    if context_region is None:
-        return None
-    crop = crop_region(original_frame, context_region)
-    if crop is None:
-        return None
-    return crop, context_region

@@ -1,6 +1,7 @@
 """Context policy gates vision without changing the existing intervention path."""
 
 import unittest
+from unittest.mock import patch
 
 from app.context.browser_registry import BrowserDefinition
 from app.context.models import (
@@ -22,7 +23,6 @@ from tests.test_service import (
     FakeCapturer,
     FakeChangeScheduler,
     FakeDetector,
-    FakeIntervention,
     FakeOverlay,
     FakePlatform,
     FakeRecorder,
@@ -96,6 +96,57 @@ class ContextPlatform(FakePlatform):
 
 
 class ServiceContextPolicyTests(unittest.TestCase):
+    def test_bypass_skips_vision_and_resets_once_per_transition(self) -> None:
+        store = store_for(application())
+        capturer = FakeCapturer()
+        detector = FakeDetector({1: [False]})
+        scheduler = FakeChangeScheduler([True])
+        service = LavocadoService(
+            FakePlatform(),
+            capturer=capturer,
+            detector=detector,
+            overlay=FakeOverlay(),
+            recorder=FakeRecorder(),
+            change_scheduler=scheduler,
+            context_store=store,
+            context_policy=policy(
+                application_rules=[
+                    ApplicationRule("chrome.exe", ContextPolicyAction.FULL_BYPASS)
+                ]
+            ),
+        )
+
+        with (
+            patch.object(
+                service.vision_pipeline,
+                "reset",
+                wraps=service.vision_pipeline.reset,
+            ) as pipeline_reset,
+            patch.object(
+                service.decision_engine,
+                "reset",
+                wraps=service.decision_engine.reset,
+            ) as engine_reset,
+        ):
+            self.assertEqual(service.check_once(), [])
+            self.assertEqual(service.check_once(), [])
+            self.assertEqual(pipeline_reset.call_count, 1)
+            self.assertEqual(engine_reset.call_count, 1)
+            self.assertEqual(scheduler.reset_count, 1)
+            self.assertEqual(capturer.grabbed_indexes, [])
+            self.assertEqual(detector.checked_indexes, [])
+            self.assertEqual(service.vision_pipeline.evaluate_calls, 0)
+
+            store.observe_application(application("steam.exe"), None)
+            resumed = service.check_once()
+
+            self.assertEqual(len(resumed), 1)
+            self.assertEqual(pipeline_reset.call_count, 2)
+            self.assertEqual(engine_reset.call_count, 2)
+            self.assertEqual(scheduler.reset_count, 2)
+            self.assertEqual(capturer.grabbed_indexes, [1])
+            self.assertEqual(detector.checked_indexes, [1])
+
     def test_default_worker_skips_site_for_application_force_block(self) -> None:
         platform = ContextPlatform("https://private.example/path")
         recorder = FakeRecorder()
@@ -105,7 +156,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=FakeOverlay(),
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_policy=policy(application_rules=[
                 ApplicationRule("chrome.exe", ContextPolicyAction.FORCE_BLOCK)
             ]),
@@ -127,7 +177,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=FakeOverlay(),
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_policy=policy(
                 application_rules=[ApplicationRule(
                     "chrome.exe", ContextPolicyAction.FULL_BYPASS
@@ -159,7 +208,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=overlay,
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_store=store,
             context_policy=policy(
                 application_rules=[ApplicationRule("chrome.exe", ContextPolicyAction.FULL_BYPASS)],
@@ -177,8 +225,8 @@ class ServiceContextPolicyTests(unittest.TestCase):
         self.assertEqual(overlay.shown_on, [2])
         self.assertEqual(recorder.events[0].trigger_type, "website_rule")
         self.assertIsNone(recorder.events[0].label)
-        self.assertEqual(results[0]["monitor_index"], 2)
-        self.assertEqual(service.diagnostics.snapshot()["foreground_context"], {
+        self.assertIsNone(results)
+        self.assertEqual(service.diagnostics.snapshot().to_dict()["foreground_context"], {
             "application_available": True,
             "is_browser": True,
             "website_state": "known",
@@ -197,7 +245,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_store=store_for(application()),
             context_policy=policy(application_rules=[
                 ApplicationRule("chrome.exe", ContextPolicyAction.FORCE_BLOCK)
@@ -218,7 +265,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=FakeOverlay(),
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_store=store_for(application(), "blocked.example"),
             context_policy=policy(website_rules=[WebsiteRule(
                 "https://blocked.example/private?q=secret",
@@ -245,7 +291,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=overlay,
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             change_scheduler=scheduler,
             context_store=store,
             context_policy=policy(website_rules=[WebsiteRule(
@@ -287,7 +332,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=store_for(application()),
             context_policy=policy(application_rules=[
                 ApplicationRule("chrome.exe", ContextPolicyAction.FULL_BYPASS)
@@ -298,7 +342,7 @@ class ServiceContextPolicyTests(unittest.TestCase):
         self.assertEqual(service.state, State.BYPASSED)
         self.assertEqual(capturer.grabbed_indexes, [])
         self.assertEqual(
-            service.diagnostics.snapshot()["foreground_context"]["effective_policy"],
+            service.diagnostics.snapshot().to_dict()["foreground_context"]["effective_policy"],
             "full_bypass",
         )
 
@@ -311,7 +355,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: []}),
             overlay=overlay,
             recorder=recorder,
-            intervention=FakeIntervention(),
             context_store=store_for(application()),
             context_policy=policy(application_rules=[
                 ApplicationRule("chrome.exe", ContextPolicyAction.FULL_BYPASS)
@@ -367,14 +410,12 @@ class ServiceContextPolicyTests(unittest.TestCase):
                 })
                 overlay = FakeOverlay()
                 recorder = FakeRecorder()
-                intervention = FakeIntervention()
                 service = LavocadoService(
                     FakePlatform(),
                     capturer=capturer,
                     detector=detector,
                     overlay=overlay,
                     recorder=recorder,
-                    intervention=intervention,
                     context_store=store,
                     context_policy=policy(),
                     verifier_factory=lambda: TemporalVerifier(3, 2),
@@ -393,12 +434,11 @@ class ServiceContextPolicyTests(unittest.TestCase):
                 self.assertEqual(overlay.shown_on, [1])
                 self.assertEqual(service.state, State.COOLDOWN)
                 self.assertEqual(recorder.events[0].trigger_type, "vision")
-                self.assertEqual(recorder.events[0].label, "TEST")
+                self.assertEqual(recorder.events[0].label, "FEMALE_BREAST_EXPOSED")
                 self.assertEqual(recorder.events[0].monitor_index, 1)
                 self.assertEqual(recorder.shown_event_ids, [1])
-                self.assertEqual(intervention.generate_count, 1)
                 self.assertEqual(
-                    service.diagnostics.snapshot()["foreground_context"],
+                    service.diagnostics.snapshot().to_dict()["foreground_context"],
                     {**availability, **expected_foreground},
                 )
 
@@ -411,7 +451,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=overlay,
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=store_for(application(), "medical.example"),
             context_policy=policy(website_rules=[WebsiteRule(
                 "medical.example", ContextPolicyAction.FULL_BYPASS,
@@ -434,7 +473,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=store_for(application(), "blocked.example"),
             context_policy=policy(website_rules=[WebsiteRule(
                 "blocked.example", ContextPolicyAction.FORCE_BLOCK,
@@ -455,7 +493,6 @@ class ServiceContextPolicyTests(unittest.TestCase):
             detector=FakeDetector({1: [False]}),
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_worker=worker,
             sleeper=lambda _: service.stop(),
         )

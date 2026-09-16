@@ -12,9 +12,7 @@ from threading import Lock
 from typing import TypeVar
 
 _Result = TypeVar("_Result")
-_IDENTITY_TRIGGER_TYPES = frozenset({
-    "application_rule", "website_rule", "blocklist"
-})
+_VISION_TRIGGER_TYPE = "vision"
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +106,7 @@ class EventRecorder:
                 (
                     event.occurred_at,
                     event.trigger_type,
-                    None if event.trigger_type in _IDENTITY_TRIGGER_TYPES else event.label,
+                    event.label if event.trigger_type == _VISION_TRIGGER_TYPE else None,
                     event.confidence,
                     event.monitor_index,
                     int(event.intervention_shown),
@@ -173,9 +171,9 @@ class EventRecorder:
                 occurred_at=str(row["occurred_at"]),
                 trigger_type=str(row["trigger_type"]),
                 label=(
-                    None
-                    if row["trigger_type"] in _IDENTITY_TRIGGER_TYPES
-                    else row["label"]
+                    row["label"]
+                    if row["trigger_type"] == _VISION_TRIGGER_TYPE
+                    else None
                 ),
                 confidence=row["confidence"],
                 monitor_index=int(row["monitor_index"]),

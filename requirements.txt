@@ -1,18 +1,23 @@
 mss>=10.2,<11
 comtypes>=1.4.16,<2; sys_platform == "win32"
-dbus-fast>=5,<6; sys_platform == "linux"
 dxcam>=0.3,<0.4; sys_platform == "win32"
 numpy
+opencv-python-headless>=4.10,<6
 Pillow
 nudenet>=3.4.2,<4
-openai>=2,<3
-pywebview>=6.2,<7; sys_platform != "linux"
-pywebview[qt]>=6.2,<7; sys_platform == "linux"
-pycairo>=1.26,<2; sys_platform == "linux"
-PyGObject>=3.50,<3.55; sys_platform == "linux"
+pywebview>=6.2,<7
 pyobjc-framework-CoreMedia>=10,<13; sys_platform == "darwin"
 pyobjc-framework-ApplicationServices>=10,<13; sys_platform == "darwin"
 pyobjc-framework-CoreText>=10,<13; sys_platform == "darwin"
 pyobjc-framework-libdispatch>=10,<13; sys_platform == "darwin"
 pyobjc-framework-Quartz>=10,<13; sys_platform == "darwin"
 pyobjc-framework-ScreenCaptureKit>=10,<13; sys_platform == "darwin"
+
+# All four bundled models must run in release builds.
+# Viddexa Nano and Mini context models.
+huggingface_hub>=0.34,<1
+transformers>=4.56.1,<5
+torch>=2.4,<3
+
+# YOLO11 NSFW Small primary detector. Pinned weights are downloaded separately.
+ultralytics>=8.3,<9

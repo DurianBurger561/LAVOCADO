@@ -1,25 +1,31 @@
 """Tests for the NORMAL-only vision pipeline wrapper."""
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
 from app.vision.pipeline import VisionPipeline
-from app.vision.violation_policy import ViolationEvidenceType
+from app.vision.preprocessor import FramePreprocessor, PreparedFrame
+from app.vision.violation_policy import (
+    ViolationEvidence,
+    ViolationEvidenceType,
+    VisualViolationClassification,
+)
 from app.vision.yolo_adapter import Yolo11Adapter
 
 
 class FakeDetector:
-    def __init__(self, result: dict[str, object]) -> None:
-        self.result = result
+    def __init__(self, evidence: list[ViolationEvidence] | None = None) -> None:
+        self.evidence = list(evidence or [])
         self.checked = 0
 
-    def check(self, image: object) -> dict[str, object]:
+    def detect(self, prepared: PreparedFrame) -> tuple[ViolationEvidence, ...]:
         self.checked += 1
-        self.image = image
-        return dict(self.result)
+        self.image = prepared.image
+        return tuple(self.evidence)
 
 
 class FakeYolo:
@@ -28,43 +34,78 @@ class FakeYolo:
         return [{"class": "blowjob", "score": 0.91, "box": [1, 1, 4, 4]}]
 
 
-def frame() -> CapturedFrame:
+def frame() -> CaptureFrame:
     image = np.zeros((8, 8, 3), dtype=np.uint8)
-    return CapturedFrame(original_frame=image, model_frame=image, sequence=3)
+    return CaptureFrame(image=image, sequence=3)
 
 
 class VisionPipelineTests(unittest.TestCase):
-    def test_nudenet_only_pipeline_classifies_clear_without_yolo(self) -> None:
-        detector = FakeDetector(
-            {
-                "blocked": False,
-                "reason": "",
-                "label": None,
-                "confidence": 0.0,
-                "box": None,
-                "check_points": [],
-            }
+    def test_reset_clears_shadow_and_resets_decision_state_once(self) -> None:
+        engine = DecisionEngine()
+        pipeline = VisionPipeline(FakeDetector(), engine)
+        pipeline.last_shadow = {"hit": True}
+
+        with patch.object(engine, "reset", wraps=engine.reset) as reset:
+            pipeline.reset()
+
+        self.assertEqual(reset.call_count, 1)
+        self.assertIsNone(pipeline.last_shadow)
+
+    def test_plans_per_monitor_and_skips_full_detector_for_focused_roi(self) -> None:
+        captured = frame()
+        prepared = FramePreprocessor(captured)
+        detector = FakeDetector()
+        local_detector = FakeDetector()
+        decision_engine = DecisionEngine(local_detector=local_detector)
+        decision_engine.tracker.match_or_create(
+            monitor_index=1,
+            box=(1, 1, 4, 4),
+            label="FEMALE_BREAST_EXPOSED",
+            confidence=0.9,
+            source="nudenet_full",
+            frame_sequence=2,
+            evidence_delta=1.0,
         )
+        pipeline = VisionPipeline(detector, decision_engine)
+
+        with patch.object(
+            decision_engine.scan_planner,
+            "prepare_scan",
+            wraps=decision_engine.scan_planner.prepare_scan,
+        ) as plan_scan:
+            focused = pipeline.prepare_scan(
+                captured, 1, prepared_frame=prepared
+            )
+            normal = pipeline.prepare_scan(captured, 2, prepared_frame=prepared)
+            result = pipeline.evaluate(
+                captured, monitor_index=1, scan_plan=focused,
+                prepared_frame=prepared,
+            )
+
+        self.assertEqual(focused.mode, "focused")
+        self.assertNotEqual(normal.mode, "focused")
+        self.assertEqual(plan_scan.call_count, 2)
+        self.assertEqual(detector.checked, 0)
+        self.assertEqual(local_detector.checked, 1)
+        self.assertEqual(result.scan_mode, "focused")
+        self.assertEqual(decision_engine.scheduler.last_plan(1), focused)
+        self.assertEqual(decision_engine.scheduler.last_plan(2), normal)
+
+    def test_nudenet_only_pipeline_classifies_clear_without_yolo(self) -> None:
+        detector = FakeDetector()
         pipeline = VisionPipeline(detector, DecisionEngine())
 
         result = pipeline.evaluate(frame())
 
         self.assertEqual(pipeline.evaluate_calls, 1)
         self.assertEqual(detector.checked, 1)
-        self.assertEqual(result["classification"], "clear")
-        self.assertFalse(result["blocked"])
+        self.assertIs(result.classification, VisualViolationClassification.CLEAR)
+        self.assertGreaterEqual(pipeline.last_latency.vision_total_ms, 0.0)
+        self.assertGreaterEqual(pipeline.last_latency.primary_ms, 0.0)
+        self.assertEqual(pipeline.last_latency.viddexa_ms, 0.0)
 
     def test_yolo_sexual_act_enters_visual_decision(self) -> None:
-        detector = FakeDetector(
-            {
-                "blocked": False,
-                "reason": "",
-                "label": None,
-                "confidence": 0.0,
-                "box": None,
-                "check_points": [],
-            }
-        )
+        detector = FakeDetector()
         pipeline = VisionPipeline(
             detector,
             DecisionEngine(),
@@ -73,14 +114,11 @@ class VisionPipelineTests(unittest.TestCase):
 
         result = pipeline.evaluate(frame())
 
-        self.assertEqual(result["classification"], "violation")
-        self.assertEqual(result["source"], "yolo_sexual_act")
-        evidence_types = {
-            item["evidence_type"]
-            for item in result.get("evidence", [])
-            if isinstance(item, dict)
-        }
-        self.assertIn(ViolationEvidenceType.SEXUAL_ACT.value, evidence_types)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.reason_codes, ("yolo_sexual_act",))
+        self.assertIs(result.evidence_type, ViolationEvidenceType.SEXUAL_ACT)
+        evidence_types = {item.evidence_type for item in result.evidence}
+        self.assertIn(ViolationEvidenceType.SEXUAL_ACT, evidence_types)
 
 
 if __name__ == "__main__":

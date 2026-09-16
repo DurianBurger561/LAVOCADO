@@ -11,8 +11,14 @@ from app.context.models import (
     WebsiteContext,
     WebsiteContextState,
 )
+from app.diagnostics import DiagnosticsStore
 from app.platforms.capture import CaptureBackendStatus
-from app.vision.diagnostics import DiagnosticsStore
+from app.settings.schema import default_vision_settings, merge_vision_settings
+from app.vision.violation_policy import (
+    ThresholdPolicy,
+    VisualViolationClassification,
+    VisualViolationDecision,
+)
 
 
 def make_store() -> DiagnosticsStore:
@@ -25,6 +31,40 @@ def make_store() -> DiagnosticsStore:
 
 
 class DiagnosticsStoreTests(unittest.TestCase):
+    def test_threshold_summary_uses_persisted_policy_not_fixed_config(self) -> None:
+        settings = merge_vision_settings(
+            default_vision_settings(),
+            {"thresholds": {"nudenet_640m": {
+                "FEMALE_BREAST_EXPOSED": {"proposal": 0.70, "strong": 0.75}
+            }}},
+        )
+        store = DiagnosticsStore(
+            model_variant="640m",
+            inference_resolution=640,
+            context_model="off",
+            context_status="disabled",
+            threshold_policy=ThresholdPolicy.from_settings(settings),
+            borderline_margin=0.05,
+        )
+        store.record_scan(
+            monitor_index=1,
+            elapsed_ms=1,
+            decision=VisualViolationDecision(
+                classification=VisualViolationClassification.UNCERTAIN,
+                evidence=(),
+                reason_codes=("nudenet_none",),
+                primary_region=None,
+                frame_sequence=1,
+                label="FEMALE_BREAST_EXPOSED",
+                confidence=0.72,
+            ),
+            temporal=(),
+        )
+
+        summary = store.snapshot().to_dict()["nudenet"]
+        self.assertEqual(summary["threshold"], 0.75)
+        self.assertEqual(summary["status"], "borderline")
+
     def test_foreground_diagnostics_are_coarse_and_clear_when_unavailable(self) -> None:
         store = make_store()
         context = ForegroundContext(
@@ -45,7 +85,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
         )
 
         store.record_foreground_context(context, policy)
-        self.assertEqual(store.snapshot()["foreground_context"], {
+        self.assertEqual(store.snapshot().to_dict()["foreground_context"], {
             "application_available": True,
             "is_browser": True,
             "website_state": "known",
@@ -54,12 +94,12 @@ class DiagnosticsStoreTests(unittest.TestCase):
             "effective_policy": "force_block",
             "vision_called": False,
         })
-        serialized = json.dumps(store.snapshot())
+        serialized = json.dumps(store.snapshot().to_dict())
         for forbidden in ("Private", "private.example", "secret", "chrome.exe"):
             self.assertNotIn(forbidden, serialized)
 
         store.record_foreground_context(None, None)
-        self.assertEqual(store.snapshot()["foreground_context"], {
+        self.assertEqual(store.snapshot().to_dict()["foreground_context"], {
             "application_available": False,
             "is_browser": None,
             "website_state": "unavailable",
@@ -69,7 +109,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             "vision_called": True,
         })
 
-    def test_nonbrowser_and_legacy_blocklist_override(self) -> None:
+    def test_nonbrowser_and_effective_policy_override(self) -> None:
         store = make_store()
         context = ForegroundContext(
             ApplicationContext("code", "Code", "code", "1", 0.0),
@@ -85,7 +125,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             context, policy, effective_override=ContextPolicyAction.FORCE_BLOCK
         )
 
-        foreground = store.snapshot()["foreground_context"]
+        foreground = store.snapshot().to_dict()["foreground_context"]
         self.assertFalse(foreground["is_browser"])
         self.assertEqual(foreground["website_state"], "not_browser")
         self.assertEqual(foreground["effective_policy"], "force_block")
@@ -96,29 +136,29 @@ class DiagnosticsStoreTests(unittest.TestCase):
 
         store.record_capture(
             CaptureBackendStatus(
-                preferred_backend="linux_pipewire_portal",
+                preferred_backend="windows_dxgi",
                 active_backend="mss",
                 fallback=True,
-                fallback_reason="CaptureUnavailableError: portal unavailable",
+                fallback_reason="CaptureUnavailableError: DXGI unavailable",
                 healthy=True,
-                session="wayland",
+                session=None,
                 monitor_count=2,
                 frame_age_ms=12.34,
             )
         )
 
         self.assertEqual(
-            store.snapshot()["capture"],
+            store.snapshot().to_dict()["capture"],
             {
-                "preferred_backend": "linux_pipewire_portal",
+                "preferred_backend": "windows_dxgi",
                 "active_backend": "mss",
                 "fallback": True,
                 "fallback_reason": (
-                    "CaptureUnavailableError: portal unavailable"
+                    "CaptureUnavailableError: DXGI unavailable"
                 ),
                 "healthy": True,
                 "error": None,
-                "session": "wayland",
+                "session": None,
                 "monitor_count": 2,
                 "frame_age_ms": 12.3,
             },
@@ -132,17 +172,19 @@ class DiagnosticsStoreTests(unittest.TestCase):
             monitor_index=2,
             elapsed_ms=183.26,
             scanned_at="2026-09-12T01:02:03.456+00:00",
-            decision={
-                "source": "nudenet_roi",
-                "classification": "violation",
-                "nudenet_label": "FEMALE_BREAST_EXPOSED",
-                "nudenet_score": 0.80,
-                "threshold": 0.65,
-                "context_label": "porn",
-                "context_score": 0.91,
-                "rescue_tile_index": None,
-                "rescue_region": None,
-            },
+            decision=VisualViolationDecision(
+                classification=VisualViolationClassification.VIOLATION,
+                evidence=(),
+                reason_codes=("nudenet_roi",),
+                primary_region=None,
+                frame_sequence=1,
+                label="FEMALE_BREAST_EXPOSED",
+                confidence=0.80,
+                threshold=0.65,
+                context_label="porn",
+                context_score=0.91,
+                monitor_index=2,
+            ),
             temporal=(False, True, True),
             rescue_status={
                 "next_tile_index": 2,
@@ -151,7 +193,7 @@ class DiagnosticsStoreTests(unittest.TestCase):
             },
         )
 
-        snapshot = store.snapshot()
+        snapshot = store.snapshot().to_dict()
         self.assertEqual(snapshot["protection_state"], "CANDIDATE")
         self.assertEqual(snapshot["model"], "NudeNet 640m")
         self.assertEqual(snapshot["last_scan_ms"], 183.3)
@@ -170,21 +212,19 @@ class DiagnosticsStoreTests(unittest.TestCase):
         store.record_scan(
             monitor_index=1,
             elapsed_ms=10,
-            decision={
-                "source": "nudenet_none",
-                "check_points": [
-                    {"class": "FACE_FEMALE", "score": 0.80, "box": [1, 2, 3, 4]},
-                    {
-                        "class": "FEMALE_BREAST_EXPOSED",
-                        "score": 0.40,
-                        "box": [5, 6, 7, 8],
-                    },
-                ],
-            },
+            decision=VisualViolationDecision(
+                classification=VisualViolationClassification.CLEAR,
+                evidence=(),
+                reason_codes=("nudenet_none",),
+                primary_region=None,
+                frame_sequence=1,
+                label="FACE_FEMALE",
+                confidence=0.80,
+            ),
             temporal=(),
         )
 
-        snapshot = store.snapshot()
+        snapshot = store.snapshot().to_dict()
         self.assertEqual(snapshot["nudenet"]["label"], "FACE_FEMALE")
         self.assertEqual(snapshot["nudenet"]["status"], "observed")
         self.assertNotIn("check_points", snapshot)
@@ -192,17 +232,22 @@ class DiagnosticsStoreTests(unittest.TestCase):
 
     def test_snapshot_is_json_serializable_and_isolated(self) -> None:
         store = make_store()
-        first = store.snapshot()
+        typed = store.snapshot()
+        self.assertEqual(typed.protection_state, "STOPPED")
+        self.assertEqual(typed.context_state, "normal")
+        self.assertEqual(typed.scan_mode, "monitoring")
+        self.assertIsNone(typed.latencies["primary_ms"])
+        first = store.snapshot().to_dict()
         first["nudenet"]["label"] = "MUTATED"
 
-        second = store.snapshot()
+        second = store.snapshot().to_dict()
 
         self.assertIsNone(second["nudenet"]["label"])
         json.dumps(second)
 
     def test_schema_does_not_expose_sensitive_content_fields(self) -> None:
         store = make_store()
-        serialized = json.dumps(store.snapshot()).lower()
+        serialized = json.dumps(store.snapshot().to_dict()).lower()
 
         for forbidden in (
             "screenshot",

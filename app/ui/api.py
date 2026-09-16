@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
-from threading import RLock
+from threading import Lock, RLock
 from typing import Any
 
+from app.intervention.llm import DEFAULT_ENDPOINT, DEFAULT_MODEL, LLMClient, LLMUnavailable, resolve_language
+from app.intervention.llm_settings import LLMSettings, load_llm_settings, save_llm_settings
+from app.intervention.llm_status import LLMStatus
 from app.settings.presets import apply_preset
 from app.settings.schema import merge_vision_settings
 from app.settings.storage import (
@@ -16,6 +20,7 @@ from app.settings.storage import (
     save_vision_settings,
 )
 from app.ui.controller import ProtectionStatus
+from app.ui.language import SUPPORTED_LANGUAGES, load_ui_language, save_ui_language
 from app.ui.rules import RuleConflict, RuleEditor
 from app.vision.model_lifecycle import (
     inspect_models,
@@ -38,7 +43,22 @@ class DashboardAPI:
         self.rule_editor = None if rule_store is None else RuleEditor(rule_store)
         self.app_picker = app_picker
         self._data_dir = None if data_dir is None else Path(data_dir)
+        self._ui_language = load_ui_language(self._data_dir)
         self._rule_lock = RLock()
+        self._llm_test_lock = Lock()
+        self._llm_probe = None
+
+    def get_ui_language(self) -> dict[str, Any]:
+        return {"ok": True, "language": self._ui_language}
+
+    def set_ui_language(self, language: str) -> dict[str, Any]:
+        if not isinstance(language, str) or language not in SUPPORTED_LANGUAGES:
+            return {"ok": False, "message": "Unsupported dashboard language."}
+        try:
+            self._ui_language = save_ui_language(self._data_dir, language)
+        except OSError as error:
+            return self._error_result("Could not save dashboard language", error)
+        return {"ok": True, "language": self._ui_language}
 
     def start_protection(self) -> dict[str, Any]:
         try:
@@ -103,6 +123,129 @@ class DashboardAPI:
         except Exception as error:  # noqa: BLE001 - JSON API boundary
             return self._error_result("Could not read vision settings", error)
 
+    def get_llm_settings(self) -> dict[str, Any]:
+        """Return connection metadata without ever returning the API key."""
+
+        try:
+            stored = load_llm_settings(self._data_dir)
+            environment_key = (
+                os.environ.get("LAVOCADO_LLM_API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
+                or os.environ.get("DEEPSEEK_API_KEY")
+                or ""
+            )
+            environment_endpoint = (
+                os.environ.get("LAVOCADO_LLM_ENDPOINT")
+                or os.environ.get("OPENAI_BASE_URL")
+                or os.environ.get("DEEPSEEK_BASE_URL")
+                or ""
+            )
+            environment_model = (
+                os.environ.get("LAVOCADO_LLM_MODEL")
+                or os.environ.get("OPENAI_MODEL")
+                or os.environ.get("DEEPSEEK_MODEL")
+                or ""
+            )
+            client = LLMClient(
+                api_key=(stored.api_key or environment_key) if stored.enabled else "",
+                endpoint=stored.endpoint or environment_endpoint or DEFAULT_ENDPOINT,
+                model=stored.model or environment_model or DEFAULT_MODEL,
+            )
+            status = LLMStatus("unverified" if client.configured else "unconfigured")
+            checked_at = ""
+            probe = self._llm_probe
+            if probe is not None and probe[0] == self._llm_signature(client):
+                status, checked_at = probe[1:]
+            return {
+                "ok": True,
+                "enabled": stored.enabled,
+                "endpoint": stored.endpoint or environment_endpoint or DEFAULT_ENDPOINT,
+                "model": stored.model or environment_model or DEFAULT_MODEL,
+                "language": stored.language,
+                "language_in_use": resolve_language(stored.language, self._data_dir),
+                "api_key_set": bool(stored.api_key or environment_key) and stored.enabled,
+                "connection": {**status.public_view(self._ui_language), "checked_at": checked_at},
+                "api_key_source": (
+                    "dashboard" if stored.api_key
+                    else "environment" if environment_key
+                    else "none"
+                ),
+            }
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not read AI settings", error)
+
+    def save_llm_settings(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Persist optional LLM connection details and keep the key write-only in the UI."""
+
+        try:
+            if self._data_dir is None:
+                raise RuntimeError("LLM settings storage is unavailable.")
+            current = load_llm_settings(self._data_dir)
+            values = payload if isinstance(payload, dict) else {}
+            api_key = values.get("api_key")
+            if isinstance(api_key, str) and api_key.strip():
+                next_key = api_key.strip()
+            elif values.get("clear_api_key") is True:
+                next_key = ""
+            else:
+                next_key = current.api_key
+            endpoint = values.get("endpoint", current.endpoint)
+            model = values.get("model", current.model)
+            enabled = values.get("enabled", current.enabled)
+            language = values.get("language", current.language)
+            settings = LLMSettings(
+                api_key=next_key if isinstance(next_key, str) else current.api_key,
+                endpoint=endpoint.strip() if isinstance(endpoint, str) else current.endpoint,
+                model=model.strip() if isinstance(model, str) else current.model,
+                enabled=enabled if isinstance(enabled, bool) else current.enabled,
+                language=language if isinstance(language, str) else current.language,
+            )
+            save_llm_settings(settings, self._data_dir)
+            self._llm_probe = None
+            result = self.get_llm_settings()
+            if result.get("ok"):
+                result["message"] = "AI settings saved. They apply to the next intervention."
+            return result
+        except Exception as error:  # noqa: BLE001 - JSON API boundary
+            return self._error_result("Could not save AI settings", error)
+
+    @staticmethod
+    def _llm_signature(client: LLMClient) -> tuple[str, str, str]:
+        # Kept in memory only; never part of a bridge response or log.
+        return (client.api_key, client.endpoint, client.model)
+
+    def test_llm_connection(self) -> dict[str, Any]:
+        """Make one short, explicit test request using the saved connection."""
+
+        if not self._llm_test_lock.acquire(blocking=False):
+            return self.get_llm_settings()
+        try:
+            client = LLMClient.from_environment(self._data_dir)
+            signature = self._llm_signature(client)
+            self._llm_probe = (signature, LLMStatus("requesting"), "")
+            try:
+                client.complete(
+                    [{"role": "user", "content": "Reply with OK only."}],
+                    temperature=0,
+                    max_tokens=8,
+                )
+            except LLMUnavailable:
+                pass
+            except Exception:
+                client.status = LLMStatus("fallback", "unexpected")
+            self._llm_probe = (
+                signature, client.status, datetime.now().astimezone().isoformat(timespec="seconds")
+            )
+            return self.get_llm_settings()
+        finally:
+            self._llm_test_lock.release()
+
+    def clear_llm_api_key(self) -> dict[str, Any]:
+        result = self.save_llm_settings({"clear_api_key": True})
+        if result.get("ok"):
+            result["message"] = "Saved API key cleared."
+        return result
+
     def save_vision_settings(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
             current = load_vision_settings(self._data_dir)
@@ -138,7 +281,7 @@ class DashboardAPI:
                 "ok": True,
                 "settings": snapshot,
                 "restarted": restarted,
-                "message": "Preset applied. Values remain experimental until benchmarked.",
+                "message": "Preset applied. Values remain experimental until validated.",
             }
         except Exception as error:  # noqa: BLE001 - JSON API boundary
             return self._error_result("Could not apply detection preset", error)
@@ -210,13 +353,8 @@ class DashboardAPI:
         running = status is _Status.RUNNING if status is not None else False
         if not running:
             return False
-        stop = getattr(self.controller, "stop", None)
-        start = getattr(self.controller, "start", None)
-        if not callable(stop) or not callable(start):
-            return False
-        stop()
-        start()
-        return True
+        restart = getattr(self.controller, "restart", None)
+        return bool(restart()) if callable(restart) else False
 
     def test_intervention(self) -> dict[str, Any]:
         try:

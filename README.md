@@ -1,451 +1,533 @@
 <p align="center">
-  <img src="assets/神秘牛油果.png" height="300" width="300" alt="LAVOCADO logo">
+  <img src="assets/logo.png" height="260" width="260" alt="LAVOCADO logo">
 </p>
 
 <h1 align="center">LAVOCADO / 小油果</h1>
 
-<p align="center"><a href="README.md"><b>🇬🇧🇺🇸🇨🇦🇦🇺🇳🇿English<b></a> | <a href="README.zh.md"><b>🇨🇳中文<b></a></p>
+<p align="center">
+  <strong>Local-first AI protection for the whole desktop.</strong>
+</p>
 
-LAVOCADO is a local-first desktop protection tool. It detects visually explicit
-content in protected contexts, confirms it across multiple frames, and covers
-only the display that triggered protection.
+<p align="center">
+  <a href="README.md"><b>English</b></a> |
+  <a href="README.zh.md"><b>中文</b></a>
+</p>
 
-LAVOCADO does not determine viewing intent. Trusted applications or websites
-can be whitelisted to bypass visual protection for medical, educational,
-artistic, news, or other user-approved purposes.
+---
 
-Screenshots are processed locally and are not stored or sent to an LLM.
-The primary whole-screen detector uses NudeNet 640m at 640-pixel inference.
-The full-resolution capture remains only in memory for later local rechecks.
+LAVOCADO is a local-first desktop protection application for **Windows 10/11 and macOS**.
 
-When a risk is confirmed, the affected display moves through a short pause,
-one guided breath, and a ready stage before enabling the continue button.
-`Esc` remains available as an emergency exit.
+Instead of relying only on website URLs or application names, LAVOCADO can analyze what is actually displayed on screen. Visual evidence is processed locally, rechecked when necessary, confirmed across fresh frames, and followed by a deliberate intervention on the affected monitor.
 
-## Local data and privacy
+## Why LAVOCADO?
 
-When protection is triggered, LAVOCADO stores only the UTC time, trigger type,
-confidence, monitor number, and whether the intervention was shown. Vision
-events may also store the detector class. Application-rule, website-rule, and
-legacy blocklist events store a null label, so application identifiers and
-hostnames are not written to history. It does not store screenshots, full URLs,
-or window titles.
+Unwanted visual content can appear almost anywhere:
 
-The SQLite event database is stored in the current user's application-data
-directory:
+- browsers
+- social and chat applications
+- video players
+- image viewers
+- local files
+- multiple monitors
 
-- Windows: `%LOCALAPPDATA%\\LAVOCADO\\events.db`
-- macOS: `~/Library/Application Support/LAVOCADO/events.db`
-- Linux or WSL: `${XDG_DATA_HOME:-~/.local/share}/lavocado/events.db`
+Traditional URL blockers cannot reliably cover all of these cases.
 
-Set `LAVOCADO_DATA_DIR` before starting the app to use a different directory.
-The same file also stores `application_rules` and `website_rules`. Website
-input is reduced to a hostname before saving; paths and query strings are never
-saved as rules. Edit these rules in the dashboard while protection is stopped.
-Protection loads them at startup.
+LAVOCADO combines **user-controlled context rules** with **local visual AI** to enforce boundaries across the desktop.
 
-See the [context privacy audit](docs/context_privacy_audit.md) for the
-discovery, diagnostics, and history boundaries.
+---
 
-## Protection rules
+## How It Works
 
-The dashboard edits four local rule groups while protection is stopped.
-Changes apply the next time protection starts:
+LAVOCADO separates **user intent** from **visual judgment**.
 
-- Blocked applications
-- Whitelisted applications
-- Blocked websites
-- Whitelisted websites
+```text
+Foreground Application / Website
+              ↓
+        Context Policy
+              ↓
+ ┌────────────┼────────────┐
+ ↓            ↓            ↓
+FORCE_BLOCK FULL_BYPASS   NORMAL
+ ↓            ↓            ↓
+Protect     Skip Vision   Visual AI
+                           ↓
+                     Confirmation
+                           ↓
+                      Intervention
+```
 
-Use **Pick current app** to fill a stable executable name, desktop app ID, or
-bundle ID from the foreground window. Website fields accept a hostname or HTTPS
-URL; only the hostname is saved. Matching can be exact-host or include
-subdomains.
-
-Adding a whitelist asks you to confirm that visual protection will be skipped
-while that app or site is active, unless a higher-priority blacklist also
-matches. Use the whitelist for trusted medical, educational, artistic, news,
-or other non-pornographic sources that may still contain explicit anatomy.
-You are responsible for content shown in a whitelisted context. LAVOCADO does
-not treat a whitelist as a safety certification.
-
-LAVOCADO first identifies the foreground application. If it is a supported
-browser, it also reads the active-tab hostname through the platform
-accessibility API (Windows UI Automation, macOS Accessibility, Linux AT-SPI).
-It never guesses a site from the window title. If the address cannot be read,
-website context stays UNKNOWN and only the application rule applies.
-
-Application and website rules are evaluated independently, then combined:
+Rule priority:
 
 ```text
 FORCE_BLOCK > FULL_BYPASS > NORMAL
 ```
 
-A blacklist always wins over a whitelist. With no matching rules, protection
-runs the existing vision pipeline unchanged.
+- **FORCE_BLOCK** — a blocked app or website immediately triggers protection.
+- **FULL_BYPASS** — a trusted app or website temporarily skips visual protection.
+- **NORMAL** — LAVOCADO analyzes the screen normally.
 
-Layer ownership is fixed: ForegroundContextService discovers context,
-ContextPolicyService evaluates rules, VisionPipeline/VisualDecisionEngine
-judge visual evidence only, TemporalEngine confirms fresh frames, and the
-protection runtime owns overlay/intervention. Detectors never trigger
-protection directly, and the decision engine never receives a hostname,
-application name, or medical/art/education flag.
+A blacklist always takes priority over a whitelist.
 
-- `FORCE_BLOCK` immediately covers the display that contains the foreground
-  window. NudeNet, YOLO, tile ranking, and temporal confirmation are skipped.
-- `FULL_BYPASS` skips the entire vision pipeline while that context is active,
-  then resumes from a fresh state when it leaves.
-- `NORMAL` runs capture and visual-violation detection. Vision only asks
-  whether the frame violates LAVOCADO's visual content rules; it does not
-  classify medical, art, education, or news purpose. Confirmed violations
-  still require 2-of-3 fresh frames before protection.
+Trusted contexts can be used for medical, educational, artistic, news, or other user-approved content.
 
-Live diagnostics show only coarse availability: whether an application was
-identified, whether it is a browser, whether the website is known, and the
-resulting rule actions. They do not include the application identifier,
-hostname, window title, or URL.
+---
 
-The durable product rules are in
-[context-first visual protection](docs/context-first-vision.md).
+## Visual Protection Pipeline
 
-## Optional AI support message
+For normal contexts:
 
-LAVOCADO works without an API key and uses a built-in local message by default.
-To enable a short AI-generated message in the final intervention stage, set an
-OpenAI API key before starting the application:
-
-```powershell
-# Windows PowerShell
-$env:OPENAI_API_KEY="your-api-key"
+```text
+Screen Capture
+     ↓
+Change Scheduling
+     ↓
+Scan Planning
+     ↓
+NudeNet + YOLO11
+     ↓
+Visual Evidence
+     ↓
+ROI / Tile Verification
+     ↓
+Candidate Tracking
+     ↓
+Fresh-frame Confirmation
+     ↓
+Protection
 ```
+
+LAVOCADO does not immediately intervene after one weak model result.
+
+Suspicious regions can be:
+
+- rechecked from the original full-resolution frame
+- analyzed as a higher-resolution region of interest
+- recovered through tile-based scanning
+- tracked across frames
+- confirmed across independent fresh frames
+
+This improves recall without simply lowering thresholds and increasing false positives.
+
+---
+
+## AI Models
+
+LAVOCADO uses pinned and locally verified visual models:
+
+- **NudeNet 640m** — primary explicit-content detection
+- **YOLO11 NSFW Small** — additional visual evidence
+- **Viddexa Nano / Mini** — visual region ranking
+
+Viddexa helps decide **where the primary detectors should look next**. It does not directly trigger protection.
+
+---
+
+## Intervention
+
+When protection is confirmed, LAVOCADO shows an intervention on the affected monitor:
+
+```text
+Pause
+  ↓
+Breathe
+  ↓
+Ready
+```
+
+The goal is not only to classify content, but to create a deliberate interruption before the user continues.
+
+---
+
+## Optional AI Typing Meditation
+
+The Ready stage can optionally include an AI-assisted typing meditation.
+
+The companion can:
+
+- respond to what the user says in the current session
+- help the user reflect on what they want to do next
+- guide a short typing practice
+- support English or Chinese conversations
+
+The AI companion is optional and independent from the core protection pipeline.
+
+LAVOCADO does **not** send screenshots, detection labels, confidence scores, application names, URLs, window titles, or browsing history to the LLM automatically.
+
+Remote AI requests may contain:
+
+- the current conversation
+- recent typing-practice text
+- today's aggregate trigger count
+- a coarse time-of-day bucket
+
+If AI meditation is disabled, unavailable, or fails, LAVOCADO falls back to local guidance.
+
+The AI companion is designed as supportive guidance, not therapy or medical advice.
+
+### Recommended configuration
+
+The current default/recommended model is:
+
+```text
+gpt-4o-mini
+```
+
+Configure it from:
+
+```text
+Dashboard → Settings → AI typing meditation
+```
+
+You will need:
+
+- an API key
+- a compatible Chat Completions endpoint
+- a model compatible with the current request format
+
+OpenAI API usage is billed separately from a ChatGPT subscription.
+
+For provider compatibility, API parameters, environment-variable configuration, troubleshooting, and key-storage details, see the dedicated AI meditation documentation.
+
+---
+
+## Privacy
+
+LAVOCADO is designed to keep sensitive visual data local.
+
+### Screen data
+
+LAVOCADO does not store:
+
+- screenshots
+- image crops
+- pixel data
+
+Visual data is processed locally and kept only as necessary in memory.
+
+### Browser context
+
+Website rules persist only the normalized hostname required for the rule.
+
+LAVOCADO does not persist:
+
+- full URLs
+- URL paths
+- query parameters
+- window titles
+
+### Protection history
+
+Protection history contains only limited metadata such as:
+
+- event time
+- trigger type
+- confidence
+- monitor number
+- whether an intervention was shown
+
+A rule-triggered event does not become a browsing-history record.
+
+### AI meditation
+
+Conversation text is held in application memory and is separate from protection-event history.
+
+Anything the user manually types or pastes into the AI conversation may be sent to the configured API provider.
+
+Saved API credentials are currently stored locally in application settings. Do not commit or share that settings file.
+
+---
+
+## Features
+
+- Local visual content detection
+- Multi-frame confirmation
+- Multi-monitor isolation
+- Application blacklist and whitelist
+- Website blacklist and whitelist
+- Context-first protection policy
+- High-resolution ROI verification
+- Tile-based small-target recovery
+- Candidate tracking
+- Local dashboard
+- Detection presets
+- Model management
+- Privacy-safe diagnostics
+- Local protection history
+- Optional AI typing meditation
+- English and Chinese interface
+- Offline model verification
+- Packaged-build self-check
+
+---
+
+## Supported Platforms
+
+### Windows 10 / 11
+
+- native desktop capture
+- foreground application detection
+- browser context through Windows UI Automation
+
+### macOS
+
+- ScreenCaptureKit
+- foreground application detection
+- browser context through Accessibility APIs
+
+On macOS, allow LAVOCADO or your terminal under:
+
+- **System Settings → Privacy & Security → Screen & System Audio Recording**
+- **System Settings → Privacy & Security → Accessibility**
+
+Screen Recording is required for protection. Accessibility is required for application and browser context detection.
+
+---
+
+## Quick Start
+
+### Requirements
+
+- Python 3.12
+- Windows 10/11 or macOS
+
+Clone the repository:
 
 ```bash
-# macOS, Linux, or WSL
-export OPENAI_API_KEY="your-api-key"
+git clone https://github.com/DurianBurger561/LAVOCADO.git
+cd LAVOCADO
 ```
 
-Only a fixed request for a supportive message is sent. Screenshots, detector
-labels, confidence values, monitor numbers, URLs, and window titles are never
-included. API response storage is disabled for this request. Set
-`LAVOCADO_OPENAI_MODEL` to override the default model.
-
-## Legacy foreground-window blocklist
-
-Prefer the dashboard rules above. `BLOCKED_APPS` in `app/config.py` remains
-only for ambiguous name or title terms that cannot be stored as a stable
-application identifier:
-
-```python
-BLOCKED_APPS = ["Steam", "reddit.com"]
-```
-
-When a term matches, LAVOCADO uses the foreground window's center to cover only
-the display containing that window. Window metadata is checked in memory and is
-not stored or sent to the AI service. An empty list disables this legacy
-watcher. Stable identifiers such as `chrome.exe` are migrated once to
-structured application block rules. Ambiguous terms such as `Steam` stay in the
-legacy watcher so their existing behaviour is preserved.
-
-On macOS, foreground-window details require Accessibility permission for the
-terminal or packaged application. On X11 Linux, install `xprop` and `xwininfo`
-(provided by `x11-utils` on Ubuntu). WSL can only inspect window metadata that
-WSLg exposes; use a native Windows build to match all Windows applications.
-
-## Supported platforms
-
-- Windows 10/11
-- macOS
-- Linux with native X11 or Wayland screen capture, including WSLg
-
-Wayland uses the desktop's ScreenCast Portal and PipeWire. Approve the displays
-in the system picker when protection starts. Explicitly cancelling or denying
-that request stops capture instead of bypassing the decision through MSS.
-
-Runtime platform integration is isolated under `app/platforms/`:
-
-- `windows.py` contains User32/Kernel32 foreground-window access, DPI setup,
-  Windows data paths, and native runtime guidance.
-- `macos.py` contains System Events foreground-window access, macOS data paths,
-  and permission guidance.
-- `linux.py` contains X11 foreground-window access, XDG data paths, and the Qt
-  WebView setup used by Linux and WSLg.
-
-Website discovery is also platform-specific and lives under
-`app/platforms/website/`: Windows UI Automation, macOS `AXUIElement`, and
-Linux AT-SPI. A failed or unavailable reader never stops visual protection;
-the website side stays UNKNOWN.
-
-Each process creates one `PlatformAdapter` and passes it to capture, blocklist,
-overlay, storage, and dashboard composition. Business modules therefore do not
-select an operating system or import a concrete platform implementation.
-
-## Setup
-
-Use Python 3.12 and create a virtual environment.
-
-### Windows PowerShell
+### Windows
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python scripts/download_models.py
-python main.py
+
+python scripts/download_models.py --model all
+python main.py --self-check
+python main.py dashboard
 ```
 
 ### macOS
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
+
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python scripts/download_models.py
-python main.py
+
+python scripts/download_models.py --model all
+python main.py --self-check
+python main.py dashboard
 ```
 
-On first launch, allow Terminal or LAVOCADO under **System Settings → Privacy &
-Security → Screen & System Audio Recording**, then restart the application.
-Browser address-bar discovery also requires **Privacy & Security → Accessibility**;
-without that permission, website context remains UNKNOWN.
+---
 
-### Ubuntu, Linux, or WSL
+## Usage
 
-```bash
-sudo apt install \
-  python3-tk x11-utils libpulse0 libxkbcommon-x11-0 libxcb-shm0 \
-  gstreamer1.0-tools gstreamer1.0-pipewire \
-  gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-  libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
-  libxcb-render-util0 libxcb-util1 libxcb-xkb1 \
-  gcc libcairo2-dev pkg-config python3-dev \
-  libgirepository-2.0-dev gir1.2-atspi-2.0
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python scripts/download_models.py
-python main.py
-```
-
-Linux explicitly selects pywebview's Qt backend. PyGObject/AT-SPI is used only
-for foreground browser address-bar discovery; if desktop accessibility is
-unavailable, the website remains UNKNOWN and visual protection continues.
-Under WSLg, LAVOCADO defaults
-Qt WebEngine to software rendering to avoid Mesa/Zink failures when no DRM
-render node is exposed. User-provided Qt or Mesa environment values are not
-overwritten.
-
-Validate the current Linux capture route without opening a capture session:
-
-```bash
-python scripts/validate_linux_capture.py --self-check
-```
-
-Run the live validation on an actual X11, Wayland, or WSLg desktop with:
-
-```bash
-python scripts/validate_linux_capture.py
-```
-
-The live check requests two fresh frames from every selected display, validates
-their dimensions, BGR format, and advancing sequence, then discards them. It
-never saves or uploads pixels. On Wayland, approve every display in the system
-picker. Cancelling the picker reports `permission_denied` without trying MSS.
-The JSON result should report `linux_xshm` for X11,
-`linux_pipewire_portal` for Wayland, or `mss` with a fallback reason when a
-native backend is technically unavailable. See the complete
-[Linux capture validation checklist](docs/linux-capture-validation.md) for the
-GNOME, KDE, WSLg, permission, and multi-display matrix.
-
-The pinned 640m model is about 99 MiB and is downloaded from NudeNet's official
-GitHub release with byte-size and SHA-256 verification. It is excluded from Git.
-If it is absent during a source run, LAVOCADO logs a warning and falls back to
-NudeNet 320n; packaged builds require the verified 640m file.
-Set `LAVOCADO_NUDENET_MODEL` to use a local 640m file at another path.
-
-NudeNet 640m, YOLO11 NSFW Small, Viddexa Nano, and Viddexa Mini are required
-local downloads from pinned sources. The dashboard Download all button or
-`python scripts/download_models.py` fetches them and verifies hash or revision.
-YOLO11 NSFW Small maps sexual-act and anatomy labels onto the same visual-violation
-policy. Missing ultralytics or weights still fall back to NudeNet:
-
-```bash
-python -m pip install -r requirements-yolo.txt
-python scripts/download_models.py --model yolo11_nsfw_small
-```
-
-To compare 320n and 640m latency locally without saving any analysis output:
-
-```bash
-python scripts/benchmark_detectors.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
-```
-
-Developer Benchmark Lab keeps two scoreboards separate. Vision Benchmark
-asks only whether the pixels violate LAVOCADO's visual content rules
-(Violation / Clear — Visual Policy Ground Truth). Scenario tags such as
-medical, education, art, or news are metadata; they never force Allow.
-Full Pipeline Benchmark adds application/website fixtures and reports
-FORCE_BLOCK, FULL_BYPASS, or NORMAL plus the Failure Explorer
-(context policy, rules, whether Vision ran, detector evidence, temporal
-state, final action). Full Product Benchmark runs Context + Vision +
-Temporal: one visual violation is not enough; protection needs 2 of 3
-fresh frames. UNCERTAIN does not count as a temporal hit:
-
-```bash
-python scripts/benchmark_vision.py --tag medical /path/to/test-image.jpg
-python scripts/benchmark_pipeline.py --website-action full_bypass --tag medical
-python scripts/benchmark_pipeline.py --website-unknown --vision-classification violation --temporal-confirmed
-python scripts/benchmark_pipeline.py --vision-frames violation,violation,clear --tag medical
-```
-
-To compare the native capture path with MSS in isolated developer processes:
-
-```bash
-python -m pip install -r requirements-benchmark.txt
-python scripts/benchmark_capture.py
-```
-
-The capture benchmark reports aggregate latency, frame age, CPU, resident
-memory, display resolution, and capture-to-NudeNet-decision timing. It does not
-retain or upload frames. See the
-[capture benchmark guide](docs/capture-benchmark.md) for individual backend
-commands, permission behaviour, and the resolution/monitor test matrix.
-
-For release stability validation, run the capture soak tool for at least one
-hour per platform and backend mode:
-
-```bash
-python scripts/soak_capture.py --backend auto --duration-seconds 3600
-```
-
-It detects stalled sequences, unhealthy backends, memory/resource growth,
-fallback transitions, and incomplete cleanup without retaining frames. See the
-[capture soak-testing guide](docs/capture-soak-testing.md) for the eight-hour
-command, failure thresholds, and platform matrix.
-
-### Optional tile-ranking benchmark
-
-The Viddexa five-class model is currently an optional development dependency
-and is not yet included in release packages. When installed, it only ranks
-tiles so the primary detector can recheck the highest porn/hentai-risk region
-first. Viddexa never confirms viewing purpose, never blocks on its own, and
-never promotes a borderline NudeNet result to a violation. Install and
-benchmark ranking latency with:
-
-```bash
-python -m pip install -r requirements-context.txt
-python scripts/benchmark_context.py /path/to/test-image-1.jpg /path/to/test-image-2.jpg
-python scripts/benchmark_ranking.py --tiles '[{"index":0,"scores":{"porn":0.99},"primary_hit":false},{"index":1,"scores":{"porn":0.2},"primary_hit":true}]' --baseline-hits 6 --with-tile-hits 8 --positives 10
-```
-
-Viddexa Benchmark reports tile-ranking quality, candidate prioritization,
-recall gain, and latency. It does not treat Viddexa porn accuracy as product
-Block accuracy. NudeNet/YOLO Detector Benchmark remains recall, precision,
-small-target recall, ROI rescue gain, tile recall, and latency.
-
-The pinned model files are downloaded from Hugging Face, then inference runs
-locally. Benchmark images are not uploaded or saved, and the command prints
-only numbered results rather than input paths. If the dependencies or model are
-unavailable, LAVOCADO remains able to run in NudeNet-only mode. Confirmed
-visual violations still require 2-of-3 fresh frames before protection.
-
-For small-content rescue, each monitor is divided into four tiles. Viddexa
-ranks those tiles by porn/hentai risk; a high rank only asks the same NudeNet
-640m instance to recheck that tile. A rescued tile is pinned for the next two
-checks so the temporal verifier can confirm or reject the same region. Rescue
-is disabled automatically when only the NudeNet 320n fallback is available.
-
-Protection diagnostics are kept in a thread-safe in-memory snapshot. They
-include model availability, latest scan latency, monitor number, top detector
-metadata, context result, decision source, temporal history, rescue schedule,
-and coarse foreground-policy state. Capture health reports the preferred and
-active backend, fallback state and reason, frame age, and detected display
-count. The snapshot uses an explicit safe schema and never contains image
-pixels, screenshots, crops, URLs, window titles, application identifiers,
-hostnames, or image paths. It is not written to SQLite or sent to OpenAI.
-
-Every fresh frame also passes through a per-monitor change scheduler before
-NudeNet inference. Native changed-region metadata is preferred when the active
-backend provides it; otherwise LAVOCADO compares a bounded 64x64 grayscale map
-in memory. The first frame, periodic safety frames, and temporal follow-up
-frames after a candidate are always scanned. The change map is never written
-to disk, added to diagnostics, or uploaded.
-
-Source developers can explicitly test `Auto`, native-only, and MSS-only capture
-paths. This override is environment-gated, is disabled in packaged user builds,
-and is not exposed by the dashboard. See the
-[developer capture override guide](docs/developer-capture-override.md) for the
-cross-platform commands and permission-policy notes.
-
-The implementation-to-requirement mapping and remaining physical-platform
-checks are tracked in the
-[native capture acceptance checklist](docs/native-capture-acceptance.md).
-
-When protection is dashboard-owned, a fixed stdin/stdout message protocol
-copies that safe snapshot from the protection child into dashboard memory.
-Only start, stop, diagnostic-read, test-intervention, and local rule-edit
-operations are supported; the bridge cannot execute commands or access
-arbitrary files. A manual test intervention is shown by the protection process
-on its GUI main thread and does not create a SQLite protection event.
-
-## Use LAVOCADO
-
-Start protection directly (the existing default):
+Run protection directly:
 
 ```bash
 python main.py
 ```
 
-Or open the WebView dashboard to start and stop protection, edit application
-and website rules, inspect live diagnostics, test the intervention, and view
-recent privacy-safe events:
+or:
+
+```bash
+python main.py protect
+```
+
+Open the dashboard:
 
 ```bash
 python main.py dashboard
 ```
 
-The dashboard uses pywebview with local HTML, CSS, and JavaScript. It exposes
-only the fixed `DashboardAPI`, waits for `pywebviewready` before reading state,
-and uses private browsing mode. Linux installs use the Qt backend; Windows uses
-WebView2 when available, and macOS uses the system WebKit view. Closing the
-window stops and collects the dashboard-owned Protection child.
-
-The dashboard launches protection as a separate process so the overlay remains
-on the GUI main thread on Windows, macOS, and Linux. Closing the dashboard asks
-the protection process to stop cleanly.
-
-On a headless machine, inspect recent local events in the terminal:
+View recent privacy-safe events:
 
 ```bash
 python main.py events --limit 20
 ```
 
-## Build desktop applications
+Run the local health check:
 
-Install the separate build dependency and build on the target operating system:
+```bash
+python main.py --self-check
+```
+
+The dashboard can be used to:
+
+- start and stop protection
+- configure application and website rules
+- change visual settings
+- apply detection presets
+- manage local models
+- view diagnostics
+- test the intervention
+- view recent events
+- configure AI typing meditation
+
+---
+
+## Architecture
+
+```text
+                    Local Dashboard
+                          │
+                          ▼
+               Protection Controller
+                          │
+                    child process
+                          ▼
+                    LavocadoService
+                   /               \
+             Context               Vision
+               │                    │
+               ▼                    ▼
+        Context Policy         CaptureFrame
+               │                    │
+      ┌────────┼────────┐           ▼
+      ↓        ↓        ↓    ProtectionRuntime
+   BLOCK    BYPASS    NORMAL         │
+      │        │        │            ▼
+      │        │        └──────→ Visual Pipeline
+      │        │                     │
+      │        │                     ▼
+      │        │              Temporal Verify
+      │        │                     │
+      └────────┴─────────────────────┘
+                          │
+                          ▼
+                     Intervention
+```
+
+Important boundaries:
+
+- Context decides **whether Vision runs**.
+- Vision decides **what visual evidence exists**.
+- Detectors produce evidence; they never trigger protection directly.
+- Viddexa ranks regions; it does not decide protection.
+- Temporal confirmation uses independent fresh frames.
+- Visual runtime state is isolated per monitor.
+- Platform-specific APIs stay behind platform adapters.
+
+---
+
+## Reliability
+
+LAVOCADO treats models and packaged assets as part of the product.
+
+```text
+Pinned Model Manifest
+        ↓
+Download
+        ↓
+Integrity Verification
+        ↓
+Offline Runtime Verification
+        ↓
+PyInstaller
+        ↓
+Frozen Self-Check
+```
+
+Required models are verified before release packaging.
+
+Run:
+
+```bash
+python main.py --self-check
+```
+
+to validate the local or packaged application.
+
+---
+
+## Build
+
+Install build dependencies:
 
 ```bash
 python -m pip install -r requirements.txt -r requirements-build.txt
-python scripts/download_models.py
+```
+
+Download the required models:
+
+```bash
+python scripts/download_models.py --model all
+```
+
+Build:
+
+```bash
 python -m PyInstaller --noconfirm --clean lavocado.spec
 ```
 
-The output is written under `dist/`. PyInstaller applications must be built on
-each target operating system; a Windows executable or macOS application cannot
-be produced directly from WSL/Linux.
+The generated application is written to:
 
-The **Package** workflow can build downloadable Windows, macOS, and Linux
-artifacts without requiring three local machines. Open the repository's
-**Actions** tab, select **Package**, choose **Run workflow**, and download the
-three artifacts when all matrix jobs finish. It also runs automatically for
-tags beginning with `v`.
+```text
+dist/
+```
 
-Packaged applications open the dashboard when launched without arguments. The
-Windows and macOS artifacts are currently unsigned, so development machines may
-show the normal unknown-publisher warning. Do not distribute them as a trusted
-release until code signing is configured.
+Windows and macOS applications must be built on their respective target operating systems.
 
-## Run tests
+---
+
+## Tests
+
+Run the full test suite:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+---
+
+## Project Structure
+
+```text
+LAVOCADO/
+├── main.py
+├── app/
+│   ├── context/          # foreground app/site discovery and policy
+│   ├── intervention/     # intervention sequence and event history
+│   ├── platforms/        # Windows/macOS integrations
+│   ├── settings/         # typed runtime settings
+│   ├── ui/               # dashboard and overlay
+│   └── vision/           # visual AI pipeline
+│
+├── scripts/              # model download and verification tools
+├── tests/
+├── lavocado_packaging/   # shared packaging helpers
+└── lavocado.spec
+```
+
+---
+
+## What Makes LAVOCADO Different?
+
+| Capability                       | URL-only blocker | Single-image NSFW classifier | LAVOCADO |
+| -------------------------------- | ---------------: | ---------------------------: | -------: |
+| Website rules                    |              Yes |                           No |      Yes |
+| Application rules                |          Limited |                           No |      Yes |
+| Protects final desktop pixels    |               No |                          Yes |      Yes |
+| Local visual processing          |              N/A |                      Depends |      Yes |
+| High-resolution recheck          |               No |                   Usually no |      Yes |
+| Fresh-frame confirmation         |               No |                   Usually no |      Yes |
+| Multi-monitor isolation          |               No |                         Rare |      Yes |
+| User-controlled trusted contexts |          Limited |                           No |      Yes |
+| Deliberate intervention flow     |          Limited |                           No |      Yes |
+
+---
+
+## Design Principle
+
+> **User intent belongs to policy.
+> Visual judgment belongs to AI.
+> Sensitive screen data stays local.**
+
+LAVOCADO turns a user's chosen digital boundary into a practical, privacy-conscious desktop protection system.

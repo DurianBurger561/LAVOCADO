@@ -24,7 +24,6 @@ from app.context.policy.website import WebsitePolicy
 from app.context.settings import (
     RuleSettings,
     RuleSettingsStore,
-    unmigrated_legacy_terms,
 )
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 
@@ -88,21 +87,6 @@ class RuleSettingsTests(unittest.TestCase):
                             WebsiteMatchMode.EXACT_HOST),
             )))
         self.assertEqual(store.load(), original)
-
-    def test_legacy_migration_only_copies_stable_identifiers_once(self) -> None:
-        terms = ("Chrome.EXE", "Steam", "reddit.com")
-        store = RuleSettingsStore(self.database, legacy_blocked_apps=terms)
-
-        self.assertEqual(
-            store.load().application_rules,
-            (ApplicationRule("chrome.exe", Action.FORCE_BLOCK),),
-        )
-        self.assertEqual(unmigrated_legacy_terms(terms), ("Steam", "reddit.com"))
-        store.save(RuleSettings())
-        self.assertEqual(
-            RuleSettingsStore(self.database, legacy_blocked_apps=terms).load(),
-            RuleSettings(),
-        )
 
     def test_corrupt_conflicting_rows_still_resolve_force_block(self) -> None:
         store = RuleSettingsStore(self.database)

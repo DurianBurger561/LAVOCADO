@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.platforms.linux import LinuxPlatform
+from app.platforms.windows import WindowsPlatform
 from app.ui.api import DashboardAPI
 from app.ui.web_dashboard import dashboard_entry_path, run_web_dashboard
 
@@ -94,7 +94,7 @@ class WebDashboardTests(unittest.TestCase):
         webview = FakeWebview()
         controller = FakeController()
         recorder = FakeRecorder()
-        platform = LinuxPlatform(environ={}, release="generic-linux")
+        platform = WindowsPlatform(environ={})
 
         run_web_dashboard(
             platform,
@@ -111,7 +111,7 @@ class WebDashboardTests(unittest.TestCase):
         self.assertEqual(options["min_size"], (850, 600))
         self.assertEqual(
             webview.start_call,
-            {"http_server": True, "private_mode": True, "gui": "qt"},
+            {"http_server": True, "private_mode": True},
         )
         self.assertEqual(len(webview.window.events.closed.handlers), 1)
         webview.window.events.closed.handlers[0]()
@@ -123,6 +123,7 @@ class WebDashboardTests(unittest.TestCase):
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
 
         self.assertIn('href="styles.css"', html)
+        self.assertIn('src="i18n.js"', html)
         self.assertIn('src="app.js"', html)
         self.assertIn('id="app-nav"', html)
         self.assertIn('data-view="home"', html)
@@ -139,10 +140,39 @@ class WebDashboardTests(unittest.TestCase):
             "add_rule",
             "remove_rule",
             "get_vision_settings",
+            "get_ui_language",
+            "set_ui_language",
         ):
             self.assertIn(method, script)
         self.assertNotIn("innerHTML", script)
         self.assertNotIn("eval(", script)
+
+    def test_navigation_hides_other_pages_and_starts_live_polling_independently(self) -> None:
+        html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+        styles = (WEB_ROOT / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('class="panel home-overview"', html)
+        for panel in (
+            'class="hero panel" aria-labelledby="protection-heading" hidden',
+            'class="dashboard-grid" hidden',
+            'class="panel rules" aria-labelledby="rules-heading" hidden',
+            'class="panel vision-settings" aria-labelledby="vision-settings-heading" hidden',
+            'class="panel history" aria-labelledby="history-heading" hidden',
+        ):
+            self.assertIn(panel, html)
+        self.assertIn("[hidden] {\n  display: none !important;", styles)
+        self.assertIn('node.hidden = view !== "home"', script)
+        self.assertIn('node.hidden = view !== "protection"', script)
+        self.assertIn('node.hidden = view !== "history"', script)
+        self.assertIn('node.hidden = view !== "settings"', script)
+        self.assertIn('text("home-last-scan", lastScan)', script)
+        self.assertIn('text("home-capture-mode", mode.label)', script)
+        self.assertIn('text("home-runtime-state", runtimeState)', script)
+        self.assertIn('text("protection-runtime-state", runtimeState)', script)
+        self.assertIn("void Promise.allSettled([", script)
+        self.assertNotIn("await Promise.all([", script)
+        self.assertIn("setInterval(refreshDiagnostics, 500)", script)
 
     def test_dashboard_has_four_rule_groups_and_whitelist_confirmation(self) -> None:
         html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
@@ -155,10 +185,9 @@ class WebDashboardTests(unittest.TestCase):
             self.assertIn(f'data-rule-group="{group}"', html)
             self.assertIn(f'"{group}"', script)
         self.assertIn('id="rule-confirmation"', html)
-        self.assertIn("Visual protection will be completely disabled", script)
-        self.assertIn("You are responsible for content", script)
-        self.assertIn("medical, educational, artistic, news", script)
-        self.assertIn("白名单中的应用和网站将完全跳过", script)
+        self.assertIn("Whitelisted applications bypass visual protection.", script)
+        self.assertIn("Whitelisted websites bypass visual protection.", script)
+        self.assertIn("You are responsible for the content", script)
         self.assertIn("LAVOCADO does not determine viewing intent", html)
         self.assertIn('id="vision-settings-heading"', html)
         self.assertIn("VISUAL DETECTION", html)
@@ -227,7 +256,6 @@ class WebDashboardTests(unittest.TestCase):
 
         for field in (
             "vision-primary-detector",
-            "vision-yolo",
             "vision-context-model",
             "vision-detection-mode",
             "vision-thresholds",
@@ -240,8 +268,8 @@ class WebDashboardTests(unittest.TestCase):
                 self.assertIn(f'"{field}"', script)
         self.assertIn('"get_vision_settings"', script)
         self.assertIn("decision-classification", script)
-        self.assertIn('id="diag-yolo"', html)
-        self.assertIn('"diag-yolo"', script)
+        self.assertNotIn('id="diag-yolo"', html)
+        self.assertNotIn('id="vision-yolo"', html)
         for field in (
             "scan-mode",
             "scan-total-ms",
@@ -269,13 +297,11 @@ class WebDashboardTests(unittest.TestCase):
         script = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
 
         for label in (
-            "Native · ${captureBackendName(backend)}",
+            "Native · {backend}",
             "MSS · Fallback",
             "MSS · Active",
             "Windows DXGI",
             "macOS ScreenCaptureKit",
-            "Linux PipeWire Portal",
-            "Linux XShm",
         ):
             with self.subTest(label=label):
                 self.assertIn(label, script)
@@ -284,7 +310,7 @@ class WebDashboardTests(unittest.TestCase):
         requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
 
         self.assertIn("pywebview>=6.2,<7", requirements)
-        self.assertIn('sys_platform == "linux"', requirements)
+        self.assertNotIn('pywebview[qt]', requirements)
 
     def test_pyinstaller_spec_bundles_all_web_resources(self) -> None:
         spec = _packaging_source()
@@ -301,13 +327,6 @@ class WebDashboardTests(unittest.TestCase):
         requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
         self.assertIn('"ApplicationServices"', spec)
         self.assertIn('pyobjc-framework-ApplicationServices', requirements)
-
-    def test_linux_packaging_includes_atspi_reader(self) -> None:
-        spec = _packaging_source()
-        requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
-        self.assertIn('"gi.repository.Atspi"', spec)
-        self.assertIn('get_gi_typelibs(', spec)
-        self.assertIn('PyGObject>=3.50', requirements)
 
 
 if __name__ == "__main__":

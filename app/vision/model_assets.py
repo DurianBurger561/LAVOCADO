@@ -8,26 +8,14 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
-NUDENET_640M_FILENAME = "640m.onnx"
-NUDENET_640M_SIZE = 103_538_690
-NUDENET_640M_SHA256 = (
-    "04fe3d77980780c1f8297dc6d7f942fd5b3abe6942a188f742a85241e4f634eb"
-)
-NUDENET_640M_DOWNLOAD_URL = (
-    "https://api.github.com/repos/notAI-tech/NudeNet/releases/assets/176832019"
-)
-
-YOLO11_NSFW_SMALL_FILENAME = "yolo11.pt"
-YOLO11_NSFW_SMALL_SIZE = 19_159_379
-YOLO11_NSFW_SMALL_SHA256 = (
-    "cd268d5ac84058fc9f3681bcc5446775e7ca1fdcf53948277a8b7ba12055eb10"
-)
-YOLO11_NSFW_SMALL_REPO = "erax-ai/EraX-NSFW-V1.0"
-YOLO11_NSFW_SMALL_REVISION = "aea60ac8d2ebcbe0fcbb29e623eba99945b988a6"
-YOLO11_NSFW_SMALL_REMOTE_NAME = "erax_nsfw_yolo11s.pt"
-YOLO11_NSFW_SMALL_DOWNLOAD_URL = (
-    "https://huggingface.co/erax-ai/EraX-NSFW-V1.0/resolve/"
-    f"{YOLO11_NSFW_SMALL_REVISION}/{YOLO11_NSFW_SMALL_REMOTE_NAME}"
+from app.vision.model_manifest import (
+    NUDENET_640M_FILENAME,
+    NUDENET_640M_SHA256,
+    NUDENET_640M_SIZE,
+    VIDDEXA_MODEL_FILES,
+    YOLO11_NSFW_SMALL_FILENAME,
+    YOLO11_NSFW_SMALL_SHA256,
+    YOLO11_NSFW_SMALL_SIZE,
 )
 
 
@@ -53,6 +41,45 @@ def bundled_yolo_model_path(root: Path | None = None) -> Path:
         (resource_root() if root is None else root)
         / "models"
         / YOLO11_NSFW_SMALL_FILENAME
+    )
+
+
+def bundled_viddexa_model_path(model_id: str, root: Path | None = None) -> Path:
+    if model_id not in VIDDEXA_MODEL_FILES:
+        raise ValueError(f"Unknown Viddexa model: {model_id}")
+    return (resource_root() if root is None else root) / "models" / model_id
+
+
+def has_complete_viddexa_model(directory: Path, model_id: str) -> bool:
+    """Cheap runtime presence check; build/download paths also verify SHA-256."""
+
+    return all(
+        (directory / item.name).is_file()
+        and (directory / item.name).stat().st_size == item.size
+        for item in VIDDEXA_MODEL_FILES[model_id]
+    )
+
+
+def is_expected_viddexa_model(directory: Path, model_id: str) -> bool:
+    return all(
+        _matches_pinned_file(directory / item.name, item.size, item.sha256)
+        for item in VIDDEXA_MODEL_FILES[model_id]
+    )
+
+
+def resolve_viddexa_model_path(
+    model_id: str,
+    *,
+    root: Path | None = None,
+    data_dir: Path | None = None,
+) -> Path | None:
+    candidates = []
+    if data_dir is not None:
+        candidates.append(Path(data_dir) / "models" / model_id)
+    candidates.append(bundled_viddexa_model_path(model_id, root))
+    return next(
+        (path for path in candidates if has_complete_viddexa_model(path, model_id)),
+        None,
     )
 
 

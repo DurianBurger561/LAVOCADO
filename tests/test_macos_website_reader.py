@@ -41,6 +41,61 @@ class MacOSWebsiteReaderTests(unittest.TestCase):
         self.assertEqual(bridge.calls, [(42, "com.apple.Safari")])
         self.assertEqual(bridge.values_read, 1)
 
+    def test_falls_back_to_browser_script_when_ax_is_unavailable(self) -> None:
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append((command, kwargs))
+            return SimpleNamespace(
+                returncode=0,
+                stdout="https://www.example.com/private?q=secret\n",
+            )
+
+        reader = MacOSAXWebsiteReader(
+            bridge_factory=lambda: None,
+            script_runner=run,
+        )
+
+        host = reader.read_active_hostname(
+            application(),
+            BrowserDefinition("com.apple.Safari", "safari"),
+        )
+
+        self.assertEqual(host, "www.example.com")
+        self.assertEqual(calls[0][0][0:2], ["osascript", "-e"])
+        self.assertEqual(calls[0][1]["timeout"], 0.8)
+
+    def test_script_fallback_is_limited_to_known_macos_browsers(self) -> None:
+        calls = []
+        reader = MacOSAXWebsiteReader(
+            bridge_factory=lambda: None,
+            script_runner=lambda *args, **kwargs: calls.append((args, kwargs)),
+        )
+
+        host = reader.read_active_hostname(
+            ApplicationContext("com.example.viewer", "Viewer", "Viewer", None, 1.0, 42),
+            BrowserDefinition("com.example.viewer", "viewer"),
+        )
+
+        self.assertIsNone(host)
+        self.assertEqual(calls, [])
+
+    def test_script_fallback_does_not_require_process_id(self) -> None:
+        reader = MacOSAXWebsiteReader(
+            bridge_factory=lambda: (_ for _ in ()).throw(AssertionError("AX should be skipped")),
+            script_runner=lambda *_args, **_kwargs: SimpleNamespace(
+                returncode=0,
+                stdout="https://example.com/secret",
+            ),
+        )
+
+        host = reader.read_active_hostname(
+            application(process_id=None),
+            BrowserDefinition("com.apple.Safari", "safari"),
+        )
+
+        self.assertEqual(host, "example.com")
+
     def test_missing_pid_or_bundle_and_ax_errors_are_unknown(self) -> None:
         calls = []
         reader = MacOSAXWebsiteReader(bridge_factory=lambda: calls.append(1))

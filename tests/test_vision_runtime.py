@@ -3,16 +3,16 @@
 import unittest
 
 from app.context.models import ContextPolicyAction
+from app.context.policy.resolver import allows_vision
 from app.context.store import ForegroundContextStore
-from app.vision.decision import VisualDecisionEngine
-from app.vision.nudenet_adapter import NudeNetAdapter
-from app.vision.runtime import VisionSession, allows_vision
-from app.vision.temporal import EvidenceAccumulator, TemporalEngine
 from app.service import LavocadoService, State
+from app.vision.detectors.base import to_violation_evidence
+from app.vision.temporal import EvidenceAccumulator
+from app.vision.violation_policy import ViolationEvidenceType
+from app.vision.visual_decision import VisualDecisionEngine
 from tests.test_service import (
     FakeCapturer,
     FakeDetector,
-    FakeIntervention,
     FakeOverlay,
     FakePlatform,
     FakeRecorder,
@@ -26,16 +26,16 @@ class VisionRuntimeTests(unittest.TestCase):
         self.assertFalse(allows_vision(ContextPolicyAction.FORCE_BLOCK))
         self.assertFalse(allows_vision(ContextPolicyAction.FULL_BYPASS))
 
-    def test_architecture_aliases_keep_layer_names(self) -> None:
+    def test_visual_decision_and_orchestration_are_distinct(self) -> None:
         from app.vision.decision import DecisionEngine
-        from app.vision.temporal import TemporalVerifier
 
-        self.assertIs(VisualDecisionEngine, DecisionEngine)
-        self.assertIs(TemporalEngine, TemporalVerifier)
+        self.assertIsNot(VisualDecisionEngine, DecisionEngine)
 
-    def test_nudenet_adapter_emits_shared_evidence(self) -> None:
-        evidence = NudeNetAdapter().detect_evidence(
-            [{"class": "ANUS_EXPOSED", "score": 0.7, "box": [1, 2, 3, 4]}]
+    def test_primary_boundary_emits_shared_evidence(self) -> None:
+        evidence = to_violation_evidence(
+            [{"class": "ANUS_EXPOSED", "score": 0.7, "box": [1, 2, 3, 4]}],
+            model="nudenet_640m",
+            frame_sequence=1,
         )
 
         self.assertEqual(len(evidence), 1)
@@ -43,34 +43,11 @@ class VisionRuntimeTests(unittest.TestCase):
 
     def test_evidence_accumulator_decays_visual_types_not_purpose(self) -> None:
         accumulator = EvidenceAccumulator(3)
-        accumulator.add("sexual_act")
+        accumulator.add(ViolationEvidenceType.SEXUAL_ACT)
         accumulator.decay()
         accumulator.decay()
 
-        self.assertEqual(accumulator.history(), ("sexual_act", None, None))
-
-    def test_vision_session_skips_pipeline_while_bypassed(self) -> None:
-        class Pipeline:
-            def __init__(self) -> None:
-                self.evaluate_calls = 0
-                self.reset_count = 0
-
-            def evaluate(self, _frame: object, *, monitor_index: int = 1) -> dict[str, object]:
-                self.evaluate_calls += 1
-                return {"blocked": True, "monitor_index": monitor_index}
-
-            def reset(self) -> None:
-                self.reset_count += 1
-
-        session = VisionSession(Pipeline())  # type: ignore[arg-type]
-        session.enter_bypass()
-        result = session.evaluate(object())
-
-        self.assertEqual(result["source"], "full_bypass")
-        self.assertFalse(result["blocked"])
-        self.assertEqual(session.pipeline.evaluate_calls, 0)
-        session.exit_bypass_if_needed()
-        self.assertGreaterEqual(session.pipeline.reset_count, 2)
+        self.assertEqual(accumulator.history(), (ViolationEvidenceType.SEXUAL_ACT, None, None))
 
     def test_missing_context_still_runs_vision(self) -> None:
         detector = FakeDetector({1: [False]})
@@ -80,7 +57,6 @@ class VisionRuntimeTests(unittest.TestCase):
             detector=detector,
             overlay=FakeOverlay(),
             recorder=FakeRecorder(),
-            intervention=FakeIntervention(),
             context_store=ForegroundContextStore(clock=lambda: 0.0),
         )
 

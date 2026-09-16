@@ -13,10 +13,16 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import main
-from app import config
-from app.context.models import ContextPolicyAction, WebsiteMatchMode, WebsiteRule
+from app.context.models import (
+    ApplicationRule,
+    ContextPolicyAction,
+    WebsiteMatchMode,
+    WebsiteRule,
+)
 from app.context.settings import RuleSettings, RuleSettingsStore
 from app.intervention.recorder import RecordedEvent
+from app.platforms.capture import MonitorInfo
+from app.ui.overlay.monitor_payload import encode_monitor
 
 
 class MainTests(unittest.TestCase):
@@ -73,10 +79,13 @@ class MainTests(unittest.TestCase):
         platform.prepare_environment.assert_called_once_with()
         run_protection.assert_called_once_with(platform, False)
 
-    def test_protection_loads_persisted_rules_and_keeps_ambiguous_legacy_terms(self) -> None:
+    def test_protection_loads_persisted_context_policy_rules(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir)
             RuleSettingsStore(data_dir / "events.db").save(RuleSettings(
+                application_rules=(
+                    ApplicationRule("chrome.exe", ContextPolicyAction.FORCE_BLOCK),
+                ),
                 website_rules=(WebsiteRule(
                     "blocked.example", ContextPolicyAction.FORCE_BLOCK,
                     WebsiteMatchMode.EXACT_HOST,
@@ -84,7 +93,6 @@ class MainTests(unittest.TestCase):
             ))
             platform = Mock(default_data_dir=Mock(return_value=data_dir))
             with (
-                patch.object(config, "BLOCKED_APPS", ["chrome.exe", "Steam"]),
                 patch("app.service.LavocadoService") as service_class,
                 patch("sys.stdout", io.StringIO()),
             ):
@@ -100,7 +108,7 @@ class MainTests(unittest.TestCase):
             [rule.domain for rule in keywords["context_policy"].website.rules],
             ["blocked.example"],
         )
-        self.assertEqual(keywords["watcher"]._blocked_terms, ("Steam",))
+        self.assertNotIn("watcher", keywords)
 
     def test_broken_rule_schema_falls_back_to_existing_protection(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -118,14 +126,15 @@ class MainTests(unittest.TestCase):
 
     def test_overlay_process_flag_runs_the_internal_entry_point(self) -> None:
         platform = Mock()
+        monitor = MonitorInfo("display-b", 2, -1200, 0, 1200, 900)
         with (
             patch("main.create_platform_adapter", return_value=platform),
             patch("main.run_overlay") as run_overlay,
         ):
-            main.main(["--overlay-process", "--monitor-index", "2"])
+            main.main(["--overlay-process", "--overlay-monitor", encode_monitor(monitor)])
 
         platform.prepare_environment.assert_called_once_with()
-        run_overlay.assert_called_once_with(platform, 2)
+        run_overlay.assert_called_once_with(monitor)
 
     def test_control_message_sets_stop_event(self) -> None:
         stop_event = threading.Event()
@@ -149,7 +158,11 @@ class MainTests(unittest.TestCase):
         class Diagnostics:
             @staticmethod
             def snapshot():
-                return {"protection_state": "MONITORING", "temporal": [1]}
+                from types import SimpleNamespace
+
+                return SimpleNamespace(
+                    to_dict=lambda: {"protection_state": "MONITORING", "temporal": [1]}
+                )
 
         main._listen_for_control(
             stop_event,

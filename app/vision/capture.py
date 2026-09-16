@@ -2,34 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Self
 
 import numpy as np
-from PIL import Image
 
-from app import config
 from app.platforms import PlatformAdapter
 from app.platforms.capture import (
     CaptureBackendStatus,
     CaptureFatalError,
+    CaptureFrame,
     MonitorInfo,
-    Rect,
     ScreenCaptureBackend,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class CapturedFrame:
-    """One full-resolution frame and its bounded NudeNet input."""
-
-    original_frame: np.ndarray
-    model_frame: np.ndarray
-    monitor_id: str = ""
-    timestamp_ns: int = 0
-    sequence: int = 0
-    changed_regions: tuple[Rect, ...] | None = None
-    backend: str = "unknown"
 
 
 class Capturer:
@@ -38,10 +22,9 @@ class Capturer:
     def __init__(
         self,
         platform_adapter: PlatformAdapter,
-        monitor_index: int | None = config.MONITOR_INDEX,
+        monitor_index: int | None = None,
         *,
         backend: ScreenCaptureBackend | None = None,
-        model_frame_max_edge: int | None = None,
     ) -> None:
         self._capture = (
             platform_adapter.create_screen_capture() if backend is None else backend
@@ -51,9 +34,6 @@ class Capturer:
         self._monitors: list[MonitorInfo] = self._capture.monitors()
         self._monitor_by_index = {monitor.index: monitor for monitor in self._monitors}
         self._monitor_index = self._select_monitor_index(monitor_index)
-        self._model_frame_max_edge = int(
-            config.MODEL_FRAME_MAX_EDGE if model_frame_max_edge is None else model_frame_max_edge
-        )
 
     @property
     def monitor_indexes(self) -> tuple[int, ...]:
@@ -69,8 +49,8 @@ class Capturer:
 
         return self._capture.status()
 
-    def grab(self, monitor_index: int | None = None) -> CapturedFrame:
-        """Return one fresh BGR frame and a bounded copy for NudeNet."""
+    def grab(self, monitor_index: int | None = None) -> CaptureFrame:
+        """Return one fresh full-resolution BGR frame."""
 
         selected_index = self._monitor_index if monitor_index is None else monitor_index
         monitor = self._monitor_by_index.get(selected_index)
@@ -84,19 +64,8 @@ class Capturer:
             raise CaptureFatalError(
                 f"Capture backend returned no frame for monitor {monitor.id}"
             )
-        original_frame = self._validate_frame(captured.image)
-
-        rgb_frame = np.ascontiguousarray(original_frame[:, :, ::-1])
-        model_image = Image.fromarray(rgb_frame, mode="RGB")
-        model_image.thumbnail(
-            (self._model_frame_max_edge, self._model_frame_max_edge),
-            Image.Resampling.LANCZOS,
-        )
-        model_rgb = np.asarray(model_image, dtype=np.uint8)
-        model_frame = np.ascontiguousarray(model_rgb[:, :, ::-1])
-        return CapturedFrame(
-            original_frame=original_frame,
-            model_frame=model_frame,
+        return CaptureFrame(
+            image=self._validate_frame(captured.image),
             monitor_id=captured.monitor_id,
             timestamp_ns=captured.timestamp_ns,
             sequence=captured.sequence,
@@ -111,6 +80,17 @@ class Capturer:
             if monitor.contains(x, y) and monitor.index in self.monitor_indexes:
                 return monitor.index
         return None
+
+    def monitor_for_index(self, monitor_index: int | None = None) -> MonitorInfo:
+        """Return geometry from the active capture backend's monitor topology."""
+
+        self._monitors = self._capture.monitors()
+        self._monitor_by_index = {monitor.index: monitor for monitor in self._monitors}
+        selected = self._monitor_index if monitor_index is None else monitor_index
+        monitor = self._monitor_by_index.get(selected)
+        if monitor is None:
+            raise ValueError(f"Monitor {selected} is unavailable")
+        return monitor
 
     def close(self) -> None:
         """Release the selected platform capture backend."""

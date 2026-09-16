@@ -2,11 +2,22 @@
 
 import json
 import unittest
+from unittest.mock import patch
 
+from app.settings.schema import default_vision_settings, merge_vision_settings
 from app.vision.settings import vision_settings_snapshot
 
 
 class VisionSettingsTests(unittest.TestCase):
+    def test_yolo_status_depends_on_saved_primary_not_model_path(self) -> None:
+        settings = default_vision_settings()
+        with patch.dict("os.environ", {"LAVOCADO_YOLO_MODEL": "/unused/yolo.pt"}):
+            self.assertFalse(vision_settings_snapshot(settings)["yolo"]["requested"])
+            selected = merge_vision_settings(
+                settings, {"detector": {"primary": "yolo11_nsfw_small"}}
+            )
+            self.assertTrue(vision_settings_snapshot(selected)["yolo"]["requested"])
+
     def test_snapshot_covers_the_vision_settings_group(self) -> None:
         snapshot = vision_settings_snapshot()
 
@@ -23,6 +34,7 @@ class VisionSettingsTests(unittest.TestCase):
             snapshot["thresholds"]["nudenet_640m"],
         )
         self.assertIn("breast", snapshot["thresholds"]["yolo11_nsfw_small"])
+        self.assertNotIn("legacy_strong", snapshot["thresholds"])
         self.assertIn("proposal", snapshot["thresholds"]["nudenet_640m"]["FEMALE_BREAST_EXPOSED"])
         self.assertIn("strong", snapshot["thresholds"]["yolo11_nsfw_small"]["breast"])
         self.assertEqual(snapshot["tile"]["rows"] * snapshot["tile"]["columns"], 4)

@@ -1,4 +1,4 @@
-"""Download and verify LAVOCADO's pinned required model assets."""
+"""Download pinned model assets; default to release-required models only."""
 
 from __future__ import annotations
 
@@ -11,17 +11,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.vision.model_assets import (
+from app.vision.model_assets import is_expected_nudenet_model
+from app.vision.model_lifecycle import build_nudenet_request, download_nudenet
+from app.vision.model_lifecycle import download_model as download_catalog_model
+from app.vision.model_manifest import (
+    CATALOG_MODEL_IDS,
     NUDENET_640M_FILENAME,
     NUDENET_640M_SIZE,
-    is_expected_nudenet_model,
-)
-from app.vision.model_lifecycle import (
     REQUIRED_MODEL_IDS,
-    build_nudenet_request,
-    download_nudenet,
 )
-from app.vision.model_lifecycle import download_model as download_catalog_model
 
 DEFAULT_DESTINATION = PROJECT_ROOT / "models" / NUDENET_640M_FILENAME
 
@@ -53,9 +51,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",
-        choices=(*REQUIRED_MODEL_IDS, "all"),
+        choices=(*CATALOG_MODEL_IDS, "all"),
         default="all",
-        help="catalog model to download (default: all required models)",
+        help="catalog model to download (default: all release-required models)",
     )
     parser.add_argument(
         "--destination",
@@ -86,7 +84,10 @@ def main() -> int:
             print(f"Verified {model_id}")
         except Exception as error:  # noqa: BLE001 - CLI reports and continues
             failed += 1
-            print(f"Failed {model_id}: {error.__class__.__name__}", file=sys.stderr)
+            print(
+                f"Failed {model_id}: {error.__class__.__name__}: {error}",
+                file=sys.stderr,
+            )
     return 1 if failed else 0
 
 

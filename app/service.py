@@ -10,40 +10,35 @@ from datetime import datetime, timezone
 from enum import Enum
 from threading import Event
 
-from app import config
-from app.blocklist.watcher import BlocklistResult, WindowWatcher
 from app.context.foreground_service import ForegroundContextService
 from app.context.models import (
     ContextPolicyAction,
     ContextPolicyResult,
     ForegroundContext,
 )
-from app.context.policy.resolver import ContextPolicyService
+from app.context.policy.resolver import ContextPolicyService, allows_vision
 from app.context.store import ForegroundContextStore
 from app.context.worker import ForegroundContextWorker
-from app.intervention.intervene import InterventionGenerator
+from app.diagnostics import DiagnosticsStore
 from app.intervention.recorder import EventRecorder, ProtectionEvent
 from app.platforms import PlatformAdapter
-from app.platforms.capture.models import CaptureBackendStatus
+from app.protection_runtime import ProtectionRuntime
 from app.settings.storage import load_vision_settings
+from app.ui.overlay import OverlayBackend, create_overlay_backend
 from app.vision.capture import Capturer
 from app.vision.change_scheduler import ChangeScheduler
 from app.vision.context.factory import load_context_ranker
 from app.vision.decision import DecisionEngine
-from app.vision.detector import Detector
-from app.vision.detectors.factory import PRIMARY_YOLO, load_primary_bundle
-from app.vision.diagnostics import DiagnosticsStore
+from app.vision.detectors.base import PrimaryDetector
+from app.vision.detectors.factory import load_primary_bundle
 from app.vision.model_lifecycle import compact_model_status, inspect_models
-from app.vision.overlay import Overlay
 from app.vision.pipeline import VisionPipeline
-from app.vision.runtime import VisionSession, allows_vision
 from app.vision.temporal import TemporalVerifier
 from app.vision.violation_policy import (
     ThresholdPolicy,
-    VisualViolationClassification,
-    activate_threshold_policy,
+    VisualViolationDecision,
 )
-from app.vision.yolo_adapter import load_yolo_adapter, yolo_is_requested
+from app.vision.yolo_adapter import load_yolo_adapter
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,11 +59,9 @@ class LavocadoService:
         self,
         platform_adapter: PlatformAdapter,
         capturer: Capturer | None = None,
-        detector: Detector | None = None,
-        overlay: Overlay | None = None,
+        detector: PrimaryDetector | None = None,
+        overlay: OverlayBackend | None = None,
         recorder: EventRecorder | None = None,
-        intervention: InterventionGenerator | None = None,
-        watcher: WindowWatcher | None = None,
         decision_engine: DecisionEngine | None = None,
         diagnostics: DiagnosticsStore | None = None,
         change_scheduler: ChangeScheduler | None = None,
@@ -77,53 +70,55 @@ class LavocadoService:
         context_policy: ContextPolicyService | None = None,
         context_worker: ForegroundContextWorker | None = None,
         verifier_factory: Callable[[], TemporalVerifier] | None = None,
-        check_interval: float = config.CHECK_INTERVAL,
-        cooldown_seconds: float = config.COOLDOWN_SECONDS,
+        check_interval: float | None = None,
+        cooldown_seconds: float | None = None,
         clock: Callable[[], float] = time.monotonic,
         scan_clock: Callable[[], float] = time.perf_counter,
         sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         self.platform_adapter = platform_adapter
-        data_dir_getter = getattr(platform_adapter, "default_data_dir", None)
-        data_dir = data_dir_getter() if callable(data_dir_getter) else None
+        data_dir = platform_adapter.default_data_dir()
         self.vision_settings = load_vision_settings(data_dir)
-        activate_threshold_policy(ThresholdPolicy.from_settings(self.vision_settings))
         uses_default_detector = detector is None
         yolo_adapter = None
         shadow_adapter = None
         yolo_status = "disabled"
         if uses_default_detector:
-            requested_primary = self.vision_settings.detector.primary
-            if yolo_is_requested():
-                requested_primary = PRIMARY_YOLO
             bundle = load_primary_bundle(
-                requested_primary,
+                self.vision_settings.detector.primary,
                 full_input_size=self.vision_settings.detector.full_input_size,
                 data_dir=data_dir,
             )
-            self.detector = bundle.checker
+            self.detector = bundle.primary
             yolo_status = bundle.yolo_status
             if self.vision_settings.shadow.enabled:
                 shadow_adapter = load_yolo_adapter(enabled=True, data_dir=data_dir)
         else:
-            self.detector = detector if detector is not None else Detector()
+            assert detector is not None
+            self.detector = detector
         self.capturer = (
             capturer
             if capturer is not None
             else Capturer(
                 platform_adapter,
-                model_frame_max_edge=self.vision_settings.detector.full_input_size,
+                monitor_index=self.vision_settings.capture.monitor_index,
             )
         )
         if decision_engine is not None:
             self.decision_engine = decision_engine
         else:
+            use_context_ranking = (
+                self.vision_settings.context.model != "off"
+                and self.vision_settings.context.tile_ranking
+                and self.vision_settings.tiles.enabled
+            )
             ranker = (
                 load_context_ranker(
                     self.vision_settings.context.model,
-                    enabled=self.vision_settings.context.model != "off",
+                    enabled=use_context_ranking,
+                    data_dir=data_dir,
                 )
-                if uses_default_detector
+                if uses_default_detector and use_context_ranking
                 else None
             )
             context_sensor = None if ranker is None or ranker.name == "off" else ranker
@@ -140,6 +135,7 @@ class LavocadoService:
                 max_tile_skip=self.vision_settings.tiles.max_skip,
                 checks_per_scan=self.vision_settings.tiles.checks_per_scan,
                 borderline_margin=self.vision_settings.recheck.proposal_margin,
+                pin_followup_checks=max(0, self.vision_settings.temporal.window_size - 1),
             )
         self.vision_pipeline = VisionPipeline(
             self.detector,
@@ -148,9 +144,12 @@ class LavocadoService:
             shadow_adapter=shadow_adapter,
             full_input_size=self.vision_settings.detector.full_input_size,
         )
-        self.vision_session = VisionSession(self.vision_pipeline)
-        context_sensor = getattr(self.decision_engine, "context_classifier", None)
-        if self.vision_settings.context.model == "off":
+        context_sensor = self.decision_engine.viddexa_ranker.classifier
+        if (
+            self.vision_settings.context.model == "off"
+            or not self.vision_settings.context.tile_ranking
+            or not self.vision_settings.tiles.enabled
+        ):
             context_status = "disabled"
         elif context_sensor is None:
             context_status = "unavailable"
@@ -179,22 +178,21 @@ class LavocadoService:
             models=compact_model_status(
                 inspect_models(data_dir=data_dir)
             ),
+            threshold_policy=ThresholdPolicy.from_settings(self.vision_settings),
+            borderline_margin=self.vision_settings.recheck.proposal_margin,
         )
         self.overlay = (
-            overlay if overlay is not None else Overlay(platform_adapter)
+            overlay
+            if overlay is not None
+            else create_overlay_backend(
+                platform_adapter.name,
+                data_dir=data_dir,
+            )
         )
         self.recorder = (
             recorder
             if recorder is not None
             else EventRecorder(platform_adapter.default_data_dir() / "events.db")
-        )
-        self.intervention = (
-            intervention if intervention is not None else InterventionGenerator()
-        )
-        self.watcher = (
-            watcher
-            if watcher is not None
-            else WindowWatcher(platform_adapter)
         )
         self._verifier_factory = (
             verifier_factory
@@ -210,6 +208,8 @@ class LavocadoService:
         self.change_scheduler = change_scheduler or ChangeScheduler(
             change_ratio_threshold=self.vision_settings.scan.change_sensitivity,
             adaptive=self.vision_settings.scan.adaptive,
+            periodic_scan_interval=self.vision_settings.scan.periodic_scan_interval,
+            candidate_followup_checks=max(0, self.vision_settings.temporal.window_size - 1),
         )
         self.context_store = context_store or ForegroundContextStore()
         self.context_policy = context_policy or ContextPolicyService()
@@ -218,14 +218,28 @@ class LavocadoService:
             if context_worker is not None
             else self._create_context_worker(platform_adapter)
         )
-        self._verifiers: dict[int, TemporalVerifier] = {}
-        self._last_frame_sequences: dict[int, tuple[str, int]] = {}
         self._bypass_active = False
-        self.check_interval = check_interval
-        self.cooldown_seconds = cooldown_seconds
+        self.check_interval = (
+            float(self.vision_settings.scan.normal_interval_ms) / 1000.0
+            if check_interval is None
+            else check_interval
+        )
+        self.cooldown_seconds = (
+            self.vision_settings.ui.cooldown_seconds
+            if cooldown_seconds is None
+            else cooldown_seconds
+        )
         self._clock = clock
         self._scan_clock = scan_clock
         self._sleeper = sleeper
+        self.runtime = ProtectionRuntime(
+            self.vision_pipeline,
+            self.decision_engine,
+            self.change_scheduler,
+            self.diagnostics,
+            self._verifier_factory,
+            self._scan_clock,
+        )
         self._running = False
         self._state = State.STOPPED
         self.diagnostics.set_protection_state(self._state.name)
@@ -247,8 +261,7 @@ class LavocadoService:
         self._transition(State.MONITORING)
 
         try:
-            if self.context_worker is not None:
-                self.context_worker.start()
+            self.context_worker.start()
             while self._running and not (stop_event and stop_event.is_set()):
                 if test_intervention_event and test_intervention_event.is_set():
                     test_intervention_event.clear()
@@ -260,16 +273,15 @@ class LavocadoService:
         finally:
             try:
                 try:
-                    if self.context_worker is not None:
-                        self.context_worker.stop()
+                    self.context_worker.stop()
                 finally:
                     try:
-                        self.capturer.close()
+                        self.overlay.close()
                     finally:
                         try:
-                            self.recorder.close()
+                            self.capturer.close()
                         finally:
-                            self.intervention.close()
+                            self.recorder.close()
             finally:
                 self._transition(State.STOPPED)
                 self._running = False
@@ -282,18 +294,14 @@ class LavocadoService:
     def show_test_intervention(self) -> None:
         """Show an unrecorded manual test overlay on the primary monitor."""
 
-        monitor_indexes = tuple(self.capturer.monitor_indexes)
-        monitor_index = monitor_indexes[0] if monitor_indexes else config.MONITOR_INDEX
+        monitor = self.capturer.monitor_for_index()
         self._transition(State.BLOCKED)
         try:
-            self.overlay.show(
-                monitor_index=monitor_index,
-                support_message=self._generate_intervention(),
-            )
+            self.overlay.show(monitor)
         finally:
             self._transition(State.BYPASSED if self._bypass_active else State.MONITORING)
 
-    def check_once(self) -> list[dict[str, object]] | None:
+    def check_once(self) -> list[VisualViolationDecision] | None:
         """Advance the state machine by one monitoring step."""
 
         now = self._clock()
@@ -307,128 +315,60 @@ class LavocadoService:
                 return None
             self._transition(State.MONITORING)
 
-        blocklist_result = self.watcher.check()
-        blocked_result = self._blocklist_detection(blocklist_result)
         context = self.context_store.latest()
-        if blocked_result is not None:
-            self.diagnostics.record_foreground_context(
-                context, None, effective_override=ContextPolicyAction.FORCE_BLOCK
-            )
-            self._leave_bypass()
-            monitor_index = int(blocked_result["monitor_index"])
-            self._show_intervention(
-                blocked_result,
-                monitor_index,
-                trigger_type="blocklist",
-            )
-            return [blocked_result]
-
         policy_result = (
             self.context_policy.evaluate(context) if context is not None else None
         )
         self.diagnostics.record_foreground_context(context, policy_result)
-        if policy_result is not None:
-            if not allows_vision(policy_result.action):
-                if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
-                    self._leave_bypass()
-                    result, monitor_index, trigger_type = self._context_rule_detection(
-                        context, policy_result
-                    )
-                    self._show_intervention(result, monitor_index, trigger_type)
-                    return [result]
-                self._enter_bypass()
-                return []
+        if policy_result is not None and not allows_vision(policy_result.action):
+            if policy_result.action is ContextPolicyAction.FORCE_BLOCK:
+                self._leave_bypass()
+                monitor_index, trigger_type = self._context_rule_detection(
+                    context, policy_result
+                )
+                self._show_intervention(
+                    monitor_index=monitor_index,
+                    trigger_type=trigger_type,
+                )
+                return None
+            self._enter_bypass()
+            return []
 
         self._leave_bypass()
 
-        results: list[dict[str, object]] = []
+        results: list[VisualViolationDecision] = []
         has_candidate = False
         has_fresh_frame = False
+        active_index = self._active_monitor_index(context)
 
         for monitor_index in self.capturer.monitor_indexes:
             scan_started = self._scan_clock()
             captured_frame = self.capturer.grab(monitor_index)
             self._record_capture_diagnostics()
-            if not self._is_fresh_frame(monitor_index, captured_frame):
-                continue
-            has_fresh_frame = True
-            schedule = self.change_scheduler.should_scan(
+            outcome = self.runtime.scan_monitor(
                 captured_frame,
                 monitor_index,
-                vision_allowed=True,
-            )
-            if not schedule.scan:
-                continue
-            active_index = self._active_monitor_index(context)
-            is_active_monitor = (
-                active_index is None or int(active_index) == int(monitor_index)
-            )
-            prepare = getattr(self.decision_engine, "prepare_scan", None)
-            scan_plan = (
-                prepare(
-                    captured_frame,
-                    monitor_index,
-                    is_active_monitor=is_active_monitor,
-                )
-                if callable(prepare)
-                else None
-            )
-            result = self.vision_session.evaluate(
-                captured_frame,
-                monitor_index=monitor_index,
-                scan_plan=scan_plan,
-                is_active_monitor=is_active_monitor,
-            )
-            result["monitor_index"] = monitor_index
-            results.append(result)
-
-            classification = str(result.get("classification") or "")
-            is_violation = (
-                classification == VisualViolationClassification.VIOLATION.value
-                or (not classification and bool(result.get("blocked")))
-            )
-            is_uncertain = (
-                classification == VisualViolationClassification.UNCERTAIN.value
-            )
-            self.change_scheduler.record_candidate(monitor_index, is_violation)
-            if is_uncertain:
-                request_focus = getattr(
-                    self.change_scheduler,
-                    "request_focused_verification",
-                    None,
-                )
-                if callable(request_focus):
-                    request_focus(monitor_index)
-            has_candidate = has_candidate or is_violation
-            verifier = self._verifiers.get(monitor_index)
-            if verifier is None:
-                verifier = self._verifier_factory()
-                self._verifiers[monitor_index] = verifier
-
-            track_evidence = result.get("track_evidence")
-            confirmed = verifier.update(
-                is_violation,
-                frame_sequence=getattr(captured_frame, "sequence", None),
-                region=result.get("region"),
-                evidence_type=_visual_evidence_type(result),
-                track_id=result.get("track_id") if isinstance(result.get("track_id"), int) else None,
-                evidence_score=(
-                    float(track_evidence)
-                    if isinstance(track_evidence, (int, float))
-                    else None
+                is_active_monitor=(
+                    active_index is None or active_index == monitor_index
                 ),
+                scan_started=scan_started,
             )
-            rescue_status = self._decision_rescue_status(monitor_index)
-            self.diagnostics.record_scan(
-                monitor_index=monitor_index,
-                elapsed_ms=(self._scan_clock() - scan_started) * 1000,
-                decision=result,
-                temporal=verifier.history,
-                rescue_status=rescue_status,
-            )
+            if not outcome.fresh_frame:
+                continue
+            has_fresh_frame = True
+            decision = outcome.decision
+            if decision is None:
+                continue
+            results.append(decision)
+            has_candidate = has_candidate or outcome.candidate
 
-            if confirmed:
-                self._show_intervention(result, monitor_index, trigger_type="vision")
+            if outcome.confirmed:
+                self._show_intervention(
+                    monitor_index=monitor_index,
+                    trigger_type="vision",
+                    label=decision.label,
+                    confidence=decision.confidence,
+                )
                 return results
 
         if has_fresh_frame:
@@ -440,9 +380,7 @@ class LavocadoService:
         self.diagnostics.set_protection_state(state.name)
 
     def _record_capture_diagnostics(self) -> None:
-        status = getattr(self.capturer, "status", None)
-        if isinstance(status, CaptureBackendStatus):
-            self.diagnostics.record_capture(status)
+        self.diagnostics.record_capture(self.capturer.status)
 
     def _next_interval(self) -> float:
         if self._state == State.CANDIDATE:
@@ -455,61 +393,23 @@ class LavocadoService:
     def _active_monitor_index(self, context: ForegroundContext | None) -> int | None:
         if context is None:
             return None
-        center = getattr(context.application, "window_center", None)
+        center = context.application.window_center
         if center is None:
             return None
-        locator = getattr(self.capturer, "monitor_index_at", None)
-        if not callable(locator):
-            return None
-        return locator(*center)
-
-    def _decision_rescue_status(
-        self,
-        monitor_index: int,
-    ) -> dict[str, int | None]:
-        status_reader = getattr(self.decision_engine, "rescue_status", None)
-        if not callable(status_reader):
-            return {}
-        status = status_reader(monitor_index)
-        return status if isinstance(status, dict) else {}
-
-    def _is_fresh_frame(self, monitor_index: int, captured_frame: object) -> bool:
-        sequence = getattr(captured_frame, "sequence", None)
-        if not isinstance(sequence, int) or sequence < 1:
-            return True
-        identity = (str(getattr(captured_frame, "backend", "unknown")), sequence)
-        if self._last_frame_sequences.get(monitor_index) == identity:
-            return False
-        self._last_frame_sequences[monitor_index] = identity
-        return True
-
-    def _reset_verifiers(self) -> None:
-        for verifier in self._verifiers.values():
-            verifier.reset()
-        reset_decisions = getattr(self.decision_engine, "reset", None)
-        if callable(reset_decisions):
-            reset_decisions()
-        reset_pipeline = getattr(self.vision_pipeline, "reset", None)
-        if callable(reset_pipeline):
-            reset_pipeline()
-        self.change_scheduler.reset()
+        return self.capturer.monitor_index_at(*center)
 
     def _enter_bypass(self) -> None:
-        self.vision_session.enter_bypass()
         if self._bypass_active:
             self._transition(State.BYPASSED)
             return
-        self._reset_verifiers()
-        self._last_frame_sequences.clear()
+        self.runtime.reset_for_context_boundary()
         self._bypass_active = True
         self._transition(State.BYPASSED)
 
     def _leave_bypass(self) -> None:
-        self.vision_session.exit_bypass_if_needed()
         if not self._bypass_active:
             return
-        self._reset_verifiers()
-        self._last_frame_sequences.clear()
+        self.runtime.reset_for_context_boundary()
         self._bypass_active = False
         self._transition(State.MONITORING)
 
@@ -517,14 +417,13 @@ class LavocadoService:
         self,
         context: ForegroundContext,
         policy: ContextPolicyResult,
-    ) -> tuple[dict[str, object], int, str]:
+    ) -> tuple[int, str]:
         center = context.application.window_center
         monitor_index = (
             self.capturer.monitor_index_at(*center) if center is not None else None
         )
         if monitor_index is None:
-            indexes = tuple(self.capturer.monitor_indexes)
-            monitor_index = indexes[0] if indexes else config.MONITOR_INDEX
+            monitor_index = self.capturer.monitor_for_index().index
 
         website_rule = (
             policy.matched_website_rule
@@ -535,25 +434,16 @@ class LavocadoService:
             trigger_type = "website_rule"
         else:
             trigger_type = "application_rule"
-        result: dict[str, object] = {
-            "blocked": True,
-            "reason": f"Blocked by {trigger_type}",
-            "label": None,
-            "confidence": None,
-            "check_points": [],
-            "monitor_index": monitor_index,
-        }
-        return result, monitor_index, trigger_type
+        return monitor_index, trigger_type
 
     def _create_context_worker(
         self,
         platform_adapter: PlatformAdapter,
-    ) -> ForegroundContextWorker | None:
-        read_application = getattr(platform_adapter, "get_foreground_application", None)
-        create_reader = getattr(platform_adapter, "create_website_reader", None)
-        if not callable(read_application) or not callable(create_reader):
-            return None
-        service = ForegroundContextService(read_application, create_reader())
+    ) -> ForegroundContextWorker:
+        service = ForegroundContextService(
+            platform_adapter.get_foreground_application,
+            platform_adapter.create_website_reader(),
+        )
         return ForegroundContextWorker(
             service,
             self.context_store,
@@ -562,17 +452,17 @@ class LavocadoService:
 
     def _record_trigger(
         self,
-        result: dict[str, object],
         monitor_index: int,
         trigger_type: str,
+        *,
+        label: str | None = None,
+        confidence: float | None = None,
     ) -> Future[int] | None:
-        label = result.get("label")
-        confidence = result.get("confidence")
         event = ProtectionEvent(
             occurred_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             trigger_type=trigger_type,
-            label=None if label is None else str(label),
-            confidence=None if confidence is None else float(confidence),
+            label=label,
+            confidence=confidence,
             monitor_index=monitor_index,
         )
 
@@ -584,49 +474,25 @@ class LavocadoService:
 
     def _show_intervention(
         self,
-        result: dict[str, object],
+        *,
         monitor_index: int,
         trigger_type: str,
+        label: str | None = None,
+        confidence: float | None = None,
     ) -> None:
         self._transition(State.BLOCKED)
-        record_future = self._record_trigger(result, monitor_index, trigger_type)
-        support_message = self._generate_intervention()
-        self.overlay.show(
-            monitor_index=monitor_index,
-            support_message=support_message,
+        record_future = self._record_trigger(
+            monitor_index,
+            trigger_type,
+            label=label,
+            confidence=confidence,
         )
+        monitor = self.capturer.monitor_for_index(monitor_index)
+        self.overlay.show(monitor)
         self._mark_intervention_shown_after_record(record_future)
-        self._reset_verifiers()
+        self.runtime.reset_vision()
         self._cooldown_until = self._clock() + self.cooldown_seconds
         self._transition(State.COOLDOWN)
-
-    def _blocklist_detection(
-        self,
-        result: BlocklistResult,
-    ) -> dict[str, object] | None:
-        if not result.blocked or result.window is None:
-            return None
-        center = result.window.center
-        if center is None:
-            return None
-        monitor_index = self.capturer.monitor_index_at(*center)
-        if monitor_index is None:
-            return None
-        return {
-            "blocked": True,
-            "reason": "Blocked by legacy window rule",
-            "label": None,
-            "confidence": None,
-            "check_points": [],
-            "monitor_index": monitor_index,
-        }
-
-    def _generate_intervention(self) -> Future[str] | None:
-        try:
-            return self.intervention.generate_async()
-        except Exception:
-            LOGGER.exception("Could not queue supportive intervention")
-            return None
 
     def _mark_intervention_shown_after_record(
         self,
@@ -645,12 +511,8 @@ class LavocadoService:
             return
 
         try:
-            marker = getattr(self.recorder, "mark_intervention_shown_async", None)
-            if callable(marker):
-                marker_future = marker(event_id)
-                marker_future.add_done_callback(self._log_recording_failure)
-            else:
-                self.recorder.mark_intervention_shown(event_id)
+            marker_future = self.recorder.mark_intervention_shown_async(event_id)
+            marker_future.add_done_callback(self._log_recording_failure)
         except Exception:
             LOGGER.exception("Could not queue intervention-shown marker")
 
@@ -660,19 +522,3 @@ class LavocadoService:
             future.result()
         except Exception:
             LOGGER.exception("Could not finish recording protection event")
-
-
-def _visual_evidence_type(result: dict[str, object]) -> str | None:
-    """Return a visual-violation type only; never a viewing-purpose label."""
-
-    payload = result.get("evidence")
-    if isinstance(payload, list):
-        for item in payload:
-            if isinstance(item, dict) and item.get("evidence_type"):
-                return str(item["evidence_type"])
-    source = result.get("source")
-    if source in {"yolo_sexual_act", "yolo_sexual_act_roi", "sexual_act_candidate"}:
-        return "sexual_act"
-    if source in {"anatomy_roi", "anatomy_candidate", "nudenet_roi", "nudenet_full"}:
-        return "explicit_anatomy"
-    return None

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app import config
 from app.context.settings import RuleSettingsStore
 from app.intervention.recorder import EventRecorder
 from app.platforms import PlatformAdapter
@@ -45,13 +44,14 @@ def run_web_dashboard(
                 "pywebview is required; install requirements.txt"
             ) from error
 
-    controller = controller or ProtectionController()
+    controller = controller or ProtectionController(
+        data_dir=platform_adapter.default_data_dir()
+    )
     recorder = recorder or EventRecorder(
         platform_adapter.default_data_dir() / "events.db"
     )
     rule_store = rule_store or RuleSettingsStore(
         platform_adapter.default_data_dir() / "events.db",
-        legacy_blocked_apps=config.BLOCKED_APPS,
     )
     app_picker = app_picker or ForegroundAppPicker(
         platform_adapter.get_foreground_application

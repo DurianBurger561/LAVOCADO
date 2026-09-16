@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from app.context.models import ApplicationContext
@@ -66,12 +66,6 @@ class PlatformAdapter(Protocol):
     def create_website_reader(self) -> WebsiteReader: ...
 
     def create_screen_capture(self) -> ScreenCaptureBackend: ...
-
-    def prepare_overlay_window(self, root: Any) -> None: ...
-
-    def release_overlay_focus(self) -> None: ...
-
-    def tkinter_help(self) -> str: ...
 
     def screen_capture_help(self) -> str: ...
 

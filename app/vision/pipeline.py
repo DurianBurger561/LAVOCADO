@@ -2,15 +2,28 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+from time import perf_counter
 from typing import Any
 
-import numpy as np
-
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
 from app.vision.decision import DecisionEngine
-from app.vision.detector import Detector
+from app.vision.detectors.base import PrimaryDetector
+from app.vision.preprocessor import FramePreprocessor
+from app.vision.primary_detector_set import PrimaryDetection, PrimaryDetectorSet
 from app.vision.scheduler import ScanPlan
+from app.vision.violation_policy import VisualViolationDecision
 from app.vision.yolo_adapter import Yolo11Adapter
+
+
+@dataclass(frozen=True, slots=True)
+class VisionLatency:
+    preprocessing_ms: float = 0.0
+    primary_ms: float = 0.0
+    supplementary_ms: float = 0.0
+    viddexa_ms: float = 0.0
+    decision_ms: float = 0.0
+    vision_total_ms: float = 0.0
 
 
 class VisionPipeline:
@@ -22,92 +35,105 @@ class VisionPipeline:
 
     def __init__(
         self,
-        detector: Detector,
+        detector: PrimaryDetector,
         decision_engine: DecisionEngine,
         yolo_adapter: Yolo11Adapter | None = None,
         *,
         shadow_adapter: Yolo11Adapter | None = None,
-        full_input_size: int = 640,
+        full_input_size: int | None = None,
     ) -> None:
-        self.detector = detector
         self.decision_engine = decision_engine
-        self.yolo_adapter = yolo_adapter
         self.shadow_adapter = shadow_adapter
-        self.full_input_size = full_input_size
+        self.primary_detectors = PrimaryDetectorSet(
+            detector,
+            supplementary=yolo_adapter,
+            full_input_size=(
+                decision_engine.settings.detector.full_input_size
+                if full_input_size is None else full_input_size
+            ),
+        )
         self.evaluate_calls = 0
         self.last_shadow: dict[str, Any] | None = None
+        self.last_latency = VisionLatency()
 
     def evaluate(
         self,
-        captured_frame: CapturedFrame,
+        captured_frame: CaptureFrame,
         *,
         monitor_index: int = 1,
         scan_plan: ScanPlan | None = None,
         is_active_monitor: bool = True,
-    ) -> dict[str, Any]:
+        prepared_frame: FramePreprocessor | None = None,
+    ) -> VisualViolationDecision:
         """Return a visual-violation decision without retaining pixels."""
 
         self.evaluate_calls += 1
+        total_started = perf_counter()
+        prepared = prepared_frame or FramePreprocessor(captured_frame)
+        prepared.require_frame(captured_frame)
         focused = scan_plan is not None and scan_plan.mode == "focused"
         if focused:
-            empty = {
-                "blocked": False,
-                "reason": "",
-                "label": None,
-                "confidence": 0.0,
-                "box": None,
-                "check_points": [],
-                "evidence": [],
-            }
-            decided = self._call_decision_engine(
-                empty,
+            decision_started = perf_counter()
+            decided = self.decision_engine.evaluate(
+                PrimaryDetection.from_primary(()),
                 captured_frame,
                 monitor_index=monitor_index,
-                extra_evidence=[],
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
+                prepared_frame=prepared,
             )
+            detector_latency = None
         else:
-            image = captured_frame.model_frame
-            if not isinstance(image, np.ndarray):
-                image = captured_frame.original_frame
-            detect = getattr(self.detector, "detect", None)
-            if callable(detect):
-                from app.vision.detectors.base import check_result_from_evidence
-
-                evidence = detect(image, input_size=self.full_input_size)
-                nudenet_result = check_result_from_evidence(evidence)
-            else:
-                nudenet_result = dict(self.detector.check(image))
-            extra_evidence = []
-            if self.yolo_adapter is not None:
-                extra_image = image if isinstance(image, np.ndarray) else captured_frame.original_frame
-                extra_evidence = self.yolo_adapter.detect_evidence(
-                    extra_image,
-                    frame_sequence=int(getattr(captured_frame, "sequence", 0) or 0),
-                )
-            decided = self._call_decision_engine(
-                nudenet_result,
+            detected = self.primary_detectors.detect(prepared)
+            detector_latency = self.primary_detectors.last_latency
+            decision_started = perf_counter()
+            decided = self.decision_engine.evaluate(
+                detected,
                 captured_frame,
                 monitor_index=monitor_index,
-                extra_evidence=extra_evidence,
                 scan_plan=scan_plan,
                 is_active_monitor=is_active_monitor,
+                prepared_frame=prepared,
             )
-            self._record_shadow(captured_frame, decided)
+        decision_ms = (perf_counter() - decision_started) * 1000
+        if not focused:
+            decided = self._with_shadow(captured_frame, decided)
+        self.last_latency = VisionLatency(
+            preprocessing_ms=0.0 if detector_latency is None else detector_latency.preprocessing_ms,
+            primary_ms=0.0 if detector_latency is None else detector_latency.primary_ms,
+            supplementary_ms=0.0 if detector_latency is None else detector_latency.supplementary_ms,
+            viddexa_ms=self.decision_engine.viddexa_ranker.latency_for(prepared),
+            decision_ms=decision_ms,
+            vision_total_ms=(perf_counter() - total_started) * 1000,
+        )
         return decided
 
-    def _record_shadow(
+    def prepare_scan(
         self,
-        captured_frame: CapturedFrame,
-        decided: dict[str, Any],
-    ) -> None:
+        captured_frame: CaptureFrame,
+        monitor_index: int,
+        *,
+        is_active_monitor: bool = True,
+        prepared_frame: FramePreprocessor | None = None,
+    ) -> ScanPlan:
+        """Plan a fresh frame before selecting full detection or focused ROI."""
+
+        return self.decision_engine.scan_planner.prepare_scan(
+            captured_frame,
+            monitor_index,
+            is_active_monitor=is_active_monitor,
+            prepared_frame=prepared_frame,
+        )
+
+    def _with_shadow(
+        self,
+        captured_frame: CaptureFrame,
+        decided: VisualViolationDecision,
+    ) -> VisualViolationDecision:
         if self.shadow_adapter is None:
             self.last_shadow = None
-            return
-        image = captured_frame.model_frame
-        if not isinstance(image, np.ndarray):
-            image = captured_frame.original_frame
+            return decided
+        image = captured_frame.image
         import time as _time
 
         started = _time.perf_counter()
@@ -117,7 +143,9 @@ class VisionPipeline:
         )
         elapsed_ms = (_time.perf_counter() - started) * 1000
         strongest = max(evidence, key=lambda item: item.confidence, default=None)
-        primary_hit = bool(decided.get("blocked"))
+        from app.vision.violation_policy import VisualViolationClassification
+
+        primary_hit = decided.classification is VisualViolationClassification.VIOLATION
         shadow_hit = strongest is not None and strongest.confidence >= 0.45
         self.last_shadow = {
             "hit": shadow_hit,
@@ -133,38 +161,11 @@ class VisionPipeline:
             if primary_hit
             else "shadow_only",
         }
-        decided["shadow"] = dict(self.last_shadow)
-
-    def _call_decision_engine(
-        self,
-        result: dict[str, Any],
-        captured_frame: CapturedFrame,
-        *,
-        monitor_index: int,
-        extra_evidence: list[Any],
-        scan_plan: ScanPlan | None,
-        is_active_monitor: bool,
-    ) -> dict[str, Any]:
-        try:
-            return self.decision_engine.evaluate(
-                result,
-                captured_frame,
-                monitor_index=monitor_index,
-                extra_evidence=extra_evidence,
-                scan_plan=scan_plan,
-                is_active_monitor=is_active_monitor,
-            )
-        except TypeError:
-            return self.decision_engine.evaluate(
-                result,
-                captured_frame,
-                monitor_index=monitor_index,
-                extra_evidence=extra_evidence,
-            )
+        return replace(decided, shadow=dict(self.last_shadow))
 
     def reset(self) -> None:
         """Clear tile ranking and ROI follow-up state."""
 
-        reset = getattr(self.decision_engine, "reset", None)
-        if callable(reset):
-            reset()
+        self.decision_engine.reset()
+        self.last_shadow = None
+        self.last_latency = VisionLatency()

@@ -7,9 +7,12 @@ from unittest.mock import patch
 
 from app.vision.model_assets import (
     bundled_nudenet_model_path,
+    bundled_viddexa_model_path,
     is_expected_nudenet_model,
+    is_expected_viddexa_model,
     is_expected_yolo_model,
     resolve_nudenet_model_path,
+    resolve_viddexa_model_path,
     resolve_yolo_model_path,
 )
 
@@ -51,6 +54,19 @@ class ModelAssetTests(unittest.TestCase):
         self.assertEqual(resolved, model_path)
         self.assertIsNone(missing)
 
+    def test_viddexa_uses_bundled_resource_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            expected = root / "models" / "viddexa_nano"
+            self.assertEqual(bundled_viddexa_model_path("viddexa_nano", root), expected)
+            with patch(
+                "app.vision.model_assets.has_complete_viddexa_model",
+                side_effect=lambda path, _model_id: path == expected,
+            ):
+                resolved = resolve_viddexa_model_path("viddexa_nano", root=root)
+            self.assertEqual(resolved, expected)
+            self.assertFalse(is_expected_viddexa_model(expected, "viddexa_nano"))
+
     def test_missing_model_returns_none(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             resolved = resolve_nudenet_model_path(
@@ -65,11 +81,7 @@ class ModelAssetTests(unittest.TestCase):
             model_path = Path(temp_dir) / "640m.onnx"
             model_path.write_bytes(b"not an ONNX model")
 
-            with patch(
-                "app.vision.model_assets.NUDENET_640M_SIZE",
-                model_path.stat().st_size,
-            ):
-                self.assertFalse(is_expected_nudenet_model(model_path))
+            self.assertFalse(is_expected_nudenet_model(model_path))
             self.assertFalse(is_expected_yolo_model(model_path))
 
 

@@ -11,6 +11,12 @@ from app.context.policy.application import ApplicationPolicy
 from app.context.policy.website import WebsitePolicy
 
 
+def allows_vision(action: ContextPolicyAction | None) -> bool:
+    """Run Vision only for NORMAL policy or when context is unavailable."""
+
+    return action is None or action is ContextPolicyAction.NORMAL
+
+
 def resolve_context_policy(
     app_action: ContextPolicyAction,
     website_action: ContextPolicyAction | None,

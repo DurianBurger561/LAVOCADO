@@ -5,7 +5,11 @@ __pycache__/
 .env
 *.key
 .DS_Store
+:memory:.ses
 /build/
 /dist/
 /models/*.onnx
 /models/*.part
+/models/yolo11.pt
+/models/viddexa_nano/
+/models/viddexa_mini/

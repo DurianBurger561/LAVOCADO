@@ -12,6 +12,7 @@ from app.vision.regions import (
     region_iou,
     xywh_to_xyxy,
 )
+from app.vision.violation_policy import ViolationEvidenceType
 
 IOU_MATCH = 0.30
 CENTER_DISTANCE_FRACTION = 0.35
@@ -24,6 +25,7 @@ class CandidateTrack:
     monitor_index: int
     label: str | None
     box: Region
+    evidence_type: ViolationEvidenceType | None = None
     previous_box: Region | None = None
     confidence_history: list[float] = field(default_factory=list)
     evidence_score: float = 0.0
@@ -82,16 +84,18 @@ class CandidateTracker:
         source: str,
         frame_sequence: int | None,
         evidence_delta: float,
+        evidence_type: ViolationEvidenceType | None = None,
     ) -> CandidateTrack | None:
         if box is None:
             return None
-        match = self._best_match(monitor_index, box, label)
+        match = self._best_match(monitor_index, box, label, evidence_type)
         if match is None:
             track = CandidateTrack(
                 id=self._next_id,
                 monitor_index=monitor_index,
                 label=label,
                 box=box,
+                evidence_type=evidence_type,
                 source=source,
             )
             self._next_id += 1
@@ -113,6 +117,8 @@ class CandidateTracker:
             track.box = box
             if label:
                 track.label = label
+            if evidence_type is not None:
+                track.evidence_type = evidence_type
             track.source = source
         same_frame = (
             frame_sequence is not None
@@ -189,12 +195,19 @@ class CandidateTracker:
         monitor_index: int,
         box: Region,
         label: str | None,
+        evidence_type: ViolationEvidenceType | None,
     ) -> CandidateTrack | None:
         width = max(1, box[2] - box[0])
         height = max(1, box[3] - box[1])
         distance_threshold = max(width, height) * CENTER_DISTANCE_FRACTION
         best: tuple[float, CandidateTrack] | None = None
         for track in self.tracks(monitor_index):
+            if (
+                evidence_type is not None
+                and track.evidence_type is not None
+                and track.evidence_type is not evidence_type
+            ):
+                continue
             if not _labels_compatible(track.label, label):
                 continue
             iou = region_iou(track.box, box)

@@ -6,20 +6,14 @@ from unittest.mock import patch
 
 from app.platforms.capture import (
     CaptureBackendMode,
-    CaptureUnavailableError,
     FallbackCaptureBackend,
     MSSCapture,
-    PipeWirePortalCapture,
     ScreenCaptureKitCapture,
     WindowsDXGICapture,
-    XShmCapture,
-    create_linux_capture,
     create_macos_capture,
     create_windows_capture,
-    detect_linux_session,
     resolve_capture_backend_mode,
 )
-from app.platforms.linux import LinuxPlatform
 from app.platforms.macos import MacOSPlatform
 from app.platforms.windows import WindowsPlatform
 
@@ -77,7 +71,6 @@ class CaptureOverrideTests(unittest.TestCase):
         platforms = (
             WindowsPlatform(environ=dict(environment)),
             MacOSPlatform(environ=dict(environment)),
-            LinuxPlatform(environ=dict(environment), release="generic-linux"),
         )
 
         for platform in platforms:
@@ -111,39 +104,6 @@ class CaptureOverrideTests(unittest.TestCase):
             create_macos_capture(CaptureBackendMode.MSS),
             MSSCapture,
         )
-
-    def test_linux_modes_select_auto_native_and_mss(self) -> None:
-        wayland = detect_linux_session(
-            {"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-0"},
-            "generic-linux",
-        )
-        x11 = detect_linux_session(
-            {"XDG_SESSION_TYPE": "x11", "DISPLAY": ":0"},
-            "generic-linux",
-        )
-
-        self.assertIsInstance(
-            create_linux_capture(wayland, mode=CaptureBackendMode.AUTO),
-            FallbackCaptureBackend,
-        )
-        self.assertIsInstance(
-            create_linux_capture(wayland, mode=CaptureBackendMode.NATIVE),
-            PipeWirePortalCapture,
-        )
-        self.assertIsInstance(
-            create_linux_capture(x11, mode=CaptureBackendMode.NATIVE),
-            XShmCapture,
-        )
-        self.assertIsInstance(
-            create_linux_capture(x11, mode=CaptureBackendMode.MSS),
-            MSSCapture,
-        )
-
-    def test_forced_native_rejects_a_linux_session_without_native_route(self) -> None:
-        session = detect_linux_session({}, "generic-linux")
-
-        with self.assertRaisesRegex(CaptureUnavailableError, "Linux session"):
-            create_linux_capture(session, mode=CaptureBackendMode.NATIVE)
 
 
 if __name__ == "__main__":

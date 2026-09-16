@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import deque
 
 from app.vision.evidence import decay_evidence, is_confirmed
+from app.vision.violation_policy import ViolationEvidenceType
 
 
 def _regions_overlap(left: object, right: object) -> bool:
@@ -24,9 +25,11 @@ class EvidenceAccumulator:
     """Accumulate visual-violation types. Never stores porn-purpose probability."""
 
     def __init__(self, window_size: int) -> None:
-        self._items: deque[str | None] = deque(maxlen=window_size)
+        self._items: deque[ViolationEvidenceType | None] = deque(maxlen=window_size)
 
-    def add(self, evidence_type: str | None) -> None:
+    def add(self, evidence_type: ViolationEvidenceType | None) -> None:
+        if evidence_type is not None and not isinstance(evidence_type, ViolationEvidenceType):
+            raise TypeError("temporal evidence type must be typed")
         self._items.append(evidence_type)
 
     def decay(self) -> None:
@@ -35,7 +38,7 @@ class EvidenceAccumulator:
     def reset(self) -> None:
         self._items.clear()
 
-    def history(self) -> tuple[str | None, ...]:
+    def history(self) -> tuple[ViolationEvidenceType | None, ...]:
         return tuple(self._items)
 
 
@@ -82,7 +85,7 @@ class TemporalVerifier:
         return tuple(self._history)
 
     @property
-    def evidence_history(self) -> tuple[str | None, ...]:
+    def evidence_history(self) -> tuple[ViolationEvidenceType | None, ...]:
         """Return visual-violation evidence types, never pixels or purpose."""
 
         return self._evidence.history()
@@ -99,7 +102,7 @@ class TemporalVerifier:
         *,
         frame_sequence: int | None = None,
         region: object | None = None,
-        evidence_type: str | None = None,
+        evidence_type: ViolationEvidenceType | None = None,
         track_id: int | None = None,
         evidence_score: float | None = None,
         evidence_delta: float = 0.0,
@@ -110,6 +113,9 @@ class TemporalVerifier:
         as a single temporal observation. Hits on different tracks or
         non-overlapping regions do not confirm each other.
         """
+
+        if evidence_type is not None and not isinstance(evidence_type, ViolationEvidenceType):
+            raise TypeError("temporal evidence type must be typed")
 
         if (
             frame_sequence is not None
@@ -183,6 +189,3 @@ class TemporalVerifier:
             window_full=len(self._history) == self._window_size,
             confirmation=self._confirmation,
         )
-
-
-TemporalEngine = TemporalVerifier

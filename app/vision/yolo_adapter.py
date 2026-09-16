@@ -10,12 +10,10 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from app import config
+from app.vision.detectors.base import to_violation_evidence
 from app.vision.model_assets import resolve_yolo_model_path
-from app.vision.violation_policy import (
-    ViolationEvidence,
-    evidence_type_for_label,
-)
+from app.vision.preprocessor import FramePreprocessor
+from app.vision.violation_policy import ViolationEvidence
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,10 +30,10 @@ def yolo_is_requested(
     enabled: bool | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> bool:
-    """Return whether YOLO11 NSFW Small should load as the primary detector."""
+    """Return whether the standalone optional YOLO adapter should load."""
 
     if enabled is None:
-        enabled = config.YOLO_ENABLED
+        enabled = False
     if enabled:
         return True
     environ = os.environ if environ is None else environ
@@ -81,29 +79,18 @@ def detections_to_evidence(
 ) -> list[ViolationEvidence]:
     """Convert YOLO-style {class, score, box} rows into violation evidence."""
 
-    evidence: list[ViolationEvidence] = []
+    normalized: list[dict[str, Any]] = []
     for detection in detections:
         if not isinstance(detection, dict):
             continue
-        label = str(detection.get("class", "")).strip()
-        evidence_type = evidence_type_for_label(label)
-        if evidence_type is None:
-            continue
-        try:
-            confidence = float(detection.get("score", 0.0))
-        except (TypeError, ValueError):
-            continue
-        evidence.append(
-            ViolationEvidence(
-                evidence_type=evidence_type,
-                label=label,
-                confidence=max(0.0, min(1.0, confidence)),
-                bbox=_bbox_from_detection(detection),
-                model=model,
-                frame_sequence=frame_sequence,
-            )
-        )
-    return evidence
+        normalized.append({
+            "class": detection.get("class"),
+            "score": detection.get("score"),
+            "box": _bbox_from_detection(detection),
+        })
+    return to_violation_evidence(
+        normalized, model=model, frame_sequence=frame_sequence
+    )
 
 
 class UltralyticsYoloModel:
@@ -114,7 +101,7 @@ class UltralyticsYoloModel:
         self.imgsz = imgsz
 
     def detect(self, image: np.ndarray) -> list[dict[str, Any]]:
-        rgb = np.ascontiguousarray(image[:, :, ::-1])
+        rgb = FramePreprocessor.to_rgb(image)
         kwargs: dict[str, Any] = {"verbose": False}
         if self.imgsz is not None:
             kwargs["imgsz"] = int(self.imgsz)

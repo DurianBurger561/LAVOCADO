@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from pathlib import Path
 
 from app.vision.context.base import ContextRanker
 from app.vision.context.off import OffContextRanker
@@ -40,6 +41,7 @@ def load_context_ranker(
     name: str | None = None,
     *,
     enabled: bool = True,
+    data_dir: Path | None = None,
     pipeline_factory: Callable[..., ClassificationPipeline] | None = None,
 ) -> ContextRanker:
     """Always return a ranker. Missing weights become Off, never disable tiles."""
@@ -49,11 +51,13 @@ def load_context_ranker(
         return OffContextRanker()
 
     loader = load_viddexa_nano if requested == CONTEXT_NANO else load_viddexa_mini
-    ranker = loader(enabled=True, pipeline_factory=pipeline_factory)
+    ranker = loader(
+        enabled=True, data_dir=data_dir, pipeline_factory=pipeline_factory
+    )
     if ranker is not None:
         return ranker
     LOGGER.warning(
-        "Context model %s is unavailable; tile ranking will use change + age",
+        "Region ranker %s is unavailable; tile ranking will use change + age",
         requested,
     )
     return OffContextRanker()

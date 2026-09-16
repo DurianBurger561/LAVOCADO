@@ -1,14 +1,21 @@
 """Tests for visual-violation decisions. Viddexa ranks tiles and cannot block."""
 
+import inspect
 import unittest
+from dataclasses import replace
 
 import numpy as np
 
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
+from app.settings.schema import default_vision_settings
+from app.vision.context.base import ContextResult
 from app.vision.decision import DecisionEngine
+from app.vision.preprocessor import PreparedFrame
+from app.vision.primary_detector_set import PrimaryDetection
 from app.vision.violation_policy import (
     ViolationEvidence,
     ViolationEvidenceType,
+    VisualViolationClassification,
 )
 
 
@@ -31,6 +38,12 @@ class FakeContextClassifier:
             return self.scores_by_mean[image_mean]
         return self.scores
 
+    def classify_batch(self, frames: list[np.ndarray]) -> list[ContextResult]:
+        return [
+            ContextResult(scores=self.classify(frame) or {}, model="fake")
+            for frame in frames
+        ]
+
 
 class FakeLocalDetector:
     inference_resolution = 640
@@ -39,69 +52,82 @@ class FakeLocalDetector:
         self._candidates = iter(candidates)
         self.received_means: list[int] = []
 
-    def check(self, image: np.ndarray) -> dict[str, object]:
-        self.received_means.append(int(image.mean()))
+    def detect(self, prepared: PreparedFrame) -> tuple[ViolationEvidence, ...]:
+        self.received_means.append(int(prepared.image.mean()))
         candidate = next(self._candidates, False)
-        return {
-            "blocked": candidate,
-            "reason": "local" if candidate else "",
-            "label": "FEMALE_BREAST_EXPOSED" if candidate else None,
-            "confidence": 0.80 if candidate else 0.0,
-            "box": [0, 0, 1, 1] if candidate else None,
-            "check_points": [],
-        }
+        if not candidate:
+            return ()
+        return (
+            ViolationEvidence(
+                evidence_type=ViolationEvidenceType.BREAST_EXPOSURE,
+                label="FEMALE_BREAST_EXPOSED",
+                confidence=0.80,
+                bbox=(0.0, 0.0, 1.0, 1.0),
+                model="nudenet_640m",
+                frame_sequence=prepared.frame_sequence,
+            ),
+        )
 
 
-def captured_frame() -> CapturedFrame:
-    return CapturedFrame(
-        original_frame=np.zeros((1080, 1920, 3), dtype=np.uint8),
-        model_frame=np.zeros((360, 640, 3), dtype=np.uint8),
+def captured_frame() -> CaptureFrame:
+    return CaptureFrame(
+        image=np.zeros((1080, 1920, 3), dtype=np.uint8),
         sequence=4,
     )
 
 
-def result_with_detection(score: float) -> dict[str, object]:
-    return {
-        "blocked": score >= 0.65,
-        "reason": "strong" if score >= 0.65 else "",
-        "label": "FEMALE_BREAST_EXPOSED" if score >= 0.65 else None,
-        "confidence": score if score >= 0.65 else 0.0,
-        "box": [100, 50, 200, 100] if score >= 0.65 else None,
-        "check_points": [
-            {
-                "class": "FEMALE_BREAST_EXPOSED",
-                "score": score,
-                "box": [100, 50, 200, 100],
-            }
-        ],
-    }
+def result_with_detection(score: float) -> PrimaryDetection:
+    return PrimaryDetection.from_primary(
+        (
+            ViolationEvidence(
+                ViolationEvidenceType.BREAST_EXPOSURE,
+                "FEMALE_BREAST_EXPOSED", score,
+                (100, 50, 200, 100), "nudenet_640m", 4,
+            ),
+        ),
+    )
 
 
-def rescue_frame() -> CapturedFrame:
+def rescue_frame() -> CaptureFrame:
     original = np.zeros((4, 4, 3), dtype=np.uint8)
     original[0:2, 0:2] = 10
     original[0:2, 2:4] = 20
     original[2:4, 0:2] = 30
     original[2:4, 2:4] = 40
-    return CapturedFrame(
-        original_frame=original,
-        model_frame=np.zeros((4, 4, 3), dtype=np.uint8),
+    return CaptureFrame(
+        image=original,
         sequence=1,
     )
 
 
-def empty_result() -> dict[str, object]:
-    return {
-        "blocked": False,
-        "reason": "",
-        "label": None,
-        "confidence": 0.0,
-        "box": None,
-        "check_points": [],
-    }
+def empty_result() -> PrimaryDetection:
+    return PrimaryDetection.from_primary(())
 
 
 class DecisionEngineTests(unittest.TestCase):
+    def test_primary_classification_uses_persisted_thresholds(self) -> None:
+        settings = default_vision_settings()
+        thresholds = replace(
+            settings.thresholds,
+            nudenet_640m={
+                **settings.thresholds.nudenet_640m,
+                "FEMALE_BREAST_EXPOSED": {"proposal": 0.60, "strong": 0.70},
+            },
+        )
+        settings = replace(settings, thresholds=thresholds)
+
+        borderline = DecisionEngine(settings=settings).evaluate(
+            result_with_detection(0.68), captured_frame()
+        )
+        strong = DecisionEngine(settings=settings).evaluate(
+            result_with_detection(0.72), captured_frame()
+        )
+
+        self.assertIs(borderline.classification, VisualViolationClassification.UNCERTAIN)
+        self.assertEqual(borderline.threshold, 0.70)
+        self.assertIs(strong.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(strong.threshold, 0.70)
+
     def test_rescue_ranks_all_tiles_and_skips_low_risk(self) -> None:
         low_context = {"normal": 0.99, "porn": 0.01}
         context = FakeContextClassifier(low_context)
@@ -110,11 +136,11 @@ class DecisionEngineTests(unittest.TestCase):
 
         result = engine.evaluate(empty_result(), rescue_frame(), monitor_index=1)
 
-        self.assertFalse(result["blocked"])
-        self.assertEqual(result["classification"], "clear")
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.CLEAR)
         self.assertEqual(context.received_means, [10, 20, 30, 40])
         self.assertEqual(local_detector.received_means, [10])
-        self.assertIsNotNone(result.get("rescue_tile_index"))
+        self.assertIsNotNone(result.rescue_tile_index)
 
     def test_high_porn_needs_local_nudenet_candidate(self) -> None:
         context = FakeContextClassifier({"porn": 0.99})
@@ -126,8 +152,8 @@ class DecisionEngineTests(unittest.TestCase):
             monitor_index=1,
         )
 
-        self.assertFalse(result["blocked"])
-        self.assertEqual(result["classification"], "clear")
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.CLEAR)
         self.assertEqual(len(local_detector.received_means), 1)
 
     def test_viddexa_cannot_block_without_primary_evidence(self) -> None:
@@ -140,8 +166,7 @@ class DecisionEngineTests(unittest.TestCase):
             monitor_index=1,
         )
 
-        self.assertFalse(result["blocked"])
-        self.assertNotEqual(result.get("classification"), "violation")
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
 
     def test_local_nudenet_candidate_enters_rescue_temporal_path(self) -> None:
         context = FakeContextClassifier({"porn": 0.99})
@@ -153,12 +178,13 @@ class DecisionEngineTests(unittest.TestCase):
             monitor_index=2,
         )
 
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["classification"], "violation")
-        self.assertEqual(result["source"], "rescue_tile")
-        self.assertEqual(result["label"], "FEMALE_BREAST_EXPOSED")
-        self.assertEqual(result["region"], (0, 0, 2, 2))
-        self.assertEqual(result["rescue_tile_index"], 0)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.reason_codes, ("rescue_tile",))
+        self.assertEqual(result.label, "FEMALE_BREAST_EXPOSED")
+        self.assertIs(result.evidence_type, ViolationEvidenceType.BREAST_EXPOSURE)
+        self.assertEqual(result.primary_region, (0, 0, 2, 2))
+        self.assertEqual(result.rescue_tile_index, 0)
 
     def test_rescue_candidate_pins_highest_risk_tile(self) -> None:
         context = FakeContextClassifier({"porn": 0.99})
@@ -186,9 +212,8 @@ class DecisionEngineTests(unittest.TestCase):
             monitor_index=1,
         )
 
-        self.assertFalse(result["blocked"])
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
         self.assertEqual(len(local_detector.received_means), 1)
-        self.assertNotEqual(result.get("classification"), "violation")
 
     def test_tile_ranking_is_independent_per_monitor(self) -> None:
         context = FakeContextClassifier({"normal": 0.99, "porn": 0.01})
@@ -219,18 +244,20 @@ class DecisionEngineTests(unittest.TestCase):
             },
         )
 
-    def test_decision_engine_ignores_context_identity_fields(self) -> None:
-        payload = result_with_detection(0.80)
-        payload["hostname"] = "medical.example"
-        payload["application_name"] = "chrome.exe"
-        payload["medical"] = True
+    def test_decision_engine_accepts_only_visual_evidence(self) -> None:
+        parameters = inspect.signature(DecisionEngine.evaluate).parameters
+        self.assertNotIn("hostname", parameters)
+        self.assertNotIn("application_name", parameters)
+        self.assertNotIn("medical", parameters)
 
-        result = DecisionEngine().evaluate(payload, captured_frame())
+        result = DecisionEngine().evaluate(
+            result_with_detection(0.80), captured_frame()
+        )
 
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["classification"], "violation")
-        self.assertNotIn("hostname", result)
-        self.assertNotIn("medical", result)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertNotEqual(result.label, "medical.example")
+        self.assertNotIn("hostname", result.reason_codes)
+        self.assertNotIn("medical", result.reason_codes)
 
     def test_strong_nudenet_candidate_does_not_need_context(self) -> None:
         context = FakeContextClassifier({"porn": 1.0})
@@ -240,10 +267,10 @@ class DecisionEngineTests(unittest.TestCase):
             captured_frame(),
         )
 
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["classification"], "violation")
-        self.assertEqual(result["source"], "nudenet_full")
-        self.assertEqual(result["region"], (300, 150, 900, 450))
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.reason_codes, ("nudenet_full",))
+        self.assertEqual(result.primary_region, (100, 50, 300, 150))
         self.assertEqual(context.received_shapes, [])
 
     def test_strong_anatomy_roi_recheck_confirms_violation(self) -> None:
@@ -254,9 +281,9 @@ class DecisionEngineTests(unittest.TestCase):
             captured_frame(),
         )
 
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["classification"], "violation")
-        self.assertEqual(result["source"], "nudenet_roi")
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.reason_codes, ("nudenet_roi",))
         self.assertEqual(local_detector.received_means, [0])
 
     def test_strong_anatomy_without_roi_confirmation_stays_uncertain(self) -> None:
@@ -267,9 +294,9 @@ class DecisionEngineTests(unittest.TestCase):
             captured_frame(),
         )
 
-        self.assertFalse(result["blocked"])
-        self.assertEqual(result["classification"], "uncertain")
-        self.assertEqual(result["source"], "anatomy_candidate")
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.UNCERTAIN)
+        self.assertEqual(result.reason_codes, ("anatomy_candidate",))
 
     def test_borderline_roi_recheck_confirms_violation(self) -> None:
         local_detector = FakeLocalDetector([True])
@@ -279,11 +306,11 @@ class DecisionEngineTests(unittest.TestCase):
             captured_frame(),
         )
 
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["classification"], "violation")
-        self.assertEqual(result["label"], "FEMALE_BREAST_EXPOSED")
-        self.assertEqual(result["source"], "nudenet_roi")
-        self.assertEqual(result["region"], (75, 37, 1125, 563))
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.label, "FEMALE_BREAST_EXPOSED")
+        self.assertEqual(result.reason_codes, ("nudenet_roi",))
+        self.assertEqual(result.primary_region, (25, 12, 375, 188))
         self.assertEqual(local_detector.received_means, [0])
 
     def test_viddexa_cannot_confirm_borderline_as_violation(self) -> None:
@@ -302,10 +329,9 @@ class DecisionEngineTests(unittest.TestCase):
             captured_frame(),
         )
 
-        self.assertFalse(result["blocked"])
-        self.assertEqual(result["classification"], "uncertain")
-        self.assertEqual(result["source"], "nudenet_borderline")
-        self.assertNotEqual(result.get("classification"), "violation")
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.UNCERTAIN)
+        self.assertEqual(result.reason_codes, ("nudenet_borderline",))
 
     def test_borderline_without_roi_hit_stays_uncertain(self) -> None:
         local_detector = FakeLocalDetector([False])
@@ -315,9 +341,9 @@ class DecisionEngineTests(unittest.TestCase):
             captured_frame(),
         )
 
-        self.assertFalse(result["blocked"])
-        self.assertEqual(result["classification"], "uncertain")
-        self.assertEqual(result["source"], "nudenet_borderline")
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.UNCERTAIN)
+        self.assertEqual(result.reason_codes, ("nudenet_borderline",))
 
     def test_sexy_or_hentai_cannot_confirm_borderline(self) -> None:
         for label in ("sexy", "hentai"):
@@ -329,9 +355,9 @@ class DecisionEngineTests(unittest.TestCase):
                     captured_frame(),
                 )
 
-                self.assertFalse(result["blocked"])
-                self.assertEqual(result["classification"], "uncertain")
-                self.assertEqual(result["source"], "nudenet_borderline")
+                self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
+                self.assertIs(result.classification, VisualViolationClassification.UNCERTAIN)
+                self.assertEqual(result.reason_codes, ("nudenet_borderline",))
 
     def test_context_cannot_block_without_a_nudenet_borderline(self) -> None:
         context = FakeContextClassifier({"porn": 0.99})
@@ -341,9 +367,8 @@ class DecisionEngineTests(unittest.TestCase):
             captured_frame(),
         )
 
-        self.assertFalse(result["blocked"])
-        self.assertEqual(result["source"], "nudenet_none")
-        self.assertNotEqual(result.get("classification"), "violation")
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.reason_codes, ("nudenet_none",))
 
     def test_missing_context_still_checks_a_tile(self) -> None:
         local_detector = FakeLocalDetector([True])
@@ -354,8 +379,8 @@ class DecisionEngineTests(unittest.TestCase):
             monitor_index=1,
         )
 
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["source"], "rescue_tile")
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.reason_codes, ("rescue_tile",))
         self.assertEqual(len(local_detector.received_means), 1)
 
     def test_missing_or_failed_context_keeps_nudenet_only_result(self) -> None:
@@ -366,9 +391,9 @@ class DecisionEngineTests(unittest.TestCase):
                     captured_frame(),
                 )
 
-                self.assertFalse(result["blocked"])
-                self.assertEqual(result["classification"], "uncertain")
-                self.assertEqual(result["source"], "nudenet_borderline")
+                self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
+                self.assertIs(result.classification, VisualViolationClassification.UNCERTAIN)
+                self.assertEqual(result.reason_codes, ("nudenet_borderline",))
 
     def test_yolo_sexual_act_is_a_visual_violation(self) -> None:
         evidence = [
@@ -383,15 +408,16 @@ class DecisionEngineTests(unittest.TestCase):
         ]
 
         result = DecisionEngine().evaluate(
-            empty_result(),
+            PrimaryDetection.from_primary(
+                (), supplementary=tuple(evidence)
+            ),
             captured_frame(),
-            extra_evidence=evidence,
         )
 
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["classification"], "violation")
-        self.assertEqual(result["source"], "yolo_sexual_act")
-        self.assertEqual(result["label"], "blowjob")
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.reason_codes, ("yolo_sexual_act",))
+        self.assertEqual(result.label, "blowjob")
 
     def test_sexual_act_roi_recheck_confirms_violation(self) -> None:
         evidence = [
@@ -407,14 +433,15 @@ class DecisionEngineTests(unittest.TestCase):
         local_detector = FakeLocalDetector([True])
 
         result = DecisionEngine(None, local_detector).evaluate(
-            empty_result(),
+            PrimaryDetection.from_primary(
+                (), supplementary=tuple(evidence)
+            ),
             captured_frame(),
-            extra_evidence=evidence,
         )
 
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["classification"], "violation")
-        self.assertEqual(result["source"], "yolo_sexual_act_roi")
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertEqual(result.reason_codes, ("yolo_sexual_act_roi",))
         self.assertEqual(local_detector.received_means, [0])
 
     def test_sexual_act_without_roi_confirmation_stays_uncertain(self) -> None:
@@ -431,14 +458,15 @@ class DecisionEngineTests(unittest.TestCase):
         local_detector = FakeLocalDetector([False])
 
         result = DecisionEngine(None, local_detector).evaluate(
-            empty_result(),
+            PrimaryDetection.from_primary(
+                (), supplementary=tuple(evidence)
+            ),
             captured_frame(),
-            extra_evidence=evidence,
         )
 
-        self.assertFalse(result["blocked"])
-        self.assertEqual(result["classification"], "uncertain")
-        self.assertEqual(result["source"], "sexual_act_candidate")
+        self.assertIsNot(result.classification, VisualViolationClassification.VIOLATION)
+        self.assertIs(result.classification, VisualViolationClassification.UNCERTAIN)
+        self.assertEqual(result.reason_codes, ("sexual_act_candidate",))
 
 
 if __name__ == "__main__":

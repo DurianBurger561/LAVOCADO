@@ -1,17 +1,19 @@
 """Tests for selectable primary detectors and context rankers."""
 
+import tempfile
 import unittest
-from unittest.mock import Mock
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 import numpy as np
 
+from app.platforms.capture.models import CaptureFrame
 from app.settings.presets import apply_preset
 from app.settings.schema import sanitize_vision_settings
 from app.settings.storage import load_vision_settings, save_vision_settings
 from app.vision.change_map import ChangeMap, build_change_map, tile_change_scores
 from app.vision.context.factory import load_context_ranker, normalize_context_name
 from app.vision.context.off import OffContextRanker
-from app.vision.detectors.base import check_result_from_evidence, to_detection_evidence
 from app.vision.detectors.factory import (
     PRIMARY_YOLO,
     load_primary_bundle,
@@ -20,10 +22,15 @@ from app.vision.detectors.factory import (
 from app.vision.detectors.nudenet import NudeNetPrimaryDetector
 from app.vision.detectors.yolo11_nsfw import Yolo11NsfwDetector
 from app.vision.evidence import decay_evidence, evidence_from_confidence, is_confirmed
-from app.vision.scheduler import VisionScheduler
+from app.vision.preprocessor import FramePreprocessor
+from app.vision.scheduler import TileScheduler
 from app.vision.tiles import TileState, mark_checked, rank_tiles
 from app.vision.tracking import CandidateTrack, CandidateTracker
-from app.vision.violation_policy import DetectionTier, tier_for_score
+from app.vision.violation_policy import (
+    DetectionTier,
+    ViolationEvidenceType,
+    tier_for_score,
+)
 from app.vision.yolo_adapter import Yolo11Adapter
 
 
@@ -48,25 +55,34 @@ class FakeYolo:
 
 
 class DetectorAbstractionTests(unittest.TestCase):
-    def test_nudenet_keeps_original_labels_and_does_not_block(self) -> None:
+    @staticmethod
+    def prepared(size: int, sequence: int = 1):
+        return FramePreprocessor(
+            CaptureFrame(np.zeros((size, size, 3), dtype=np.uint8), sequence=sequence)
+        ).prepare_full(960 if size == 32 else 640)
+
+    def test_nudenet_keeps_original_labels(self) -> None:
         detector = NudeNetPrimaryDetector(model=FakeNudeModel())
-        evidence = detector.detect(np.zeros((16, 16, 3), dtype=np.uint8), input_size=640)
+        evidence = detector.detect(
+            self.prepared(16)
+        )
 
         self.assertEqual(detector.name, "nudenet_640m")
         self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
-        self.assertFalse(any(hasattr(item, "blocked") for item in evidence))
 
-    def test_nudenet_check_wrapper_still_thresholds(self) -> None:
-        result = NudeNetPrimaryDetector(model=FakeNudeModel()).check(
-            np.zeros((16, 16, 3), dtype=np.uint8)
+    def test_nudenet_detect_emits_typed_anatomy_evidence(self) -> None:
+        evidence = NudeNetPrimaryDetector(model=FakeNudeModel()).detect(
+            self.prepared(16),
         )
-        self.assertTrue(result["blocked"])
-        self.assertEqual(result["label"], "FEMALE_BREAST_EXPOSED")
+        self.assertEqual([item.label for item in evidence], ["FEMALE_BREAST_EXPOSED"])
+        self.assertAlmostEqual(evidence[0].confidence, 0.71)
 
     def test_yolo_uses_input_size_and_own_labels(self) -> None:
         model = FakeYolo()
         detector = Yolo11NsfwDetector(Yolo11Adapter(model), default_input_size=640)
-        evidence = detector.detect(np.zeros((32, 32, 3), dtype=np.uint8), input_size=960)
+        evidence = detector.detect(
+            self.prepared(32)
+        )
 
         self.assertEqual(detector.name, "yolo11_nsfw_small")
         self.assertEqual(evidence[0].label, "breast")
@@ -75,20 +91,13 @@ class DetectorAbstractionTests(unittest.TestCase):
     def test_yolo_unavailable_falls_back_to_nudenet(self) -> None:
         bundle = load_primary_bundle(PRIMARY_YOLO, yolo_enabled=False)
         self.assertEqual(bundle.requested, PRIMARY_YOLO)
+        self.assertIsInstance(bundle.primary, NudeNetPrimaryDetector)
         self.assertTrue(str(bundle.name).startswith("nudenet"))
         self.assertEqual(bundle.yolo_status, "unavailable")
 
     def test_normalize_primary_aliases(self) -> None:
         self.assertEqual(normalize_primary_name("YOLO11"), PRIMARY_YOLO)
         self.assertEqual(normalize_primary_name("bogus"), "nudenet_640m")
-
-    def test_check_result_ignore_below_proposal(self) -> None:
-        evidence = to_detection_evidence(
-            [{"class": "FEMALE_BREAST_EXPOSED", "score": 0.2, "box": [0, 0, 2, 2]}],
-            model="nudenet_640m",
-        )
-        result = check_result_from_evidence(evidence)
-        self.assertFalse(result["blocked"])
 
 
 class ContextRankerTests(unittest.TestCase):
@@ -106,6 +115,20 @@ class ContextRankerTests(unittest.TestCase):
         with self.assertLogs("app.vision.context_classifier", level="WARNING"):
             ranker = load_context_ranker("viddexa_nano", pipeline_factory=factory)
         self.assertEqual(ranker.name, "off")
+
+    def test_context_ranker_uses_bundled_model_path(self) -> None:
+        factory = Mock(return_value=Mock())
+        with tempfile.TemporaryDirectory() as temporary:
+            local_path = Path(temporary)
+            with patch(
+                "app.vision.context.viddexa_nano.resolve_viddexa_model_path",
+                return_value=local_path,
+            ):
+                ranker = load_context_ranker("viddexa_nano", pipeline_factory=factory)
+
+        self.assertEqual(ranker.name, "viddexa_nano")
+        self.assertEqual(factory.call_args.kwargs["model"], str(local_path))
+        self.assertEqual(factory.call_args.kwargs["model_kwargs"], {"local_files_only": True})
 
     def test_nano_and_mini_names(self) -> None:
         self.assertEqual(normalize_context_name("nano"), "viddexa_nano")
@@ -192,6 +215,29 @@ class TilePriorityTests(unittest.TestCase):
 
 
 class TrackingAndEvidenceTests(unittest.TestCase):
+    def test_candidate_identity_keeps_typed_evidence_separate(self) -> None:
+        tracker = CandidateTracker()
+        common = {
+            "monitor_index": 1,
+            "box": (10, 10, 40, 40),
+            "label": "same_raw_label",
+            "confidence": 0.8,
+            "source": "full",
+            "evidence_delta": 1.0,
+        }
+        anatomy = tracker.match_or_create(
+            **common, frame_sequence=1,
+            evidence_type=ViolationEvidenceType.BREAST_EXPOSURE,
+        )
+        act = tracker.match_or_create(
+            **common, frame_sequence=2,
+            evidence_type=ViolationEvidenceType.SEXUAL_ACT,
+        )
+
+        self.assertNotEqual(anatomy.id, act.id)
+        self.assertIs(anatomy.evidence_type, ViolationEvidenceType.BREAST_EXPOSURE)
+        self.assertIs(act.evidence_type, ViolationEvidenceType.SEXUAL_ACT)
+
     def test_same_region_matches_and_different_monitor_does_not(self) -> None:
         tracker = CandidateTracker()
         first = tracker.match_or_create(
@@ -371,7 +417,7 @@ class ChangeMapAndSchedulerTests(unittest.TestCase):
 
     def test_scheduler_focused_and_starvation(self) -> None:
         settings = sanitize_vision_settings(None)
-        scheduler = VisionScheduler(settings)
+        scheduler = TileScheduler(settings)
         tiles = [
             TileState(0, (0, 0, 10, 10), context_score=0.1, skipped_scans=0),
             TileState(1, (10, 0, 20, 10), context_score=0.2, skipped_scans=3),
@@ -388,7 +434,7 @@ class ChangeMapAndSchedulerTests(unittest.TestCase):
 
     def test_scheduler_focused_skips_full_scan(self) -> None:
         settings = sanitize_vision_settings(None)
-        scheduler = VisionScheduler(settings)
+        scheduler = TileScheduler(settings)
         track = CandidateTrack(
             id=1,
             monitor_index=1,
@@ -408,7 +454,7 @@ class ChangeMapAndSchedulerTests(unittest.TestCase):
 
     def test_high_change_uses_aggressive_budget(self) -> None:
         settings = sanitize_vision_settings(None)
-        scheduler = VisionScheduler(settings)
+        scheduler = TileScheduler(settings)
         tiles = [
             TileState(0, (0, 0, 10, 10), context_score=0.1, skipped_scans=0),
             TileState(1, (10, 0, 20, 10), context_score=0.2, skipped_scans=0),
@@ -432,7 +478,7 @@ class ChangeMapAndSchedulerTests(unittest.TestCase):
         settings = sanitize_vision_settings(
             {"scan": {"vision_budget_ms": 50}}
         )
-        scheduler = VisionScheduler(settings)
+        scheduler = TileScheduler(settings)
         tiles = [TileState(0, (0, 0, 10, 10), skipped_scans=0)]
         plan = scheduler.plan(
             monitor_index=1,

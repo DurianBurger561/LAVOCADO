@@ -8,7 +8,8 @@ import numpy as np
 
 from app import config
 from app.platforms.capture import Rect
-from app.vision.capture import CapturedFrame
+from app.platforms.capture.models import CaptureFrame
+from app.settings.schema import ScanSettings, TemporalSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,9 +36,9 @@ class ChangeScheduler:
         *,
         map_max_edge: int = config.CHANGE_MAP_MAX_EDGE,
         pixel_delta: int = config.CHANGE_PIXEL_DELTA,
-        change_ratio_threshold: float = config.CHANGE_RATIO_THRESHOLD,
-        periodic_scan_interval: int = config.CHANGE_PERIODIC_SCAN_INTERVAL,
-        candidate_followup_checks: int = config.CONFIRMATION_WINDOW_SIZE - 1,
+        change_ratio_threshold: float = ScanSettings().change_sensitivity,
+        periodic_scan_interval: int = ScanSettings().periodic_scan_interval,
+        candidate_followup_checks: int = TemporalSettings().window_size - 1,
         adaptive: bool = True,
     ) -> None:
         if map_max_edge < 1:
@@ -60,7 +61,7 @@ class ChangeScheduler:
 
     def should_scan(
         self,
-        captured: CapturedFrame,
+        captured: CaptureFrame,
         monitor_index: int,
         *,
         vision_allowed: bool = True,
@@ -72,7 +73,7 @@ class ChangeScheduler:
         if not self.adaptive:
             return ChangeDecision(True, "always", 1.0)
 
-        current_gray = self._grayscale_map(captured.original_frame)
+        current_gray = self._grayscale_map(captured.image)
         if current_gray is None:
             return ChangeDecision(True, "invalid_frame_failsafe", 1.0)
 
@@ -97,7 +98,7 @@ class ChangeScheduler:
         if native_regions is not None:
             change_ratio = self._native_change_ratio(
                 native_regions,
-                captured.original_frame.shape,
+                captured.image.shape,
             )
             changed = bool(native_regions)
             source = "native"

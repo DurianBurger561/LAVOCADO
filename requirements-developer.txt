@@ -1,3 +1,0 @@
-# Developer-only extras for Benchmark Lab.
-# The Lab uses the standard library plus existing product dependencies.
-# Keep this file so the CI Developer matrix has a stable install path.

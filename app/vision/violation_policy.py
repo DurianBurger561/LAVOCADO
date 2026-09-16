@@ -82,17 +82,6 @@ _YOLO_LABEL_TYPES: dict[str, ViolationEvidenceType] = {
     "buttocks-exposed": ViolationEvidenceType.BUTTOCKS_EXPOSURE,
 }
 
-YOLO_DEFAULT_THRESHOLDS: dict[ViolationEvidenceType, float] = {
-    ViolationEvidenceType.SEXUAL_ACT: 0.45,
-    ViolationEvidenceType.GENITAL_EXPOSURE: 0.45,
-    ViolationEvidenceType.ANUS_EXPOSURE: 0.50,
-    ViolationEvidenceType.BREAST_EXPOSURE: 0.65,
-    ViolationEvidenceType.BUTTOCKS_EXPOSURE: 0.70,
-}
-
-_ACTIVE_POLICY: ThresholdPolicy | None = None
-
-
 @dataclass(frozen=True, slots=True)
 class ThresholdPolicy:
     """Per-model proposal/strong tables. Numbers are experimental starting points."""
@@ -167,6 +156,22 @@ class ThresholdPolicy:
             return _pair_from_dict(yolo[normalized])
         if label in yolo:
             return _pair_from_dict(yolo[label])
+        evidence_type = _YOLO_LABEL_TYPES.get(normalized)
+        if evidence_type is None:
+            return None
+        canonical = {
+            ViolationEvidenceType.SEXUAL_ACT: "sex",
+            ViolationEvidenceType.GENITAL_EXPOSURE: (
+                "vagina"
+                if "female" in normalized or "vagin" in normalized
+                else "vulva" if "vulva" in normalized else "penis"
+            ),
+            ViolationEvidenceType.ANUS_EXPOSURE: "anus",
+            ViolationEvidenceType.BREAST_EXPOSURE: "breast",
+            ViolationEvidenceType.BUTTOCKS_EXPOSURE: "buttocks",
+        }[evidence_type]
+        if canonical in yolo:
+            return _pair_from_dict(yolo[canonical])
         return None
 
 
@@ -190,15 +195,6 @@ def _pair_from_dict(payload: object) -> tuple[float, float] | None:
     return (proposal, strong)
 
 
-def activate_threshold_policy(policy: ThresholdPolicy | None) -> None:
-    global _ACTIVE_POLICY
-    _ACTIVE_POLICY = policy
-
-
-def active_threshold_policy() -> ThresholdPolicy:
-    return _ACTIVE_POLICY or ThresholdPolicy.from_settings()
-
-
 @dataclass(frozen=True, slots=True)
 class ViolationEvidence:
     evidence_type: ViolationEvidenceType
@@ -213,13 +209,23 @@ class ViolationEvidence:
 class VisualViolationDecision:
     classification: VisualViolationClassification
     evidence: tuple[ViolationEvidence, ...]
-    source: str
+    reason_codes: tuple[str, ...]
+    primary_region: tuple[int, int, int, int] | None
+    frame_sequence: int
+    evidence_type: ViolationEvidenceType | None = None
     label: str | None = None
     confidence: float = 0.0
-
-    @property
-    def blocked(self) -> bool:
-        return self.classification is VisualViolationClassification.VIOLATION
+    track_id: int | None = None
+    track_evidence: float | None = None
+    track_fresh_hits: int = 0
+    monitor_index: int = 1
+    scan_mode: str | None = None
+    scan_interval_ms: float | None = None
+    context_label: str | None = None
+    context_score: float | None = None
+    rescue_tile_index: int | None = None
+    threshold: float | None = None
+    shadow: dict[str, Any] | None = None
 
 
 def normalize_model_label(label: str) -> str:
@@ -234,20 +240,9 @@ def evidence_type_for_label(label: str) -> ViolationEvidenceType | None:
 
 
 def threshold_for_label(label: str, model: str | None = None) -> float | None:
-    from app import config
+    """Read the immutable default table; runtime code uses its own policy."""
 
-    policy = _ACTIVE_POLICY
-    if policy is not None:
-        strong = policy.strong(label, model)
-        if strong is not None:
-            return strong
-    raw = str(label).strip()
-    if raw in config.BLOCK_THRESHOLDS:
-        return float(config.BLOCK_THRESHOLDS[raw])
-    evidence_type = evidence_type_for_label(raw)
-    if evidence_type is None:
-        return None
-    return YOLO_DEFAULT_THRESHOLDS[evidence_type]
+    return ThresholdPolicy.from_settings().strong(label, model)
 
 
 def severity_for(evidence_type: ViolationEvidenceType) -> int:
@@ -263,11 +258,10 @@ def proposal_threshold_for_label(
     margin: float,
     model: str | None = None,
 ) -> float | None:
-    policy = _ACTIVE_POLICY
-    if policy is not None:
-        proposal = policy.proposal(label, model)
-        if proposal is not None:
-            return proposal
+    policy = ThresholdPolicy.from_settings()
+    proposal = policy.proposal(label, model)
+    if proposal is not None:
+        return proposal
     strong = threshold_for_label(label, model)
     if strong is None:
         return None
@@ -281,11 +275,10 @@ def tier_for_score(
     margin: float,
     model: str | None = None,
 ) -> DetectionTier:
-    policy = _ACTIVE_POLICY
-    if policy is not None:
-        pair = policy.pair(label, model)
-        if pair is not None:
-            return policy.tier(score, label, model)
+    policy = ThresholdPolicy.from_settings()
+    pair = policy.pair(label, model)
+    if pair is not None:
+        return policy.tier(score, label, model)
     strong = threshold_for_label(label, model)
     if strong is None:
         return DetectionTier.IGNORE

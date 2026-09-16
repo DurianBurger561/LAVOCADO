@@ -4,29 +4,29 @@ import re
 import unittest
 
 from app import config
+from app.settings.schema import default_vision_settings
+from app.vision.model_manifest import VIDDEXA_MINI_REPO, VIDDEXA_MINI_REVISION
 
 
 class ConfigTests(unittest.TestCase):
     def test_detection_baseline_uses_640_pixels(self) -> None:
-        self.assertEqual(config.MODEL_FRAME_MAX_EDGE, 640)
+        self.assertEqual(default_vision_settings().detector.full_input_size, 640)
         self.assertEqual(config.NUDENET_INFERENCE_RESOLUTION, 640)
 
     def test_context_model_is_revision_pinned(self) -> None:
         self.assertEqual(
-            config.CONTEXT_MODEL_NAME,
+            VIDDEXA_MINI_REPO,
             "viddexa/nsfw-detection-2-mini",
         )
-        self.assertRegex(config.CONTEXT_MODEL_REVISION, re.compile(r"^[0-9a-f]{40}$"))
+        self.assertRegex(VIDDEXA_MINI_REVISION, re.compile(r"^[0-9a-f]{40}$"))
 
     def test_context_fusion_defaults_are_conservative(self) -> None:
-        self.assertEqual(config.NUDENET_BORDERLINE_MARGIN, 0.10)
-        self.assertEqual(config.CONTEXT_PORN_CONFIRM_THRESHOLD, 0.90)
-        self.assertEqual(config.CONTEXT_PORN_RESCUE_THRESHOLD, 0.97)
-        self.assertFalse(config.CONTEXT_SEXY_CAN_BLOCK)
-        self.assertFalse(config.CONTEXT_HENTAI_CAN_BLOCK)
-        self.assertFalse(config.YOLO_ENABLED)
+        settings = default_vision_settings()
+        self.assertEqual(settings.recheck.proposal_margin, 0.10)
+        self.assertEqual(settings.context.model, "viddexa_mini")
+        self.assertEqual(settings.detector.primary, "nudenet_640m")
         self.assertEqual(
-            config.RESCUE_TILE_ROWS * config.RESCUE_TILE_COLUMNS,
+            settings.tiles.rows * settings.tiles.columns,
             4,
         )
 

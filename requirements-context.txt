@@ -1,4 +1,0 @@
-# Optional development dependencies for validating the Viddexa context model.
-# They are not yet part of release packaging; install only for Phase 2 benchmarks.
-transformers>=4.56.1,<5
-torch>=2.4,<3
