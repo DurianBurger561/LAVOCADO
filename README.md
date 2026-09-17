@@ -19,6 +19,8 @@ LAVOCADO is a local-first desktop protection application for **Windows 10/11 and
 
 Instead of relying only on website URLs or application names, LAVOCADO can analyze what is actually displayed on screen. Visual evidence is processed locally, rechecked when necessary, confirmed across fresh frames, and followed by a deliberate intervention on the affected monitor.
 
+LAVOCADO is built for **self-directed abstinence** — for people who have decided, on their own terms, to stay away from pornographic and sexually explicit content. It is a tool for keeping a boundary you set for yourself, not a parental-control or surveillance product. Rather than only blocking, it turns each trigger into a deliberate pause, so you can interrupt the impulse and choose what to do next.
+
 ## Why LAVOCADO?
 
 Unwanted visual content can appear almost anywhere:
