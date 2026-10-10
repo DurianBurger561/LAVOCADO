@@ -8,7 +8,7 @@
 <link rel="icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&family=Noto+Sans+Arabic:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&family=Cinzel:wght@700;900&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&family=Noto+Sans+Arabic:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --flesh:#cfe8a6;--flesh-2:#a6e3a1;--skin:#4e7a34;--skin-deep:#2f5321;
@@ -25,6 +25,7 @@
     overflow-x:hidden;line-height:1.65;
   }
   body[lang="zh"]{font-family:'Noto Sans SC','Inter',sans-serif}
+  body[lang="zh-Hant"]{font-family:'Noto Sans TC','Inter',sans-serif}
   body[lang="ja"]{font-family:'Noto Sans JP','Inter',sans-serif}
   body[lang="ko"]{font-family:'Noto Sans KR','Inter',sans-serif}
   body[lang="ar"]{font-family:'Noto Sans Arabic','Inter',sans-serif;direction:rtl}
@@ -79,10 +80,16 @@
 
   section{position:relative;padding:clamp(80px,13vh,150px) clamp(20px,5vw,40px)}
   .wrap{max-width:var(--maxw);margin:0 auto}
-  .hero{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-top:120px}
-  .hero-logo{width:clamp(260px,32vw,400px);margin:-70px 0 -40px;filter:drop-shadow(0 20px 48px rgba(0,0,0,.55));animation:bob 6s ease-in-out infinite}
+  .hero{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-top:96px;padding-bottom:48px}
+  .hero-logo{width:clamp(200px,22vw,300px);margin:-50px 0 -52px;filter:drop-shadow(0 20px 48px rgba(0,0,0,.55));animation:bob 6s ease-in-out infinite}
+  .hero-brand{display:flex;flex-direction:column;align-items:center;margin:0 0 60px}
+  .hero-logo{position:relative;z-index:0}
+  .wordmark{position:relative;z-index:1;font-family:'Cinzel',Georgia,'Times New Roman',serif;font-weight:900;-webkit-text-stroke:1.2px currentColor;paint-order:stroke fill;
+    font-size:clamp(40px,5.6vw,70px);letter-spacing:.03em;line-height:1;color:#ffffff;
+    text-shadow:0 3px 12px rgba(0,0,0,.45)}
+  .wordmark span{color:#a6d65a}
   @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
-  .hero h1{font-size:clamp(40px,7.5vw,82px);font-weight:800;line-height:1.04;letter-spacing:-.02em;margin-bottom:22px;
+  .hero h1{font-size:clamp(36px,5.6vw,72px);font-weight:800;line-height:1.04;letter-spacing:-.02em;margin-bottom:22px;
     background:linear-gradient(135deg,#eaf6cf 0%,var(--accent) 48%,var(--flesh-2) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
   .hero .tag{font-size:clamp(17px,2.4vw,23px);max-width:700px;color:var(--mist);font-weight:400;margin-bottom:14px}
   .hero .sub{font-size:14px;color:rgba(244,247,236,.5);letter-spacing:.14em;text-transform:uppercase;margin-bottom:40px;font-weight:600}
@@ -168,10 +175,11 @@
   <div class="brand"><img src="logo.png" alt="LAVOCADO"><span>LAVO<b>CADO</b></span></div>
   <div class="lang" id="lang">
     <div class="lang-btn" id="langBtn">
-      <span class="flag" id="curFlag">🇨🇳</span><span id="curName">中文</span><span class="caret">▼</span>
+      <span class="flag" id="curFlag">🇨🇳</span><span id="curName">简体中文</span><span class="caret">▼</span>
     </div>
     <div class="lang-menu" id="langMenu">
-      <button data-lang="zh" class="active"><span class="flag">🇨🇳</span><span>中文</span></button>
+      <button data-lang="zh" class="active"><span class="flag">🇨🇳</span><span>简体中文</span></button>
+      <button data-lang="zh-Hant"><span class="flag">🇭🇰</span><span>繁體中文</span></button>
       <button data-lang="en"><span class="flag">🇬🇧</span><span>English</span></button>
       <button data-lang="ja"><span class="flag">🇯🇵</span><span>日本語</span></button>
       <button data-lang="ko"><span class="flag">🇰🇷</span><span>한국어</span></button>
@@ -184,7 +192,10 @@
 </nav>
 
 <header class="hero">
-  <img src="logo.png" alt="LAVOCADO logo" class="hero-logo">
+  <div class="hero-brand">
+    <img src="logo.png" alt="LAVOCADO logo" class="hero-logo">
+    <div class="wordmark" aria-label="LAVOCADO">LAVO<span>CADO</span></div>
+  </div>
   <h1 data-i18n="hero_title">戒掉色情，从守住这一刻开始</h1>
   <p class="tag" data-i18n="hero_tag">本地优先的桌面戒色工具。实时识别明确裸露、即时遮挡，再由 AI 陪你平稳渡过冲动——帮你一步步摆脱对色情的强迫性依赖。</p>
   <p class="sub" data-i18n="hero_sub">拦 · 接 — 全程本地，隐私至上</p>
@@ -266,7 +277,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const I18N={
- zh:{flag:"🇨🇳",name:"中文",
+ zh:{flag:"🇨🇳",name:"简体中文",
   hero_title:"戒掉色情，从守住这一刻开始",
   hero_tag:"本地优先的桌面戒色工具。实时识别明确裸露、即时遮挡，再由 AI 陪你平稳渡过冲动——帮你一步步摆脱对色情的强迫性依赖。",
   hero_sub:"拦 · 接 — 全程本地，隐私至上",hero_cta1:"立即下载",hero_cta2:"GitHub 源码",
@@ -293,6 +304,32 @@ const I18N={
   foot_gh:"GitHub",foot_lic:"许可协议",foot_doc:"文档",foot_contact:"联系我们",
   foot_license:"源代码采用 BSL 1.1 授权，个人非商业使用免费；机构或商业使用请联系 x12468xl@outlook.com。"},
 
+ "zh-Hant":{flag:"🇭🇰",name:"繁體中文",
+  hero_title:"戒掉色情，從守住這一刻開始",
+  hero_tag:"本地優先的桌面戒色工具。實時識別明確裸露、即時遮擋，再由 AI 陪你平穩渡過沖動——幫你一步步擺脱對色情的強迫性依賴。",
+  hero_sub:"攔 · 接 — 全程本地，隱私至上",hero_cta1:"立即下載",hero_cta2:"GitHub 原始碼",
+  pillar_eyebrow:"核心理念",pillar_title:"戒色，不只是攔截，更是接住你",
+  pillar_lead:'大多數戒色工具只會"攔"。LAVOCADO 在遮擋之後，還會温柔地接住你。',
+  pillar1_h:"攔",pillar1_p:"在本地實時識別明確裸露內容，即時遮擋觸發的那塊螢幕——快到衝動還沒形成，畫面已經消失。",
+  pillar2_h:"接",pillar2_p:"遮擋之後不是冷冰冰的禁止。AI 陪你停頓、呼吸，引導你平穩渡過這一刻，而不是對抗你。",
+  feat_eyebrow:"為什麼不一樣",feat_title:"為真正想戒色的人而造",
+  feat1_h:"實時識別",feat1_p:"NudeNet 640m 視覺模型本地推理，多幀時序確認防誤報，只遮觸發的那塊螢幕。",
+  feat2_h:"絕對隱私",feat2_p:"截圖只在本地記憶體處理，絕不上傳、絕不存儲。你的螢幕永遠不離開你的裝置。",
+  feat3_h:"智能冥想",feat3_p:"停頓 → 呼吸 → 準備。AI 陪伴式引導，全程邀請而非強制，Esc 隨時可退出。",
+  feat4_h:"跨平台",feat4_p:"Windows、macOS、Linux 全支持，多顯示器獨立監測，只遮住觸發的那一塊。",
+  feat5_h:"開源可審計",feat5_p:'代碼完全公開，任何人都能驗證"它真的沒有偷看你的螢幕"。信任，來自可驗證。',
+  feat6_h:"自己説了算",feat6_p:"完全自願、不向任何人上報。性感、暗示、擦邊內容主動不攔——只攔明確裸露。",
+  how_eyebrow:"工作原理",how_title:"三層防護，層層把關",
+  how1_h:"封鎖名單層",how1_p:"讀取前台視窗與網址，字符串匹配已知來源。不連網，中頻檢查。",
+  how2_h:"視覺層",how2_p:"擷取畫面 → 縮小影像 → NudeNet 檢測 → 遮擋。約 1.5–2 秒一輪，全程本地記憶體處理，不落盤、不上傳。",
+  how3_h:"干預層",how3_p:"確認後觸發 AI 陪伴冥想，僅在生成鼓勵語句時連網——且只發送固定請求，絕不包含截圖或檢測標籤。",
+  priv_eyebrow:"隱私承諾",priv_title:"你的螢幕，永遠不離開你的裝置",
+  priv_lead:"我們只在本地記錄最少的事件元資料——時間、標籤、置信度、顯示器編號。不存截圖、不存網址、不存視窗標題。",
+  priv_p1:"截圖只在記憶體處理",priv_p2:"絕不上傳雲端",priv_p3:"不存網址與視窗標題",priv_p4:"開源可審計",
+  final_title:"準備好，邁出戒色的第一步",final_lead:"免費，供個人使用。如果它幫到了你，歡迎支持開發。",
+  final_cta1:"前往下載",final_cta2:"查看原始碼",
+  foot_gh:"GitHub",foot_lic:"許可協議",foot_doc:"說明文件",foot_contact:"聯繫我們",
+  foot_license:"源代碼採用 BSL 1.1 授權，個人非商業使用免費；機構或商業使用請聯繫 x12468xl@outlook.com。"},
  en:{flag:"🇬🇧",name:"English",
   hero_title:"Quit porn, one guarded moment at a time",
   hero_tag:"A local-first desktop tool for quitting porn. It detects explicit nudity in real time, covers it instantly, and an AI companion helps you ride out the urge — breaking the compulsive pull of pornography, step by step.",
@@ -586,7 +623,8 @@ const nav=document.getElementById("nav");
 
 (function(){
   let s;try{s=localStorage.getItem("lavocado_lang")}catch(e){}
-  if(!s){const b=(navigator.language||"zh").slice(0,2);s=["zh","en","ja","ko","fr","de","ru","ar"].includes(b)?b:"zh";}
+  if(!s){const L=navigator.language||"zh",b=L.slice(0,2);s=/^zh-(TW|HK|MO|Hant)/i.test(L)?"zh-Hant":(["zh","en","ja","ko","fr","de","ru","ar"].includes(b)?b:"zh");}
+  if(!I18N[s])s="zh";
   setLang(s);
 })();
 </script>
