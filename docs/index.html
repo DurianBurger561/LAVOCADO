@@ -99,6 +99,9 @@
     cursor:pointer;text-decoration:none;transition:transform .2s,box-shadow .3s,background .3s;border:none}
   .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#10240d;box-shadow:0 12px 30px rgba(127,194,74,.34)}
   .btn-primary:hover{transform:translateY(-3px);box-shadow:0 18px 44px rgba(127,194,74,.5)}
+  .dl-alt{display:flex;gap:10px;justify-content:center;align-items:center;margin-top:16px;font-size:13.5px;color:rgba(244,247,236,.45)}
+  .dl-alt a{color:rgba(244,247,236,.7);text-decoration:none;font-weight:600;transition:color .2s}
+  .dl-alt a:hover{color:var(--accent)}
   .btn-ghost{background:var(--card);border:1px solid var(--card-brd);color:var(--cream)}
   .btn-ghost:hover{transform:translateY(-3px);border-color:var(--accent);background:rgba(207,232,166,.1)}
 
@@ -202,9 +205,10 @@
   <h1 data-i18n="hero_title">戒掉色情，从现在开始！</h1>
   <p class="tag" data-i18n="hero_tag">本地优先的桌面戒色工具。实时识别明确裸露、即时遮挡，再由 AI 陪你平稳渡过冲动——帮你一步步摆脱对色情的强迫性依赖。</p>
   <div class="cta">
-    <a href="https://github.com/DurianBurger561/LAVOCADO/releases" target="_blank" rel="noopener" class="btn btn-primary"><span>⬇</span><span data-i18n="hero_cta1">立即下载</span></a>
+    <a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip" class="btn btn-primary dl-btn"><span>⬇</span><span data-i18n="hero_cta1">立即下载</span></a>
     <a href="https://github.com/DurianBurger561/LAVOCADO" target="_blank" rel="noopener" class="btn btn-ghost"><span>★</span><span data-i18n="hero_cta2">GitHub 源码</span></a>
   </div>
+  <div class="dl-alt"><a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip">macOS</a><span>·</span><a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-Windows.zip">Windows</a><span>·</span><a href="https://github.com/DurianBurger561/LAVOCADO/releases" target="_blank" rel="noopener">GitHub Releases</a></div>
 </header>
 
 <section>
@@ -258,9 +262,10 @@
       <h2 class="sec-title center" style="margin-inline:auto" data-i18n="final_title">准备好，迈出戒色的第一步</h2>
       <p class="sec-lead" style="margin:16px auto 34px" data-i18n="final_lead">免费，供个人使用。如果它帮到了你，欢迎支持开发。</p>
       <div class="cta" style="justify-content:center">
-        <a href="https://github.com/DurianBurger561/LAVOCADO/releases" target="_blank" rel="noopener" class="btn btn-primary"><span>⬇</span><span data-i18n="final_cta1">前往下载</span></a>
+        <a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip" class="btn btn-primary dl-btn"><span>⬇</span><span data-i18n="final_cta1">前往下载</span></a>
         <a href="https://github.com/DurianBurger561/LAVOCADO" target="_blank" rel="noopener" class="btn btn-ghost"><span>★</span><span data-i18n="final_cta2">查看源码</span></a>
       </div>
+  <div class="dl-alt" style="justify-content:center"><a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip">macOS</a><span>·</span><a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-Windows.zip">Windows</a><span>·</span><a href="https://github.com/DurianBurger561/LAVOCADO/releases" target="_blank" rel="noopener">GitHub Releases</a></div>
     </div>
   </div>
 </section>
@@ -853,6 +858,14 @@ const nav=document.getElementById("nav");
   if(!s){const L=navigator.language||"zh",b=L.slice(0,2);s=/^zh-(TW|HK|MO|Hant)/i.test(L)?"zh-Hant":(["zh","en","ja","ko","th","hi","fr","de","it","es","pt","ru","ar"].includes(b)?b:"zh");}
   if(!I18N[s])s="zh";
   setLang(s);
+})();
+
+/* ---------- point the main download button at the visitor's OS ---------- */
+(function(){
+  const base="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/";
+  const ua=(navigator.userAgentData&&navigator.userAgentData.platform)||navigator.platform||navigator.userAgent||"";
+  const file=/win/i.test(ua)?"LAVOCADO-Windows.zip":"LAVOCADO-macOS.zip";
+  document.querySelectorAll(".dl-btn").forEach(a=>a.href=base+file);
 })();
 </script>
 </body>

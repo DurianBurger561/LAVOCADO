@@ -104,3 +104,32 @@ jobs:
           path: ${{ matrix.archive }}
           if-no-files-found: error
           retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged applications
+        uses: actions/download-artifact@v7
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l release
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/*.zip --clobber
+          else
+            PRE=""
+            case "$TAG" in *-*) PRE="--prerelease" ;; esac
+            gh release create "$TAG" release/*.zip --title "LAVOCADO $TAG" --generate-notes $PRE
+          fi
