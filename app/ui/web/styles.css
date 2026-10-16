@@ -1,3 +1,11 @@
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("fonts/Inter-ExtraBold.ttf") format("truetype");
+}
+
 :root {
   color-scheme: dark;
   --bg: #0b1020;
@@ -37,7 +45,8 @@ body {
     radial-gradient(circle at 10% 28%, rgba(53, 161, 111, 0.1), transparent 28rem),
     var(--bg);
   font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", "Yuanti SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-  font-size: 16px;
+  font-size: 19px;
+  font-weight: 550;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
 }
@@ -130,7 +139,7 @@ button {
 
 .brand h1 {
   margin-bottom: 0;
-  font-size: 26px;
+  font-size: 30px;
   letter-spacing: 0.08em;
 }
 
@@ -138,30 +147,30 @@ button {
 .section-label {
   margin-bottom: 3px;
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 16px;
+  font-weight: 700;
   letter-spacing: 0.09em;
 }
 
-.logo-mark {
-  position: relative;
-  width: 43px;
-  height: 48px;
-  border: 2px solid var(--green);
-  border-radius: 52% 52% 48% 48% / 60% 60% 42% 42%;
-  transform: rotate(5deg);
-  box-shadow: 0 0 28px rgba(85, 203, 136, 0.22);
+.brand-logo {
+  width: 112px;
+  height: 112px;
+  object-fit: contain;
+  flex: none;
+  margin: -15px -20px -15px -28px;
 }
 
-.logo-mark span {
-  position: absolute;
-  left: 50%;
-  bottom: 7px;
-  width: 17px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--lavender);
-  transform: translateX(-50%);
+.brand h1 {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: #fff;
+}
+
+.brand h1 span {
+  color: #a6d65a;
 }
 
 .privacy-badge {
@@ -173,7 +182,7 @@ button {
   border-radius: 999px;
   color: #cbd5e1;
   background: rgba(15, 23, 42, 0.55);
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .privacy-dot {
@@ -211,7 +220,7 @@ main {
 }
 
 .home-overview h2 {
-  font-size: 32px;
+  font-size: 36px;
 }
 
 .home-summary {
@@ -230,12 +239,12 @@ main {
 
 .home-summary dt {
   color: var(--muted);
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .home-summary dd {
   margin: 5px 0 0;
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .runtime-phase {
@@ -263,8 +272,8 @@ main {
 .section-heading h2,
 .privacy-card h2 {
   margin-bottom: 0;
-  font-size: 27px;
-  font-weight: 650;
+  font-size: 32px;
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 
@@ -319,11 +328,11 @@ main {
 }
 
 .button {
-  min-height: 48px;
+  min-height: 54px;
   padding: 10px 20px;
   border-radius: 14px;
-  font-size: 16px;
-  font-weight: 650;
+  font-size: 19px;
+  font-weight: 700;
 }
 
 .button:hover:not(:disabled),
@@ -368,7 +377,7 @@ main {
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--green);
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .action-message.error {
@@ -391,7 +400,7 @@ main {
 .vision-settings > .muted,
 .llm-settings > .muted {
   margin: -12px 0 14px;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .vision-form {
@@ -409,21 +418,21 @@ main {
   flex-direction: column;
   gap: 6px;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .vision-form select,
 .vision-form input[type="text"],
 .vision-form input[type="url"],
 .vision-form input[type="password"] {
-  min-height: 44px;
+  min-height: 50px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   color: var(--text);
   background: var(--panel-raised);
   font: inherit;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .vision-form input:focus-visible,
@@ -440,9 +449,9 @@ main {
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  min-height: 44px;
+  min-height: 50px;
   color: var(--text);
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .llm-enabled-field input {
@@ -462,7 +471,7 @@ main {
 .vision-advanced summary {
   cursor: pointer;
   color: var(--lavender);
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .vision-advanced .vision-form-grid {
@@ -513,14 +522,14 @@ main {
 }
 
 .vision-threshold-row .muted {
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .rules-message {
   min-height: 18px;
   margin-bottom: 10px;
   color: var(--green);
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .rules-message.error {
@@ -543,17 +552,17 @@ main {
 
 .rule-group h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 21px;
 }
 
 .rule-group > .muted {
   min-height: 34px;
   margin: 5px 0 12px;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .rule-list {
-  min-height: 48px;
+  min-height: 54px;
   margin: 0 0 16px;
   padding: 0;
   list-style: none;
@@ -570,20 +579,20 @@ main {
 
 .rule-list li.rule-empty {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .rule-value {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--text);
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .rule-mode {
   flex: none;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .rule-remove {
@@ -596,7 +605,7 @@ main {
   display: block;
   margin-bottom: 7px;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .rule-entry {
@@ -608,18 +617,18 @@ main {
 .rule-entry input,
 .rule-entry select {
   min-width: 0;
-  min-height: 44px;
+  min-height: 50px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   color: var(--text);
   background: var(--panel-raised);
   font: inherit;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .rule-entry input {
-  flex: 1 1 160px;
+  flex: 1 1 200px;
 }
 
 .rule-entry select {
@@ -628,9 +637,9 @@ main {
 
 .rule-entry .button {
   flex: none;
-  min-height: 44px;
+  min-height: 50px;
   padding: 0 10px;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .rule-entry input:focus-visible,
@@ -664,7 +673,7 @@ main {
 
 .modal h2 {
   margin: 0 0 10px;
-  font-size: 23px;
+  font-size: 27px;
 }
 
 .modal p {
@@ -702,12 +711,12 @@ main {
 
 .scan-summary strong {
   color: var(--green);
-  font-size: 26px;
+  font-size: 30px;
 }
 
 .scan-summary span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 16px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
@@ -731,7 +740,7 @@ main {
 
 .model-list dt {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 16px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -739,8 +748,8 @@ main {
 .model-list dd {
   margin: 3px 0 0;
   overflow: hidden;
-  font-size: 15px;
-  font-weight: 620;
+  font-size: 18px;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -784,7 +793,7 @@ main {
 
 .capture-list dt {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -792,8 +801,8 @@ main {
 .capture-list dd {
   margin: 3px 0 0;
   overflow-wrap: anywhere;
-  font-size: 14px;
-  font-weight: 620;
+  font-size: 17px;
+  font-weight: 700;
 }
 
 .capture-reason-row {
@@ -808,12 +817,12 @@ main {
 .mini-signal strong {
   display: block;
   margin-top: 3px;
-  font-size: 16px;
+  font-size: 19px;
 }
 
 .signal-name {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.11em;
@@ -824,7 +833,7 @@ main {
   border-radius: 999px;
   color: var(--muted);
   background: rgba(148, 163, 184, 0.1);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -892,7 +901,7 @@ main {
   margin-bottom: 0;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .signal-pair {
@@ -915,7 +924,7 @@ main {
 }
 
 .mini-signal .muted {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .temporal-row,
@@ -953,7 +962,7 @@ main {
 
 .rescue-row {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .rescue-row strong {
@@ -1001,13 +1010,13 @@ main {
 .privacy-card h2 {
   max-width: 250px;
   margin-top: 7px;
-  font-size: 30px;
+  font-size: 34px;
 }
 
 .privacy-card > p:not(.section-label) {
   margin-top: 15px;
   color: #b5c0d3;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .privacy-card ul {
@@ -1019,7 +1028,7 @@ main {
   padding: 0;
   list-style: none;
   color: #dbe4f2;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .privacy-card li::before {
@@ -1043,7 +1052,7 @@ main {
   border-radius: 999px;
   color: var(--green);
   background: rgba(85, 203, 136, 0.1);
-  font-size: 14px;
+  font-size: 17px;
   vertical-align: 3px;
 }
 
@@ -1051,8 +1060,8 @@ main {
   padding: 6px 0;
   color: var(--lavender);
   background: transparent;
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .table-wrap {
@@ -1065,14 +1074,14 @@ table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 th {
   padding: 9px 12px;
   border-bottom: 1px solid var(--line-strong);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -1093,7 +1102,7 @@ tbody tr:last-child td {
   margin: 25px 0 5px;
   color: var(--muted);
   text-align: center;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 @media (max-width: 900px) {

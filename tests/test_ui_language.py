@@ -75,7 +75,7 @@ class UILanguageTests(unittest.TestCase):
         parser = _StaticText()
         parser.feed(html)
         technical = {
-            "LAVOCADO", "NudeNet", "NudeNet 640m", "YOLO11 NSFW Small",
+            "LAVOCADO", "LAVO", "CADO", "NudeNet", "NudeNet 640m", "YOLO11 NSFW Small",
             "Viddexa Nano", "Viddexa Mini", "MSS", "ROI",
             "chrome.exe", "org.example.viewer", "example.com",
         }
