@@ -99,9 +99,11 @@
     cursor:pointer;text-decoration:none;transition:transform .2s,box-shadow .3s,background .3s;border:none}
   .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#10240d;box-shadow:0 12px 30px rgba(127,194,74,.34)}
   .btn-primary:hover{transform:translateY(-3px);box-shadow:0 18px 44px rgba(127,194,74,.5)}
-  .dl-alt{display:flex;gap:10px;justify-content:center;align-items:center;margin-top:16px;font-size:13.5px;color:rgba(244,247,236,.45)}
-  .dl-alt a{color:rgba(244,247,236,.7);text-decoration:none;font-weight:600;transition:color .2s}
-  .dl-alt a:hover{color:var(--accent)}
+  .btn-dl{color:#fff;background:linear-gradient(135deg,#6fae3d,#3f7a24);gap:11px;
+    box-shadow:0 12px 30px rgba(79,140,45,.38);text-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .btn-dl:hover{box-shadow:0 18px 44px rgba(79,140,45,.55)}
+  .btn-dl .os-ic{width:24px;height:24px;flex:none;color:#fff;margin-top:-2px}
+  .btn-dl .os-ic[viewBox^="4.4"]{width:22px;height:27px;margin-top:-5px}
   .btn-ghost{background:var(--card);border:1px solid var(--card-brd);color:var(--cream)}
   .btn-ghost:hover{transform:translateY(-3px);border-color:var(--accent);background:rgba(207,232,166,.1)}
 
@@ -205,10 +207,10 @@
   <h1 data-i18n="hero_title">戒掉色情，从现在开始！</h1>
   <p class="tag" data-i18n="hero_tag">本地优先的桌面戒色工具。实时识别明确裸露、即时遮挡，再由 AI 陪你平稳渡过冲动——帮你一步步摆脱对色情的强迫性依赖。</p>
   <div class="cta">
-    <a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip" class="btn btn-primary dl-btn"><span>⬇</span><span data-i18n="hero_cta1">立即下载</span></a>
+    <a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip" class="btn btn-primary btn-dl"><svg class="os-ic" viewBox="4.4 2.6 15.4 19.6" aria-hidden="true"><path fill="currentColor" d="M16.37 12.68c-.02-2.29 1.87-3.39 1.95-3.44-1.06-1.55-2.71-1.77-3.3-1.79-1.4-.14-2.74.83-3.45.83-.71 0-1.81-.81-2.97-.79-1.53.02-2.94.89-3.73 2.26-1.59 2.76-.41 6.84 1.14 9.08.76 1.1 1.66 2.33 2.84 2.28 1.14-.05 1.57-.74 2.95-.74 1.38 0 1.76.74 2.97.71 1.23-.02 2.01-1.11 2.76-2.22.87-1.27 1.23-2.51 1.25-2.57-.03-.01-2.39-.92-2.41-3.64zM14.12 5.95c.63-.76 1.05-1.82.94-2.88-.9.04-2 .6-2.65 1.36-.58.67-1.09 1.75-.95 2.79 1 .08 2.03-.51 2.66-1.27z"/></svg><span data-i18n="dl_mac">Mac 下载</span></a>
+    <a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-Windows.zip" class="btn btn-primary btn-dl"><svg class="os-ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 5.1 10.4 4v7.1H3zm0 13.8 7.4 1.1v-7H3zm8.3 1.2L21 21.5v-8.4h-9.7zm0-16.2v7.2H21V2.5z"/></svg><span data-i18n="dl_win">Windows 下载</span></a>
     <a href="https://github.com/DurianBurger561/LAVOCADO" target="_blank" rel="noopener" class="btn btn-ghost"><span>★</span><span data-i18n="hero_cta2">GitHub 源码</span></a>
   </div>
-  <div class="dl-alt"><a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip">macOS</a><span>·</span><a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-Windows.zip">Windows</a><span>·</span><a href="https://github.com/DurianBurger561/LAVOCADO/releases" target="_blank" rel="noopener">GitHub Releases</a></div>
 </header>
 
 <section>
@@ -262,10 +264,10 @@
       <h2 class="sec-title center" style="margin-inline:auto" data-i18n="final_title">准备好，迈出戒色的第一步</h2>
       <p class="sec-lead" style="margin:16px auto 34px" data-i18n="final_lead">免费，供个人使用。如果它帮到了你，欢迎支持开发。</p>
       <div class="cta" style="justify-content:center">
-        <a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip" class="btn btn-primary dl-btn"><span>⬇</span><span data-i18n="final_cta1">前往下载</span></a>
+        <a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip" class="btn btn-primary btn-dl"><svg class="os-ic" viewBox="4.4 2.6 15.4 19.6" aria-hidden="true"><path fill="currentColor" d="M16.37 12.68c-.02-2.29 1.87-3.39 1.95-3.44-1.06-1.55-2.71-1.77-3.3-1.79-1.4-.14-2.74.83-3.45.83-.71 0-1.81-.81-2.97-.79-1.53.02-2.94.89-3.73 2.26-1.59 2.76-.41 6.84 1.14 9.08.76 1.1 1.66 2.33 2.84 2.28 1.14-.05 1.57-.74 2.95-.74 1.38 0 1.76.74 2.97.71 1.23-.02 2.01-1.11 2.76-2.22.87-1.27 1.23-2.51 1.25-2.57-.03-.01-2.39-.92-2.41-3.64zM14.12 5.95c.63-.76 1.05-1.82.94-2.88-.9.04-2 .6-2.65 1.36-.58.67-1.09 1.75-.95 2.79 1 .08 2.03-.51 2.66-1.27z"/></svg><span data-i18n="dl_mac">Mac 下载</span></a>
+    <a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-Windows.zip" class="btn btn-primary btn-dl"><svg class="os-ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 5.1 10.4 4v7.1H3zm0 13.8 7.4 1.1v-7H3zm8.3 1.2L21 21.5v-8.4h-9.7zm0-16.2v7.2H21V2.5z"/></svg><span data-i18n="dl_win">Windows 下载</span></a>
         <a href="https://github.com/DurianBurger561/LAVOCADO" target="_blank" rel="noopener" class="btn btn-ghost"><span>★</span><span data-i18n="final_cta2">查看源码</span></a>
       </div>
-  <div class="dl-alt" style="justify-content:center"><a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-macOS.zip">macOS</a><span>·</span><a href="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/LAVOCADO-Windows.zip">Windows</a><span>·</span><a href="https://github.com/DurianBurger561/LAVOCADO/releases" target="_blank" rel="noopener">GitHub Releases</a></div>
     </div>
   </div>
 </section>
@@ -284,7 +286,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const I18N={
- zh:{flag:"🇨🇳",name:"简体中文",
+ zh:{flag:"🇨🇳",name:"简体中文",dl_mac:"Mac 下载",dl_win:"Windows 下载",
   hero_title:"戒掉色情，从现在开始！",
   hero_tag:"本地优先的桌面戒色工具。实时识别明确裸露、即时遮挡，再由 AI 陪你平稳渡过冲动——帮你一步步摆脱对色情的强迫性依赖。",
   hero_cta1:"立即下载",hero_cta2:"GitHub 源码",
@@ -311,7 +313,7 @@ const I18N={
   foot_gh:"GitHub",foot_lic:"许可协议",foot_doc:"文档",foot_contact:"联系我们",
   foot_license:"源代码采用 BSL 1.1 授权，个人非商业使用免费；机构或商业使用请联系 x12468xl@outlook.com。"},
 
- "zh-Hant":{flag:"🇭🇰",name:"繁體中文",
+ "zh-Hant":{flag:"🇭🇰",name:"繁體中文",dl_mac:"Mac 下載",dl_win:"Windows 下載",
   hero_title:"戒掉色情，從現在開始！",
   hero_tag:"本地優先的桌面戒色工具。實時識別明確裸露、即時遮擋，再由 AI 陪你平穩渡過沖動——幫你一步步擺脱對色情的強迫性依賴。",
   hero_cta1:"立即下載",hero_cta2:"GitHub 原始碼",
@@ -337,7 +339,7 @@ const I18N={
   final_cta1:"前往下載",final_cta2:"查看原始碼",
   foot_gh:"GitHub",foot_lic:"許可協議",foot_doc:"說明文件",foot_contact:"聯繫我們",
   foot_license:"源代碼採用 BSL 1.1 授權，個人非商業使用免費；機構或商業使用請聯繫 x12468xl@outlook.com。"},
- en:{flag:"🇬🇧",name:"English",
+ en:{flag:"🇬🇧",name:"English",dl_mac:"Download for Mac",dl_win:"Download for Windows",
   hero_title:"Quit porn, starting now!",
   hero_tag:"A local-first desktop tool for quitting porn. It detects explicit nudity in real time, covers it instantly, and an AI companion helps you ride out the urge — breaking the compulsive pull of pornography, step by step.",
   hero_cta1:"Download",hero_cta2:"GitHub",
@@ -364,7 +366,7 @@ const I18N={
   foot_gh:"GitHub",foot_lic:"License",foot_doc:"Docs",foot_contact:"Contact",
   foot_license:"Source code is licensed under BSL 1.1 — free for personal, non-commercial use. For organizational or commercial use, contact x12468xl@outlook.com."},
 
- ja:{flag:"🇯🇵",name:"日本語",
+ ja:{flag:"🇯🇵",name:"日本語",dl_mac:"Mac版ダウンロード",dl_win:"Windows版ダウンロード",
   hero_title:"ポルノをやめよう、今すぐ！",
   hero_tag:"ローカル優先のポルノ依存脱却デスクトップツール。露骨なヌードをリアルタイムで検知して即座に覆い、AI がそばで衝動を乗り越える手助けをします——ポルノへの強迫的な依存から一歩ずつ抜け出すために。",
   hero_cta1:"ダウンロード",hero_cta2:"GitHub",
@@ -391,7 +393,7 @@ const I18N={
   foot_gh:"GitHub",foot_lic:"ライセンス",foot_doc:"ドキュメント",foot_contact:"お問い合わせ",
   foot_license:"ソースコードは BSL 1.1 ライセンス。個人の非商用利用は無料です。組織・商用利用は x12468xl@outlook.com までご連絡ください。"},
 
- ko:{flag:"🇰🇷",name:"한국어",
+ ko:{flag:"🇰🇷",name:"한국어",dl_mac:"Mac용 다운로드",dl_win:"Windows용 다운로드",
   hero_title:"포르노를 끊으세요, 지금부터!",
   hero_tag:"로컬 우선 포르노 중독 극복 데스크톱 도구. 노골적인 노출을 실시간으로 감지해 즉시 가리고, AI가 곁에서 충동을 넘기도록 돕습니다 — 포르노에 대한 강박적 의존에서 한 걸음씩 벗어나도록.",
   hero_cta1:"다운로드",hero_cta2:"GitHub",
@@ -418,7 +420,7 @@ const I18N={
   foot_gh:"GitHub",foot_lic:"라이선스",foot_doc:"문서",foot_contact:"문의",
   foot_license:"소스 코드는 BSL 1.1 라이선스로 제공됩니다. 개인 비상업적 사용은 무료이며, 기관·상업적 사용은 x12468xl@outlook.com으로 문의해 주세요."},
 
- fr:{flag:"🇫🇷",name:"Français",
+ fr:{flag:"🇫🇷",name:"Français",dl_mac:"Télécharger pour Mac",dl_win:"Télécharger pour Windows",
   hero_title:"Arrêtez le porno, dès maintenant !",
   hero_tag:"Un outil de bureau local pour arrêter la pornographie. Il détecte la nudité explicite en temps réel, la masque instantanément, et un compagnon IA vous aide à traverser l'envie — pour vous libérer pas à pas de la dépendance compulsive au porno.",
   hero_cta1:"Télécharger",hero_cta2:"GitHub",
@@ -445,7 +447,7 @@ const I18N={
   foot_gh:"GitHub",foot_lic:"Licence",foot_doc:"Docs",foot_contact:"Contact",
   foot_license:"Le code source est sous licence BSL 1.1 — gratuit pour un usage personnel non commercial. Pour un usage organisationnel ou commercial, contactez x12468xl@outlook.com."},
 
- de:{flag:"🇩🇪",name:"Deutsch",
+ de:{flag:"🇩🇪",name:"Deutsch",dl_mac:"Für Mac herunterladen",dl_win:"Für Windows herunterladen",
   hero_title:"Schluss mit Pornos, ab jetzt!",
   hero_tag:"Ein lokal-first Desktop-Tool, um mit Pornografie aufzuhören. Es erkennt explizite Nacktheit in Echtzeit, verdeckt sie sofort, und ein KI-Begleiter hilft dir, den Drang durchzustehen — um dich Schritt für Schritt von der zwanghaften Sogwirkung des Pornos zu lösen.",
   hero_cta1:"Herunterladen",hero_cta2:"GitHub",
@@ -473,7 +475,7 @@ const I18N={
   foot_license:"Der Quellcode steht unter der BSL-1.1-Lizenz — kostenlos für den persönlichen, nicht-kommerziellen Gebrauch. Für organisatorische oder kommerzielle Nutzung: x12468xl@outlook.com."},
 
  it:{flag:"🇮🇹",
-  name:"Italiano",
+  name:"Italiano",dl_mac:"Scarica per Mac",dl_win:"Scarica per Windows",
   feat1_h:"Rilevamento in tempo reale",
   feat1_p:"NudeNet 640m gira in locale, con conferma su più fotogrammi per evitare falsi allarmi. Viene coperto solo lo schermo interessato.",
   feat2_h:"Privacy assoluta",
@@ -518,7 +520,7 @@ const I18N={
   priv_title:"Il tuo schermo non lascia mai il tuo dispositivo"},
 
  es:{flag:"🇪🇸",
-  name:"Español",
+  name:"Español",dl_mac:"Descargar para Mac",dl_win:"Descargar para Windows",
   feat1_h:"Detección en tiempo real",
   feat1_p:"NudeNet 640m se ejecuta en local, con confirmación en varios fotogramas para evitar falsas alarmas. Solo se tapa la pantalla afectada.",
   feat2_h:"Privacidad absoluta",
@@ -563,7 +565,7 @@ const I18N={
   priv_title:"Tu pantalla nunca sale de tu dispositivo"},
 
  pt:{flag:"🇵🇹",
-  name:"Português",
+  name:"Português",dl_mac:"Transferir para Mac",dl_win:"Transferir para Windows",
   feat1_h:"Deteção em tempo real",
   feat1_p:"O NudeNet 640m corre localmente, com confirmação em vários fotogramas para evitar falsos alarmes. Só o ecrã afetado é tapado.",
   feat2_h:"Privacidade absoluta",
@@ -608,7 +610,7 @@ const I18N={
   priv_title:"O teu ecrã nunca sai do teu dispositivo"},
 
  th:{flag:"🇹🇭",
-  name:"ไทย",
+  name:"ไทย",dl_mac:"ดาวน์โหลดสำหรับ Mac",dl_win:"ดาวน์โหลดสำหรับ Windows",
   feat1_h:"ตรวจจับแบบเรียลไทม์",
   feat1_p:"NudeNet 640m ทำงานในเครื่อง ยืนยันจากหลายเฟรมเพื่อลดการแจ้งเตือนผิดพลาด และปิดบังเฉพาะหน้าจอที่ตรวจพบเท่านั้น",
   feat2_h:"ความเป็นส่วนตัวเต็มที่",
@@ -653,7 +655,7 @@ const I18N={
   priv_title:"หน้าจอของคุณไม่เคยออกจากเครื่อง"},
 
  hi:{flag:"🇮🇳",
-  name:"हिन्दी",
+  name:"हिन्दी",dl_mac:"Mac के लिए डाउनलोड",dl_win:"Windows के लिए डाउनलोड",
   feat1_h:"रियल-टाइम पहचान",
   feat1_p:"NudeNet 640m आपके डिवाइस पर ही चलता है, और गलत अलर्ट से बचने के लिए कई फ़्रेम से पुष्टि करता है। सिर्फ़ वही स्क्रीन ढकी जाती है जिस पर सामग्री मिली।",
   feat2_h:"पूरी गोपनीयता",
@@ -697,7 +699,7 @@ const I18N={
   priv_p4:"ओपन और जाँचने योग्य",
   priv_title:"आपकी स्क्रीन आपके डिवाइस से बाहर नहीं जाती"},
 
- ru:{flag:"🇷🇺",name:"Русский",
+ ru:{flag:"🇷🇺",name:"Русский",dl_mac:"Скачать для Mac",dl_win:"Скачать для Windows",
   hero_title:"Откажись от порно, начни прямо сейчас!",
   hero_tag:"Локальный десктоп-инструмент для отказа от порнографии. Он распознаёт откровенную наготу в реальном времени, мгновенно её закрывает, а ИИ-компаньон помогает пережить порыв — чтобы шаг за шагом вырваться из навязчивой тяги к порно.",
   hero_cta1:"Скачать",hero_cta2:"GitHub",
@@ -724,7 +726,7 @@ const I18N={
   foot_gh:"GitHub",foot_lic:"Лицензия",foot_doc:"Документация",foot_contact:"Связаться",
   foot_license:"Исходный код распространяется по лицензии BSL 1.1 — бесплатно для личного некоммерческого использования. Для организаций и коммерческого использования: x12468xl@outlook.com."},
 
- ar:{flag:"🇸🇦",name:"العربية",
+ ar:{flag:"🇸🇦",name:"العربية",dl_mac:"تنزيل لنظام Mac",dl_win:"تنزيل لنظام Windows",
   hero_title:"أقلع عن الإباحية، ابدأ الآن!",
   hero_tag:"أداة مكتبية محلية أولًا للإقلاع عن الإباحية. تكتشف العُري الصريح لحظيًّا وتغطّيه فورًا، ويساعدك رفيق بالذكاء الاصطناعي على تجاوز الرغبة — لتتحرّر خطوةً بخطوة من التعلّق القهري بالإباحية.",
   hero_cta1:"تنزيل",hero_cta2:"GitHub",
@@ -860,13 +862,6 @@ const nav=document.getElementById("nav");
   setLang(s);
 })();
 
-/* ---------- point the main download button at the visitor's OS ---------- */
-(function(){
-  const base="https://github.com/DurianBurger561/LAVOCADO/releases/latest/download/";
-  const ua=(navigator.userAgentData&&navigator.userAgentData.platform)||navigator.platform||navigator.userAgent||"";
-  const file=/win/i.test(ua)?"LAVOCADO-Windows.zip":"LAVOCADO-macOS.zip";
-  document.querySelectorAll(".dl-btn").forEach(a=>a.href=base+file);
-})();
 </script>
 </body>
 </html>
