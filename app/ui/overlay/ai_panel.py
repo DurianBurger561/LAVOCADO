@@ -17,6 +17,7 @@ from app.intervention.llm import (
 )
 from app.intervention.llm_status import LLMStatus
 from app.platforms.capture import MonitorInfo
+from app.ui.language import load_ui_language
 from app.ui.overlay.macos_tk import activate_macos_overlay_window
 from app.ui.overlay.widgets import FlatAction
 
@@ -32,7 +33,7 @@ PANEL_TEXT = "#cdd6f4"
 PANEL_MUTED = "#a6adc8"
 PANEL_ROSE = "#f38ba8"
 
-# The panel speaks the same language as the companion inside it.
+# Interface language is independent of the optional conversation override.
 PANEL_TEXT_PACKS = {
     "en": {
         "link": "AI / LLM MEDITATION LINK",
@@ -113,7 +114,7 @@ PANEL_TEXT_PACKS = {
 
 
 def panel_words(language: str) -> dict[str, Any]:
-    """Panel chrome in the companion's language, falling back to English."""
+    """Panel chrome in the dashboard's language, falling back to English."""
 
     return PANEL_TEXT_PACKS.get(language, PANEL_TEXT_PACKS["en"])
 
@@ -129,6 +130,7 @@ class MeditationChatPanel:
         on_exit: Callable[[], None],
         client: LLMClient | None = None,
         data_dir: Path | None = None,
+        ui_language: str | None = None,
     ) -> None:
         import tkinter as tk
 
@@ -136,7 +138,8 @@ class MeditationChatPanel:
         self._root = root
         self._on_exit = on_exit
         self._client = client or LLMClient.from_environment(data_dir)
-        self._words = panel_words(self._client.language)
+        self._ui_language = ui_language or load_ui_language(data_dir)
+        self._words = panel_words(self._ui_language)
         self._context = MeditationContext(today_trigger_count(data_dir), time_of_day())
         self._request_token = 0
         self._request_lock = Lock()
@@ -507,7 +510,7 @@ class MeditationChatPanel:
             self._mode_label = self._words["requesting"]
             self._mode.configure(text=self._mode_label, foreground=PANEL_CYAN)
         if not busy and self._last_failure:
-            status = LLMStatus("fallback", self._last_failure).detail(self._client.language)
+            status = LLMStatus("fallback", self._last_failure).detail(self._ui_language)
         self._status.configure(text=f"{self._mode_label}  /  {status}")
         state = "disabled" if busy else "normal"
         self._entry.configure(state=state)
@@ -524,7 +527,7 @@ class MeditationChatPanel:
             foreground=PANEL_MINT if remote else PANEL_ROSE if key == "failed" else PANEL_MUTED,
         )
         if status.reason and status.reason != self._last_failure:
-            self._append("SYSTEM", f"{status.detail(self._client.language)} {self._words['offline']}")
+            self._append("SYSTEM", f"{status.detail(self._ui_language)} {self._words['offline']}")
         self._last_failure = status.reason
 
     def _focus_entry(self, _event: object | None = None) -> None:

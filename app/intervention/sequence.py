@@ -59,30 +59,31 @@ class InterventionSequence:
         return True
 
 
-def default_intervention_sequence() -> InterventionSequence:
+def default_intervention_sequence(language: str = "en") -> InterventionSequence:
     """Build the product's default pause, breathing, and ready stages."""
 
+    chinese = language == "zh"
     return InterventionSequence(
         (
             InterventionStep(
                 name="pause",
-                title=config.OVERLAY_PAUSE_TITLE,
-                body=config.OVERLAY_PAUSE_BODY,
-                button_label=config.OVERLAY_WAIT_BUTTON_LABEL,
+                title=("先停下来一会儿" if chinese else config.OVERLAY_PAUSE_TITLE),
+                body=("把视线从触发内容上移开，给冲动一点消退的时间。" if chinese else config.OVERLAY_PAUSE_BODY),
+                button_label=("陪自己停留片刻" if chinese else config.OVERLAY_WAIT_BUTTON_LABEL),
                 duration_seconds=config.INTERVENTION_PAUSE_SECONDS,
             ),
             InterventionStep(
                 name="breathe",
-                title=config.OVERLAY_BREATHE_TITLE,
-                body=config.OVERLAY_BREATHE_BODY,
-                button_label=config.OVERLAY_WAIT_BUTTON_LABEL,
+                title=("慢慢做一次深呼吸" if chinese else config.OVERLAY_BREATHE_TITLE),
+                body=("轻轻吸气，再更缓慢地呼气。" if chinese else config.OVERLAY_BREATHE_BODY),
+                button_label=("陪自己停留片刻" if chinese else config.OVERLAY_WAIT_BUTTON_LABEL),
                 duration_seconds=config.INTERVENTION_BREATHE_SECONDS,
             ),
             InterventionStep(
                 name="ready",
-                title=config.OVERLAY_READY_TITLE,
-                body=config.OVERLAY_READY_BODY,
-                button_label=config.OVERLAY_READY_BUTTON_LABEL,
+                title=("选择接下来要做的事" if chinese else config.OVERLAY_READY_TITLE),
+                body=("你仍然掌握着主动权。关掉触发内容的页面，站起身，朝真正重要的事迈出一小步。" if chinese else config.OVERLAY_READY_BODY),
+                button_label=("我准备好继续了" if chinese else config.OVERLAY_READY_BUTTON_LABEL),
                 duration_seconds=None,
                 can_dismiss=True,
             ),

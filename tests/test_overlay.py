@@ -416,6 +416,7 @@ class OverlayTests(unittest.TestCase):
         panel._closed = False
         panel._root = FakeRoot()
         panel._client = client
+        panel._ui_language = client.language
         panel._words = panel_words(client.language)
         panel._context = MeditationContext(2, "late_night")
         panel._mode_label = panel._words["online"]

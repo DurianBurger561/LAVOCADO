@@ -14,6 +14,7 @@ from app.intervention.sequence import (
     default_intervention_sequence,
 )
 from app.platforms.capture import MonitorInfo
+from app.ui.language import load_ui_language
 from app.ui.overlay.macos_tk import prepare_macos_overlay_window
 from app.ui.overlay.widgets import FlatAction
 
@@ -54,6 +55,7 @@ class TkOverlayBackend:
         self._platform_name = platform_name
         self._sequence_factory = sequence_factory
         self._data_dir = data_dir
+        self._language = "en"
         self._sequence: InterventionSequence | None = None
         self._monitor: MonitorInfo | None = None
         self._dismiss_scheduled = False
@@ -88,10 +90,15 @@ class TkOverlayBackend:
         self._root = root
         self._monitor = monitor
         self._dismiss_scheduled = False
-        self._sequence = self._sequence_factory()
+        self._language = load_ui_language(self._data_dir)
+        self._sequence = (
+            default_intervention_sequence(self._language)
+            if self._sequence_factory is default_intervention_sequence
+            else self._sequence_factory()
+        )
 
         root.withdraw()
-        root.title("LAVOCADO Protection")
+        root.title("LAVOCADO 防护" if self._language == "zh" else "LAVOCADO Protection")
         root.configure(background=config.OVERLAY_BG)
         if self._platform_name == "Darwin":
             prepare_macos_overlay_window(root)
@@ -152,7 +159,8 @@ class TkOverlayBackend:
 
         tk.Label(
             container,
-            text="Visual processing stays on this device.",
+            text=("画面分析仅在本机进行。" if self._language == "zh"
+                  else "Visual processing stays on this device."),
             background=config.OVERLAY_BG,
             foreground=config.OVERLAY_TEXT_COLOR,
             font=("Arial", 10),
@@ -161,7 +169,7 @@ class TkOverlayBackend:
         self._exit_button = FlatAction(
             tk,
             root,
-            text="Exit",
+            text="退出" if self._language == "zh" else "Exit",
             command=self.dismiss,
             background=config.OVERLAY_BUTTON_BG,
             foreground="#f38ba8",
@@ -355,6 +363,7 @@ class TkOverlayBackend:
                 self._monitor,
                 on_exit=self.dismiss,
                 data_dir=self._data_dir,
+                ui_language=self._language,
             )
         except Exception:
             for child in set(self._root.winfo_children()) - children_before:
