@@ -94,7 +94,6 @@
   .hero h1{font-size:clamp(36px,5.6vw,72px);font-weight:800;line-height:1.04;letter-spacing:-.02em;margin-bottom:22px;
     background:linear-gradient(135deg,#eaf6cf 0%,var(--accent) 48%,var(--flesh-2) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
   .hero .tag{font-size:clamp(17px,2.4vw,23px);max-width:700px;color:var(--mist);font-weight:400;margin-bottom:14px}
-  .hero .sub{font-size:14px;color:rgba(244,247,236,.5);letter-spacing:.14em;text-transform:uppercase;margin-bottom:40px;font-weight:600}
   .cta{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
   .btn{display:inline-flex;align-items:center;gap:9px;padding:15px 30px;border-radius:999px;font-weight:700;font-size:16px;
     cursor:pointer;text-decoration:none;transition:transform .2s,box-shadow .3s,background .3s;border:none}
@@ -166,9 +165,6 @@
   <div class="sun" id="sun"></div>
   <canvas id="avo3d" aria-hidden="true"></canvas>
 </div>
-  
-  
-  
 <div class="grain"></div>
 
 <div class="scroll-prog" id="prog"></div>
@@ -203,9 +199,8 @@
     <img src="logo.png" alt="LAVOCADO logo" class="hero-logo">
     <div class="wordmark" aria-label="LAVOCADO">LAVO<span>CADO</span></div>
   </div>
-  <h1 data-i18n="hero_title">戒掉色情，从守住这一刻开始</h1>
+  <h1 data-i18n="hero_title">戒掉色情，从现在开始！</h1>
   <p class="tag" data-i18n="hero_tag">本地优先的桌面戒色工具。实时识别明确裸露、即时遮挡，再由 AI 陪你平稳渡过冲动——帮你一步步摆脱对色情的强迫性依赖。</p>
-  <p class="sub" data-i18n="hero_sub">拦 · 接 — 全程本地，隐私至上</p>
   <div class="cta">
     <a href="https://github.com/DurianBurger561/LAVOCADO/releases" target="_blank" rel="noopener" class="btn btn-primary"><span>⬇</span><span data-i18n="hero_cta1">立即下载</span></a>
     <a href="https://github.com/DurianBurger561/LAVOCADO" target="_blank" rel="noopener" class="btn btn-ghost"><span>★</span><span data-i18n="hero_cta2">GitHub 源码</span></a>
@@ -285,9 +280,9 @@
 <script>
 const I18N={
  zh:{flag:"🇨🇳",name:"简体中文",
-  hero_title:"戒掉色情，从守住这一刻开始",
+  hero_title:"戒掉色情，从现在开始！",
   hero_tag:"本地优先的桌面戒色工具。实时识别明确裸露、即时遮挡，再由 AI 陪你平稳渡过冲动——帮你一步步摆脱对色情的强迫性依赖。",
-  hero_sub:"拦 · 接 — 全程本地，隐私至上",hero_cta1:"立即下载",hero_cta2:"GitHub 源码",
+  hero_cta1:"立即下载",hero_cta2:"GitHub 源码",
   pillar_eyebrow:"核心理念",pillar_title:"戒色，不只是拦截，更是接住你",
   pillar_lead:'大多数戒色工具只会"拦"。LAVOCADO 在遮挡之后，还会温柔地接住你。',
   pillar1_h:"拦",pillar1_p:"在本地实时识别明确裸露内容，即时遮挡触发的那块屏幕——快到冲动还没形成，画面已经消失。",
@@ -312,9 +307,9 @@ const I18N={
   foot_license:"源代码采用 BSL 1.1 授权，个人非商业使用免费；机构或商业使用请联系 x12468xl@outlook.com。"},
 
  "zh-Hant":{flag:"🇭🇰",name:"繁體中文",
-  hero_title:"戒掉色情，從守住這一刻開始",
+  hero_title:"戒掉色情，從現在開始！",
   hero_tag:"本地優先的桌面戒色工具。實時識別明確裸露、即時遮擋，再由 AI 陪你平穩渡過沖動——幫你一步步擺脱對色情的強迫性依賴。",
-  hero_sub:"攔 · 接 — 全程本地，隱私至上",hero_cta1:"立即下載",hero_cta2:"GitHub 原始碼",
+  hero_cta1:"立即下載",hero_cta2:"GitHub 原始碼",
   pillar_eyebrow:"核心理念",pillar_title:"戒色，不只是攔截，更是接住你",
   pillar_lead:'大多數戒色工具只會"攔"。LAVOCADO 在遮擋之後，還會温柔地接住你。',
   pillar1_h:"攔",pillar1_p:"在本地實時識別明確裸露內容，即時遮擋觸發的那塊螢幕——快到衝動還沒形成，畫面已經消失。",
@@ -338,9 +333,9 @@ const I18N={
   foot_gh:"GitHub",foot_lic:"許可協議",foot_doc:"說明文件",foot_contact:"聯繫我們",
   foot_license:"源代碼採用 BSL 1.1 授權，個人非商業使用免費；機構或商業使用請聯繫 x12468xl@outlook.com。"},
  en:{flag:"🇬🇧",name:"English",
-  hero_title:"Quit porn, one guarded moment at a time",
+  hero_title:"Quit porn, starting now!",
   hero_tag:"A local-first desktop tool for quitting porn. It detects explicit nudity in real time, covers it instantly, and an AI companion helps you ride out the urge — breaking the compulsive pull of pornography, step by step.",
-  hero_sub:"Block · Catch — fully local, privacy first",hero_cta1:"Download",hero_cta2:"GitHub",
+  hero_cta1:"Download",hero_cta2:"GitHub",
   pillar_eyebrow:"The idea",pillar_title:"Quitting porn: not just blocking — catching you",
   pillar_lead:"Most porn blockers only block. LAVOCADO gently catches you after the screen goes dark.",
   pillar1_h:"Block",pillar1_p:"Detects explicit nudity locally in real time and instantly covers the triggering display — the image is gone before the urge even forms.",
@@ -365,9 +360,9 @@ const I18N={
   foot_license:"Source code is licensed under BSL 1.1 — free for personal, non-commercial use. For organizational or commercial use, contact x12468xl@outlook.com."},
 
  ja:{flag:"🇯🇵",name:"日本語",
-  hero_title:"ポルノをやめる、この一瞬を守ることから",
+  hero_title:"ポルノをやめよう、今すぐ！",
   hero_tag:"ローカル優先のポルノ依存脱却デスクトップツール。露骨なヌードをリアルタイムで検知して即座に覆い、AI がそばで衝動を乗り越える手助けをします——ポルノへの強迫的な依存から一歩ずつ抜け出すために。",
-  hero_sub:"遮る · 受けとめる — 完全ローカル、プライバシー第一",hero_cta1:"ダウンロード",hero_cta2:"GitHub",
+  hero_cta1:"ダウンロード",hero_cta2:"GitHub",
   pillar_eyebrow:"コンセプト",pillar_title:"ポルノ脱却：ただ遮るのではなく、受けとめる",
   pillar_lead:"多くのポルノブロッカーは「遮る」だけ。LAVOCADO は画面を覆ったあと、あなたをそっと受けとめます。",
   pillar1_h:"遮る",pillar1_p:"露骨なヌードをローカルでリアルタイム検知し、該当ディスプレイを即座に覆います。衝動が生まれる前に、画面は消えています。",
@@ -392,9 +387,9 @@ const I18N={
   foot_license:"ソースコードは BSL 1.1 ライセンス。個人の非商用利用は無料です。組織・商用利用は x12468xl@outlook.com までご連絡ください。"},
 
  ko:{flag:"🇰🇷",name:"한국어",
-  hero_title:"포르노 끊기, 이 순간을 지키는 것부터",
+  hero_title:"포르노를 끊으세요, 지금부터!",
   hero_tag:"로컬 우선 포르노 중독 극복 데스크톱 도구. 노골적인 노출을 실시간으로 감지해 즉시 가리고, AI가 곁에서 충동을 넘기도록 돕습니다 — 포르노에 대한 강박적 의존에서 한 걸음씩 벗어나도록.",
-  hero_sub:"차단 · 받아줌 — 완전 로컬, 프라이버시 우선",hero_cta1:"다운로드",hero_cta2:"GitHub",
+  hero_cta1:"다운로드",hero_cta2:"GitHub",
   pillar_eyebrow:"핵심 개념",pillar_title:"포르노 끊기: 단순 차단이 아니라, 당신을 받아줍니다",
   pillar_lead:"대부분의 포르노 차단기는 '차단'만 합니다. LAVOCADO는 화면을 가린 뒤, 당신을 부드럽게 받아줍니다.",
   pillar1_h:"차단",pillar1_p:"노골적인 노출을 로컬에서 실시간 감지해 해당 화면을 즉시 가립니다. 충동이 생기기도 전에 화면은 사라집니다.",
@@ -419,9 +414,9 @@ const I18N={
   foot_license:"소스 코드는 BSL 1.1 라이선스로 제공됩니다. 개인 비상업적 사용은 무료이며, 기관·상업적 사용은 x12468xl@outlook.com으로 문의해 주세요."},
 
  fr:{flag:"🇫🇷",name:"Français",
-  hero_title:"Arrêter le porno, un instant maîtrisé à la fois",
+  hero_title:"Arrêtez le porno, dès maintenant !",
   hero_tag:"Un outil de bureau local pour arrêter la pornographie. Il détecte la nudité explicite en temps réel, la masque instantanément, et un compagnon IA vous aide à traverser l'envie — pour vous libérer pas à pas de la dépendance compulsive au porno.",
-  hero_sub:"Bloquer · Accompagner — 100 % local, confidentialité d'abord",hero_cta1:"Télécharger",hero_cta2:"GitHub",
+  hero_cta1:"Télécharger",hero_cta2:"GitHub",
   pillar_eyebrow:"L'idée",pillar_title:"Arrêter le porno : pas seulement bloquer, mais vous accompagner",
   pillar_lead:"La plupart des bloqueurs se contentent de bloquer. LAVOCADO vous accompagne avec douceur une fois l'écran masqué.",
   pillar1_h:"Bloquer",pillar1_p:"Détecte la nudité explicite en local et en temps réel, et masque aussitôt l'écran concerné — l'image disparaît avant même que l'envie se forme.",
@@ -446,9 +441,9 @@ const I18N={
   foot_license:"Le code source est sous licence BSL 1.1 — gratuit pour un usage personnel non commercial. Pour un usage organisationnel ou commercial, contactez x12468xl@outlook.com."},
 
  de:{flag:"🇩🇪",name:"Deutsch",
-  hero_title:"Porno loslassen – einen bewahrten Moment nach dem anderen",
+  hero_title:"Schluss mit Pornos, ab jetzt!",
   hero_tag:"Ein lokal-first Desktop-Tool, um mit Pornografie aufzuhören. Es erkennt explizite Nacktheit in Echtzeit, verdeckt sie sofort, und ein KI-Begleiter hilft dir, den Drang durchzustehen — um dich Schritt für Schritt von der zwanghaften Sogwirkung des Pornos zu lösen.",
-  hero_sub:"Blocken · Auffangen — vollständig lokal, Privatsphäre zuerst",hero_cta1:"Herunterladen",hero_cta2:"GitHub",
+  hero_cta1:"Herunterladen",hero_cta2:"GitHub",
   pillar_eyebrow:"Die Idee",pillar_title:"Mit Porno aufhören: nicht nur blocken, sondern dich auffangen",
   pillar_lead:"Die meisten Blocker blocken nur. LAVOCADO fängt dich sanft auf, nachdem der Bildschirm verdeckt wurde.",
   pillar1_h:"Blocken",pillar1_p:"Erkennt explizite Nacktheit lokal in Echtzeit und verdeckt sofort den auslösenden Bildschirm — das Bild ist weg, bevor der Drang überhaupt entsteht.",
@@ -499,9 +494,8 @@ const I18N={
   foot_license:"Il codice sorgente è distribuito con licenza BSL 1.1 — gratuito per uso personale e non commerciale. Per uso aziendale o commerciale, scrivi a x12468xl@outlook.com.",
   hero_cta1:"Scarica",
   hero_cta2:"GitHub",
-  hero_sub:"Bloccare · Sostenere — tutto in locale, privacy prima di tutto",
   hero_tag:"Uno strumento desktop locale per smettere con la pornografia. Rileva la nudità esplicita in tempo reale, la copre all'istante e un compagno IA ti aiuta a superare l'impulso — per liberarti passo dopo passo dalla dipendenza compulsiva dal porno.",
-  hero_title:"Smettere con il porno, un momento protetto alla volta",
+  hero_title:"Smetti con il porno, a partire da ora!",
   how1_h:"Livello lista nera",
   how1_p:"Legge la finestra in primo piano e l'URL e li confronta con fonti note. Nessuna rete, frequenza moderata.",
   how2_h:"Livello visivo",
@@ -545,9 +539,8 @@ const I18N={
   foot_license:"El código fuente se distribuye bajo la licencia BSL 1.1 — gratis para uso personal no comercial. Para uso en organizaciones o comercial, escribe a x12468xl@outlook.com.",
   hero_cta1:"Descargar",
   hero_cta2:"GitHub",
-  hero_sub:"Bloquear · Acompañar — totalmente local, privacidad ante todo",
   hero_tag:"Una herramienta de escritorio local para dejar la pornografía. Detecta desnudez explícita en tiempo real, la tapa al instante y un compañero de IA te ayuda a superar el impulso — para liberarte paso a paso de la dependencia compulsiva al porno.",
-  hero_title:"Deja el porno, un momento protegido a la vez",
+  hero_title:"¡Deja el porno, empieza ahora!",
   how1_h:"Capa de lista negra",
   how1_p:"Lee la ventana activa y la URL y las compara con fuentes conocidas. Sin red, frecuencia moderada.",
   how2_h:"Capa visual",
@@ -591,9 +584,8 @@ const I18N={
   foot_license:"O código-fonte está licenciado ao abrigo da BSL 1.1 — gratuito para uso pessoal e não comercial. Para uso organizacional ou comercial, contacta x12468xl@outlook.com.",
   hero_cta1:"Transferir",
   hero_cta2:"GitHub",
-  hero_sub:"Bloquear · Amparar — totalmente local, privacidade em primeiro lugar",
   hero_tag:"Uma ferramenta de desktop local para deixar a pornografia. Deteta nudez explícita em tempo real, tapa-a de imediato e um companheiro de IA ajuda-te a ultrapassar o impulso — para te libertares, passo a passo, da dependência compulsiva da pornografia.",
-  hero_title:"Largar a pornografia, um momento protegido de cada vez",
+  hero_title:"Deixa a pornografia, a partir de agora!",
   how1_h:"Camada de lista negra",
   how1_p:"Lê a janela ativa e o URL e compara-os com fontes conhecidas. Sem rede, frequência moderada.",
   how2_h:"Camada visual",
@@ -637,9 +629,8 @@ const I18N={
   foot_license:"ซอร์สโค้ดใช้สัญญาอนุญาต BSL 1.1 — ใช้ฟรีสำหรับการใช้งานส่วนตัวที่ไม่ใช่เชิงพาณิชย์ สำหรับองค์กรหรือการใช้งานเชิงพาณิชย์ ติดต่อ x12468xl@outlook.com",
   hero_cta1:"ดาวน์โหลด",
   hero_cta2:"GitHub",
-  hero_sub:"ปิดกั้น · ประคอง — ทำงานในเครื่องทั้งหมด ความเป็นส่วนตัวมาก่อน",
   hero_tag:"เครื่องมือบนเดสก์ท็อปที่ทำงานในเครื่องเป็นหลัก ช่วยให้คุณเลิกดูสื่อลามก ตรวจจับภาพเปลือยอย่างชัดเจนแบบเรียลไทม์และปิดบังทันที พร้อมผู้ช่วย AI ที่ช่วยให้คุณผ่านพ้นแรงกระตุ้นไปได้ — เพื่อหลุดพ้นจากการติดสื่อลามกทีละก้าว",
-  hero_title:"เลิกดูหนังโป๊ เริ่มจากปกป้องช่วงเวลานี้",
+  hero_title:"เลิกดูสื่อลามก เริ่มตั้งแต่ตอนนี้!",
   how1_h:"ชั้นรายการบล็อก",
   how1_p:"อ่านหน้าต่างที่ใช้งานอยู่และ URL แล้วเทียบกับแหล่งที่รู้จัก ไม่ใช้เครือข่าย ตรวจเป็นระยะ",
   how2_h:"ชั้นภาพ",
@@ -683,9 +674,8 @@ const I18N={
   foot_license:"सोर्स कोड BSL 1.1 लाइसेंस के तहत है — निजी, गैर-व्यावसायिक उपयोग के लिए मुफ़्त। संगठनात्मक या व्यावसायिक उपयोग के लिए x12468xl@outlook.com पर संपर्क करें।",
   hero_cta1:"डाउनलोड करें",
   hero_cta2:"GitHub",
-  hero_sub:"रोकना · संभालना — पूरी तरह लोकल, गोपनीयता सबसे पहले",
   hero_tag:"पोर्नोग्राफ़ी छोड़ने के लिए एक लोकल-फ़र्स्ट डेस्कटॉप टूल। यह स्पष्ट नग्नता को रियल टाइम में पहचानकर तुरंत ढक देता है, और एक AI साथी आपको उस इच्छा से पार पाने में मदद करता है — ताकि आप कदम-दर-कदम पोर्न की आदत से मुक्त हो सकें।",
-  hero_title:"पोर्न छोड़ें, हर एक पल को संभालते हुए",
+  hero_title:"पोर्न छोड़ें, अभी से शुरू करें!",
   how1_h:"ब्लॉकलिस्ट परत",
   how1_p:"सामने की विंडो और URL पढ़कर उन्हें ज्ञात स्रोतों से मिलाता है। नेटवर्क नहीं, मध्यम आवृत्ति।",
   how2_h:"विज़न परत",
@@ -703,9 +693,9 @@ const I18N={
   priv_title:"आपकी स्क्रीन आपके डिवाइस से बाहर नहीं जाती"},
 
  ru:{flag:"🇷🇺",name:"Русский",
-  hero_title:"Бросить порно — удерживая один момент за другим",
+  hero_title:"Откажись от порно, начни прямо сейчас!",
   hero_tag:"Локальный десктоп-инструмент для отказа от порнографии. Он распознаёт откровенную наготу в реальном времени, мгновенно её закрывает, а ИИ-компаньон помогает пережить порыв — чтобы шаг за шагом вырваться из навязчивой тяги к порно.",
-  hero_sub:"Блокировать · Поддержать — полностью локально, приватность прежде всего",hero_cta1:"Скачать",hero_cta2:"GitHub",
+  hero_cta1:"Скачать",hero_cta2:"GitHub",
   pillar_eyebrow:"Идея",pillar_title:"Отказ от порно: не просто блокировать, а поддержать вас",
   pillar_lead:"Большинство блокировщиков только блокируют. LAVOCADO мягко поддерживает вас после того, как экран закрыт.",
   pillar1_h:"Блокировать",pillar1_p:"Распознаёт откровенную наготу локально и в реальном времени и мгновенно закрывает сработавший экран — изображение исчезает прежде, чем возникнет порыв.",
@@ -730,9 +720,9 @@ const I18N={
   foot_license:"Исходный код распространяется по лицензии BSL 1.1 — бесплатно для личного некоммерческого использования. Для организаций и коммерческого использования: x12468xl@outlook.com."},
 
  ar:{flag:"🇸🇦",name:"العربية",
-  hero_title:"الإقلاع عن الإباحية، لحظةً محميّةً تلو الأخرى",
+  hero_title:"أقلع عن الإباحية، ابدأ الآن!",
   hero_tag:"أداة مكتبية محلية أولًا للإقلاع عن الإباحية. تكتشف العُري الصريح لحظيًّا وتغطّيه فورًا، ويساعدك رفيق بالذكاء الاصطناعي على تجاوز الرغبة — لتتحرّر خطوةً بخطوة من التعلّق القهري بالإباحية.",
-  hero_sub:"حجب · احتواء — محلي بالكامل، الخصوصية أولًا",hero_cta1:"تنزيل",hero_cta2:"GitHub",
+  hero_cta1:"تنزيل",hero_cta2:"GitHub",
   pillar_eyebrow:"الفكرة",pillar_title:"الإقلاع عن الإباحية: ليس مجرد حجب، بل احتواؤك",
   pillar_lead:"معظم أدوات الحجب تحجب فقط. أمّا LAVOCADO فيحتويك بلطف بعد أن تُغطّى الشاشة.",
   pillar1_h:"حجب",pillar1_p:"يكتشف العُري الصريح محليًّا ولحظيًّا ويغطّي فورًا الشاشة المُسبِّبة — تختفي الصورة قبل أن تتكوّن الرغبة أصلًا.",
