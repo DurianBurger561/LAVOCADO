@@ -36,13 +36,15 @@ body {
     radial-gradient(circle at 86% 8%, rgba(113, 86, 190, 0.17), transparent 31rem),
     radial-gradient(circle at 10% 28%, rgba(53, 161, 111, 0.1), transparent 28rem),
     var(--bg);
-  font-family: Inter, "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
+  font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", "Yuanti SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
 }
 
 .language-settings {
-  margin-bottom: 18px;
+  padding: 26px 28px;
+  margin-bottom: 0;
 }
 
 .language-settings label {
@@ -128,7 +130,7 @@ button {
 
 .brand h1 {
   margin-bottom: 0;
-  font-size: 22px;
+  font-size: 26px;
   letter-spacing: 0.08em;
 }
 
@@ -136,9 +138,9 @@ button {
 .section-label {
   margin-bottom: 3px;
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.16em;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
 }
 
 .logo-mark {
@@ -171,7 +173,7 @@ button {
   border-radius: 999px;
   color: #cbd5e1;
   background: rgba(15, 23, 42, 0.55);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .privacy-dot {
@@ -209,7 +211,7 @@ main {
 }
 
 .home-overview h2 {
-  font-size: 28px;
+  font-size: 32px;
 }
 
 .home-summary {
@@ -228,7 +230,7 @@ main {
 
 .home-summary dt {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .home-summary dd {
@@ -261,7 +263,7 @@ main {
 .section-heading h2,
 .privacy-card h2 {
   margin-bottom: 0;
-  font-size: 23px;
+  font-size: 27px;
   font-weight: 650;
   letter-spacing: -0.02em;
 }
@@ -305,7 +307,8 @@ main {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 9px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .button,
@@ -316,10 +319,10 @@ main {
 }
 
 .button {
-  min-height: 42px;
-  padding: 0 17px;
-  border-radius: 11px;
-  font-size: 13px;
+  min-height: 48px;
+  padding: 10px 20px;
+  border-radius: 14px;
+  font-size: 16px;
   font-weight: 650;
 }
 
@@ -361,12 +364,11 @@ main {
 }
 
 .action-message {
-  position: absolute;
-  left: 28px;
-  bottom: 8px;
+  grid-column: 1 / -1;
   margin: 0;
+  overflow-wrap: anywhere;
   color: var(--green);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .action-message.error {
@@ -389,7 +391,7 @@ main {
 .vision-settings > .muted,
 .llm-settings > .muted {
   margin: -12px 0 14px;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .vision-form {
@@ -407,21 +409,21 @@ main {
   flex-direction: column;
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .vision-form select,
 .vision-form input[type="text"],
 .vision-form input[type="url"],
 .vision-form input[type="password"] {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: 12px;
   color: var(--text);
   background: var(--panel-raised);
   font: inherit;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .vision-form input:focus-visible,
@@ -438,9 +440,9 @@ main {
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  min-height: 38px;
+  min-height: 44px;
   color: var(--text);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .llm-enabled-field input {
@@ -460,7 +462,7 @@ main {
 .vision-advanced summary {
   cursor: pointer;
   color: var(--lavender);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .vision-advanced .vision-form-grid {
@@ -511,14 +513,14 @@ main {
 }
 
 .vision-threshold-row .muted {
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .rules-message {
   min-height: 18px;
   margin-bottom: 10px;
   color: var(--green);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .rules-message.error {
@@ -541,17 +543,17 @@ main {
 
 .rule-group h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .rule-group > .muted {
   min-height: 34px;
   margin: 5px 0 12px;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .rule-list {
-  min-height: 42px;
+  min-height: 48px;
   margin: 0 0 16px;
   padding: 0;
   list-style: none;
@@ -568,20 +570,20 @@ main {
 
 .rule-list li.rule-empty {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .rule-value {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--text);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .rule-mode {
   flex: none;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .rule-remove {
@@ -594,7 +596,7 @@ main {
   display: block;
   margin-bottom: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .rule-entry {
@@ -606,29 +608,29 @@ main {
 .rule-entry input,
 .rule-entry select {
   min-width: 0;
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: 12px;
   color: var(--text);
   background: var(--panel-raised);
   font: inherit;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .rule-entry input {
-  flex: 1;
+  flex: 1 1 160px;
 }
 
 .rule-entry select {
-  max-width: 145px;
+  max-width: 185px;
 }
 
 .rule-entry .button {
   flex: none;
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 10px;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .rule-entry input:focus-visible,
@@ -662,7 +664,7 @@ main {
 
 .modal h2 {
   margin: 0 0 10px;
-  font-size: 19px;
+  font-size: 23px;
 }
 
 .modal p {
@@ -700,12 +702,12 @@ main {
 
 .scan-summary strong {
   color: var(--green);
-  font-size: 22px;
+  font-size: 26px;
 }
 
 .scan-summary span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
@@ -729,7 +731,7 @@ main {
 
 .model-list dt {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -737,7 +739,7 @@ main {
 .model-list dd {
   margin: 3px 0 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -782,7 +784,7 @@ main {
 
 .capture-list dt {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -790,7 +792,7 @@ main {
 .capture-list dd {
   margin: 3px 0 0;
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 620;
 }
 
@@ -806,12 +808,12 @@ main {
 .mini-signal strong {
   display: block;
   margin-top: 3px;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .signal-name {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.11em;
@@ -822,7 +824,7 @@ main {
   border-radius: 999px;
   color: var(--muted);
   background: rgba(148, 163, 184, 0.1);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -890,7 +892,7 @@ main {
   margin-bottom: 0;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .signal-pair {
@@ -913,7 +915,7 @@ main {
 }
 
 .mini-signal .muted {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .temporal-row,
@@ -951,7 +953,7 @@ main {
 
 .rescue-row {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .rescue-row strong {
@@ -999,13 +1001,13 @@ main {
 .privacy-card h2 {
   max-width: 250px;
   margin-top: 7px;
-  font-size: 26px;
+  font-size: 30px;
 }
 
 .privacy-card > p:not(.section-label) {
   margin-top: 15px;
   color: #b5c0d3;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .privacy-card ul {
@@ -1017,7 +1019,7 @@ main {
   padding: 0;
   list-style: none;
   color: #dbe4f2;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .privacy-card li::before {
@@ -1041,7 +1043,7 @@ main {
   border-radius: 999px;
   color: var(--green);
   background: rgba(85, 203, 136, 0.1);
-  font-size: 11px;
+  font-size: 14px;
   vertical-align: 3px;
 }
 
@@ -1049,7 +1051,7 @@ main {
   padding: 6px 0;
   color: var(--lavender);
   background: transparent;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 650;
 }
 
@@ -1063,14 +1065,14 @@ table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 th {
   padding: 9px 12px;
   border-bottom: 1px solid var(--line-strong);
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -1091,7 +1093,7 @@ tbody tr:last-child td {
   margin: 25px 0 5px;
   color: var(--muted);
   text-align: center;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 @media (max-width: 900px) {
@@ -1121,5 +1123,49 @@ tbody tr:last-child td {
 
   .privacy-card h2 {
     max-width: none;
+  }
+}
+
+/* Let larger bilingual labels breathe without changing the minimal layout. */
+.topbar,
+.section-heading,
+.capture-heading,
+.signal-header,
+.model-status-list li,
+.temporal-row,
+.rescue-row {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.vision-form-grid > *,
+.home-summary > div {
+  min-width: 0;
+}
+
+.home-summary dd,
+.model-status-list li > span {
+  overflow-wrap: anywhere;
+}
+
+.vision-form select,
+.vision-form input,
+.language-settings select {
+  max-width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .home-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .vision-form-grid {
+    grid-template-columns: 1fr;
   }
 }
