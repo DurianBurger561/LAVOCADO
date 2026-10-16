@@ -46,7 +46,7 @@
 
   /* real 3D avocado (three.js) */
   #avo3d{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    width:min(78vw,760px);height:min(78vh,760px);display:block;opacity:.38;pointer-events:none}
+    width:min(96vw,760px);height:min(78vh,760px);display:block;opacity:.38;pointer-events:none}
 
   /* ---------- nav ---------- */
   nav{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;
@@ -307,13 +307,13 @@
         <img src="https://github.com/DurianBurger561.png?size=208" alt="DurianBurger561" loading="lazy" width="104" height="104">
         <span class="handle">DurianBurger561</span>
         <span class="role" data-i18n="team_role">贡献者 · 软件维护者</span>
-        <span class="gh">@DurianBurger561 ↗</span>
+        <span class="gh">@DurianBurger561 ↗︎</span>
       </a>
       <a class="person reveal" href="https://github.com/lktsuarpok1qwq" target="_blank" rel="noopener">
         <img src="https://github.com/lktsuarpok1qwq.png?size=208" alt="lktsuarpok1qwq" loading="lazy" width="104" height="104">
         <span class="handle">lktsuarpok1qwq</span>
         <span class="role" data-i18n="team_role">贡献者 · 软件维护者</span>
-        <span class="gh">@lktsuarpok1qwq ↗</span>
+        <span class="gh">@lktsuarpok1qwq ↗︎</span>
       </a>
     </div>
   </div>
@@ -890,7 +890,12 @@ const nav=document.getElementById("nav");
 
   function size(){
     const w=canvas.clientWidth,h=canvas.clientHeight;
-    renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+    renderer.setSize(w,h,false);camera.aspect=w/h;
+    // keep the whole fruit in frame on narrow (phone) screens:
+    // back the camera off until the fruit's width fits the horizontal field of view
+    const t=Math.tan(camera.fov*Math.PI/360);
+    camera.position.z=Math.max(6.6,1.25/(t*camera.aspect),1.75/t);
+    camera.updateProjectionMatrix();
   }
   addEventListener("resize",size);size();
 
