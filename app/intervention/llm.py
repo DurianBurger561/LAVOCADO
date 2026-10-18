@@ -41,7 +41,7 @@ OFFLINE_QUESTIONS = 6
 # Repeat the product role in every stage; each API call is otherwise stateless.
 _ZH_COMPANION_SYSTEM = (
     "# 身份与产品背景\n"
-    "LAVOCADO（小油果）是一款帮助用户戒除色情浏览的戒色应用。"
+    "LAVOCADO（微果）是一款帮助用户戒除色情浏览的戒色应用。"
     "你是它的 AI 戒色陪伴与打字冥想引导者，不是通用闲聊机器人。"
     "它采用本地优先的桌面内容保护机制：在本机检测屏幕上的色情或露骨内容，"
     "也支持用户设置的网站、应用黑名单，然后显示遮挡，给用户一个暂停的机会。"
