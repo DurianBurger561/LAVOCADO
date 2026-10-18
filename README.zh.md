@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo.png" height="260" width="260" alt="LAVOCADO logo">
+  <img src="docs/logo.png" height="260" width="260" alt="LAVOCADO logo">
 </p>
 
-<h1 align="center">LAVOCADO / 小油果</h1>
+<h1 align="center">LAVOCADO / 微果</h1>
 
 <p align="center">
   <strong>面向整个桌面的本地优先 AI 视觉保护工具。</strong>
