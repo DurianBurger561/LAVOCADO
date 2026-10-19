@@ -93,6 +93,30 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "${{ matrix.dist }}" -DestinationPath ${{ matrix.archive }}
 
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          choco upgrade innosetup -y --no-progress
+          $version = $env:REF_NAME -replace '^v', ''
+          if ($version -notmatch '^\d') { $version = '0.0.0' }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" lavocado_packaging\windows_installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Move-Item dist-installer\LAVOCADO-Windows-Setup.exe LAVOCADO-Windows-Setup.exe
+
+      - name: Test Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Start-Process -FilePath .\LAVOCADO-Windows-Setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Installer exited with $($setup.ExitCode)" }
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\LAVOCADO\LAVOCADO.exe'
+          if (-not (Test-Path $exe)) { throw "LAVOCADO.exe was not installed" }
+          $check = Start-Process -FilePath $exe -ArgumentList '--self-check' -Wait -PassThru
+          if ($check.ExitCode -ne 0) { throw "Installed self-check failed with $($check.ExitCode)" }
+
       - name: Archive macOS application
         if: runner.os == 'macOS'
         run: ditto -c -k --sequesterRsrc --keepParent "${{ matrix.dist }}" ${{ matrix.archive }}
@@ -101,7 +125,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.archive }}
+          path: LAVOCADO-*
           if-no-files-found: error
           retention-days: 7
 
@@ -127,9 +151,9 @@ jobs:
         run: |
           ls -l release
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/*.zip --clobber
+            gh release upload "$TAG" release/* --clobber
           else
             PRE=""
             case "$TAG" in *-*) PRE="--prerelease" ;; esac
-            gh release create "$TAG" release/*.zip --title "LAVOCADO $TAG" --generate-notes $PRE
+            gh release create "$TAG" release/* --title "LAVOCADO $TAG" --generate-notes $PRE
           fi

@@ -14,6 +14,9 @@ from lavocado_packaging.spec_common import (
 )
 
 platform_hidden_imports = platform_hiddenimports()
+ICON_DIR = Path(SPECPATH) / "lavocado_packaging" / "icons"
+WINDOWS_ICON = str(ICON_DIR / "lavocado.ico")
+MACOS_ICON = str(ICON_DIR / "lavocado.icns")
 analysis = Analysis(
     ["main.py"],
     pathex=[],
@@ -45,6 +48,7 @@ executable = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=WINDOWS_ICON if sys.platform == "win32" else None,
 )
 bundle = COLLECT(
     executable,
@@ -60,5 +64,6 @@ if sys.platform == "darwin":
         bundle,
         name="LAVOCADO.app",
         bundle_identifier="org.lavocado.desktop",
+        icon=MACOS_ICON,
         info_plist=macos_plist(),
     )

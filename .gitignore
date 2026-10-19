@@ -8,6 +8,7 @@ __pycache__/
 :memory:.ses
 /build/
 /dist/
+/dist-installer/
 /models/*.onnx
 /models/*.part
 /models/yolo11.pt
