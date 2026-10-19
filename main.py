@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import threading
@@ -245,7 +246,34 @@ def show_events(limit: int, platform_adapter: PlatformAdapter) -> None:
         print(format_event(event))
 
 
+def _unblock_bundled_windows_files() -> None:
+    """Remove the "downloaded from the internet" mark from bundled DLLs.
+
+    When the Windows zip is extracted with Explorer, every file inherits a
+    Zone.Identifier stream. .NET then refuses to load pythonnet's
+    Python.Runtime.dll, and the window fails with "Failed to resolve
+    Python.Runtime.Loader.Initialize". Clearing the mark on our own bundled
+    files before pywebview loads avoids that. Best effort: errors are ignored.
+    """
+
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return
+    bundle = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    for folder in ("pythonnet", "clr_loader", "webview"):
+        root = bundle / folder
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if path.suffix.lower() not in {".dll", ".exe", ".pyd"}:
+                continue
+            try:
+                os.remove(f"{path}:Zone.Identifier")
+            except OSError:
+                pass
+
+
 def main(argv=None) -> int | None:
+    _unblock_bundled_windows_files()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.self_check:
