@@ -1049,7 +1049,10 @@ const nav=document.getElementById("nav");
 
 (function(){
   let s;try{s=localStorage.getItem("lavocado_lang")}catch(e){}
-  if(!s){const L=navigator.language||"zh",b=L.slice(0,2);s=/^zh-(TW|HK|MO|Hant)/i.test(L)?"zh-Hant":(["zh","en","ja","ko","th","hi","fr","de","it","es","pt","ru","ar"].includes(b)?b:"zh");}
+  if(!s){const SUP=["zh","en","ja","ko","th","hi","fr","de","it","es","pt","ru","ar"];
+    const prefs=(navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||"en"]);
+    for(const L of prefs){if(/^zh-(TW|HK|MO|Hant)/i.test(L)){s="zh-Hant";break;}const b=String(L).slice(0,2).toLowerCase();if(SUP.includes(b)){s=b;break;}}
+    if(!s)s="en";}
   if(!I18N[s])s="zh";
   setLang(s);
 })();
