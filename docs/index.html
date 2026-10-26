@@ -124,6 +124,11 @@
   .center{text-align:center;display:flex;flex-direction:column;align-items:center}
   .center .sec-title,.center .sec-lead{margin-left:auto;margin-right:auto}
 
+  .demo-section{padding-top:clamp(70px,10vw,120px)}
+  .demo-frame{width:min(100%,900px);margin-top:34px;border:1px solid var(--card-brd);border-radius:var(--radius);overflow:hidden;background:#1c1e2c;box-shadow:0 24px 70px rgba(0,0,0,.32)}
+  .demo-video{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#1c1e2c}
+  .demo-caption{min-height:3.4em;display:flex;align-items:center;justify-content:center;padding:14px 24px;text-align:center;color:var(--cream);font-size:clamp(14px,2vw,17px);font-weight:600;line-height:1.45;background:rgba(0,0,0,.28)}
+
   .pillars{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:60px}
   .pillar{padding:42px 38px;border-radius:var(--radius);background:var(--card);border:1px solid var(--card-brd);position:relative;overflow:hidden}
   .pillar::before{content:"";position:absolute;inset:0;opacity:.5;background:radial-gradient(120% 90% at 0% 0%,rgba(127,194,74,.14),transparent 55%)}
@@ -325,6 +330,19 @@
     <a href="https://github.com/DurianBurger561/LAVOCADO" target="_blank" rel="noopener" class="btn btn-ghost"><span>★</span><span data-i18n="hero_cta2">GitHub 源码</span></a>
   </div>
 </header>
+
+<section class="demo-section" id="demo">
+  <div class="wrap center">
+    <h2 class="sec-title reveal" data-i18n="demo_title">看看 LAVOCADO 如何工作</h2>
+    <p class="sec-lead reveal d1" data-i18n="demo_lead">25 秒演示：从识别画面到帮你停下冲动。</p>
+    <div class="demo-frame reveal d2">
+      <video id="demoVideo" class="demo-video" controls playsinline preload="metadata" aria-describedby="demoCaption">
+        <source src="lavocado-demo.mp4" type="video/mp4">
+      </video>
+      <p class="demo-caption" id="demoCaption" aria-live="off">浏览普通信息流</p>
+    </div>
+  </div>
+</section>
 
 <section>
   <div class="wrap center">
@@ -941,6 +959,35 @@ const I18N={
   foot_license:"الشيفرة المصدرية مرخّصة بموجب BSL 1.1 — مجّانية للاستخدام الشخصي غير التجاري. للاستخدام المؤسّسي أو التجاري، تواصل عبر x12468xl@outlook.com."}
 };
 
+const DEMO_I18N={
+  "zh":{"title":"看看 LAVOCADO 如何工作","lead":"25 秒演示：从识别画面到帮你停下冲动。","captions":["浏览普通信息流","出现可能触发冲动的内容","在本机识别后，立即遮挡画面","短暂停顿，然后由你决定下一步","可选的 AI 对话：离线可用，不保存内容","接着是一分钟的打字冥想","LAVOCADO：在你的设备上识别并遮挡色情内容"]},
+  "zh-Hant":{"title":"看看 LAVOCADO 如何運作","lead":"25 秒示範：從辨識畫面到幫你停下衝動。","captions":["瀏覽一般動態消息","出現可能引發衝動的內容","在裝置上辨識後，立即遮擋畫面","短暫停頓，然後由你決定下一步","可選的 AI 對話：離線可用，不儲存內容","接著是一分鐘的打字冥想","LAVOCADO：在你的裝置上辨識並遮擋色情內容"]},
+  "en":{"title":"See LAVOCADO in action","lead":"A 25-second demo, from detection to a moment to pause.","captions":["Scrolling a normal feed","A suggestive post appears","Detected on-device; the screen is covered","A short pause, then you choose what comes next","Optional AI check-in: works offline, never saved","Then a one-minute typing meditation","LAVOCADO detects and covers porn on your device"]},
+  "ja":{"title":"LAVOCADO の動きを見る","lead":"検知からひと呼吸おくまで、25 秒のデモ。","captions":["通常のフィードをスクロール","刺激の強い投稿が表示される","端末内で検知し、画面をすぐに覆う","少し立ち止まり、次は自分で選ぶ","任意の AI チェックイン：オフラインで利用でき、保存されない","続いて 1 分間のタイピング瞑想","LAVOCADO：端末上でポルノを検知して覆う"]},
+  "ko":{"title":"LAVOCADO 작동 영상 보기","lead":"감지부터 잠시 멈추는 순간까지, 25초 데모입니다.","captions":["일반 피드를 스크롤합니다","자극적인 게시물이 나타납니다","기기에서 감지한 뒤 화면을 즉시 가립니다","잠시 멈춘 후 다음 행동은 직접 선택합니다","선택형 AI 대화: 오프라인에서도 작동하고 저장되지 않습니다","이어서 1분 타이핑 명상을 합니다","LAVOCADO: 기기에서 음란물을 감지하고 가립니다"]},
+  "fr":{"title":"Découvrez LAVOCADO en action","lead":"Une démo de 25 secondes, de la détection à une pause.","captions":["Défilement d’un fil ordinaire","Une publication suggestive apparaît","Détection sur l’appareil ; l’écran est aussitôt masqué","Une courte pause, puis vous choisissez la suite","Échange facultatif avec l’IA : fonctionne hors ligne, sans enregistrement","Puis une minute de méditation par la frappe","LAVOCADO détecte et masque le porno sur votre appareil"]},
+  "de":{"title":"LAVOCADO in Aktion ansehen","lead":"Eine 25-Sekunden-Demo: von der Erkennung bis zur kurzen Pause.","captions":["Durch einen normalen Feed scrollen","Ein anzüglicher Beitrag erscheint","Lokal erkannt; der Bildschirm wird sofort verdeckt","Eine kurze Pause, dann entscheidest du, wie es weitergeht","Optionaler KI-Check-in: funktioniert offline und wird nicht gespeichert","Danach folgt eine einminütige Tippmeditation","LAVOCADO erkennt und verdeckt Pornos auf deinem Gerät"]},
+  "it":{"title":"Guarda LAVOCADO in azione","lead":"Una demo di 25 secondi, dal rilevamento a una breve pausa.","captions":["Scorri un normale feed","Compare un post allusivo","Rilevato sul dispositivo; lo schermo viene subito coperto","Una breve pausa, poi decidi tu cosa fare","Conversazione AI facoltativa: funziona offline e non viene salvata","Poi un minuto di meditazione digitata","LAVOCADO rileva e copre i porno sul tuo dispositivo"]},
+  "es":{"title":"Mira LAVOCADO en acción","lead":"Una demo de 25 segundos: de la detección a una pausa.","captions":["Desplazándote por un feed normal","Aparece una publicación sugerente","Se detecta en el dispositivo y se tapa la pantalla","Una breve pausa; después tú decides qué hacer","Consulta opcional con IA: funciona sin conexión y no se guarda","Luego, un minuto de meditación escribiendo","LAVOCADO detecta y tapa porno en tu dispositivo"]},
+  "pt":{"title":"Veja o LAVOCADO em ação","lead":"Uma demonstração de 25 segundos, da deteção a uma pausa.","captions":["A percorrer um feed normal","Surge uma publicação sugestiva","Detetado no dispositivo; o ecrã é tapado de imediato","Uma breve pausa; depois decides o que fazer","Conversa opcional com IA: funciona offline e não é guardada","Depois, um minuto de meditação a escrever","O LAVOCADO deteta e tapa pornografia no teu dispositivo"]},
+  "th":{"title":"ดู LAVOCADO ทำงานจริง","lead":"วิดีโอสาธิต 25 วินาที ตั้งแต่ตรวจพบจนถึงช่วงหยุดพัก","captions":["เลื่อนดูฟีดตามปกติ","โพสต์ที่อาจกระตุ้นความรู้สึกปรากฏขึ้น","ตรวจพบบนอุปกรณ์ แล้วปิดบังหน้าจอทันที","หยุดพักสั้น ๆ แล้วคุณเลือกเองว่าจะทำอะไรต่อ","พูดคุยกับ AI ได้ตามต้องการ: ใช้ออฟไลน์ได้และไม่บันทึกข้อความ","จากนั้นฝึกสมาธิด้วยการพิมพ์หนึ่งนาที","LAVOCADO ตรวจจับและปิดบังสื่อลามกบนอุปกรณ์ของคุณ"]},
+  "hi":{"title":"LAVOCADO को काम करते देखें","lead":"25 सेकंड का डेमो: पहचान से लेकर ठहरने के एक पल तक।","captions":["सामान्य फ़ीड देख रहे हैं","एक उत्तेजक पोस्ट दिखाई देती है","डिवाइस पर पहचान कर स्क्रीन तुरंत ढक दी जाती है","थोड़ा ठहरें, फिर अगला कदम आप चुनें","वैकल्पिक AI बातचीत: ऑफ़लाइन चलती है, सहेजी नहीं जाती","फिर एक मिनट का टाइपिंग ध्यान","LAVOCADO आपके डिवाइस पर पोर्न पहचानता और ढकता है"]},
+  "ru":{"title":"Посмотрите LAVOCADO в действии","lead":"25-секундное демо: от обнаружения до короткой паузы.","captions":["Прокручиваем обычную ленту","Появляется провокационный пост","Обнаружено на устройстве; экран сразу закрыт","Короткая пауза, а дальше решаете вы","Необязательный диалог с ИИ: работает офлайн и не сохраняется","Затем минута медитации с набором текста","LAVOCADO обнаруживает и закрывает порно на вашем устройстве"]},
+  "ar":{"title":"شاهد LAVOCADO أثناء العمل","lead":"عرض مدته 25 ثانية، من الاكتشاف إلى لحظة للتوقف.","captions":["تصفح موجز عادي","يظهر منشور مثير","يُكتشف المحتوى على الجهاز وتُغطّى الشاشة فورًا","استراحة قصيرة، ثم تختار خطوتك التالية","محادثة اختيارية مع الذكاء الاصطناعي: تعمل دون اتصال ولا تُحفظ","ثم دقيقة من التأمل بالكتابة","يرصد LAVOCADO المحتوى الإباحي ويحجبه على جهازك"]}
+};
+const demoVideo=document.getElementById("demoVideo");
+const demoCaption=document.getElementById("demoCaption");
+const demoCueTimes=[0,1.5,3,7,9,17.5,20];
+function updateDemoCaption(){
+  const lang=document.documentElement.lang;
+  const captions=(DEMO_I18N[lang]||DEMO_I18N.en).captions;
+  let cue=0;
+  for(let i=1;i<demoCueTimes.length;i++)if(demoVideo.currentTime>=demoCueTimes[i])cue=i;
+  demoCaption.textContent=captions[cue];
+  demoCaption.lang=lang;
+}
+["timeupdate","seeked","loadedmetadata","ended"].forEach(event=>demoVideo.addEventListener(event,updateDemoCaption));
+
 function setLang(code){
   const d=I18N[code];if(!d)return;
   document.body.setAttribute("lang",code);
@@ -949,6 +996,9 @@ function setLang(code){
   document.querySelectorAll("[data-i18n]").forEach(el=>{const k=el.getAttribute("data-i18n");if(d[k]!==undefined)el.textContent=d[k];});
   document.getElementById("curFlag").textContent=d.flag;
   document.getElementById("curName").textContent=d.name;
+  document.querySelector("[data-i18n=demo_title]").textContent=DEMO_I18N[code].title;
+  document.querySelector("[data-i18n=demo_lead]").textContent=DEMO_I18N[code].lead;
+  updateDemoCaption();
   document.querySelectorAll(".lang-menu button").forEach(b=>b.classList.toggle("active",b.getAttribute("data-lang")===code));
   try{localStorage.setItem("lavocado_lang",code)}catch(e){}
 }
