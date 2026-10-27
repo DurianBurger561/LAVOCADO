@@ -13,6 +13,14 @@
   <a href="README.zh.md"><b>中文</b></a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/DurianBurger561/LAVOCADO/releases">
+    <img alt="GitHub Release downloads" src="https://img.shields.io/github/downloads/DurianBurger561/LAVOCADO/total?style=flat-square&label=release%20downloads&color=brightgreen">
+  </a>
+</p>
+
+<p align="center"><sub>GitHub Release asset downloads across all versions. The badge refreshes periodically; it does not count unique users.</sub></p>
+
 ---
 
 LAVOCADO is a local-first desktop protection application for **Windows 10/11 and macOS**.
