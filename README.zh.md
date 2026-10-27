@@ -13,6 +13,14 @@
   <a href="README.zh.md"><b>中文</b></a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/DurianBurger561/LAVOCADO/releases">
+    <img alt="GitHub Release downloads" src="https://img.shields.io/github/downloads/DurianBurger561/LAVOCADO/total?style=flat-square&label=release%20downloads&color=brightgreen">
+  </a>
+</p>
+
+<p align="center"><sub>统计所有版本的 GitHub Release 附件下载次数。徽章会定期刷新，数字不代表独立用户数。</sub></p>
+
 ---
 
 LAVOCADO 是一款面向 **Windows 10/11 和 macOS** 的本地优先桌面保护应用。
