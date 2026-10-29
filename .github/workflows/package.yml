@@ -73,6 +73,12 @@ jobs:
       - name: Build native application
         run: python -m PyInstaller --noconfirm --clean ${{ matrix.spec }}
 
+      - name: Verify unused Polars runtime was excluded
+        run: >-
+          python -c "from pathlib import Path;
+          hits=[str(path) for path in Path('dist').rglob('*') if 'polars' in path.name.lower()];
+          assert not hits, f'Unexpected Polars files: {hits[:10]}'"
+
       - name: Run frozen offline self-check
         shell: bash
         run: '"${{ matrix.executable }}" --self-check'

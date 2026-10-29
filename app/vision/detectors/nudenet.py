@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
+import onnxruntime as ort
+import nudenet
 from nudenet import NudeDetector
 
 from app import config
+from app.performance import configure_cpu_threads
 from app.vision.detectors.base import to_violation_evidence
 from app.vision.model_assets import resolve_nudenet_model_path
 from app.vision.preprocessor import PreparedFrame
@@ -25,6 +28,30 @@ class DetectionModel(Protocol):
     def detect(self, image: np.ndarray) -> list[dict[str, Any]]: ...
 
 
+class BoundedNudeDetector(NudeDetector):
+    """Use the pinned NudeNet API with a bounded ONNX CPU worker pool."""
+
+    def __init__(
+        self,
+        model_path: str | None = None,
+        providers: list[str] | None = None,
+        inference_resolution: int = 320,
+    ) -> None:
+        path = model_path or str(Path(nudenet.__file__).parent / "320n.onnx")
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = configure_cpu_threads()
+        options.inter_op_num_threads = 1
+        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        self.onnx_session = ort.InferenceSession(
+            path,
+            sess_options=options,
+            providers=providers or ["CPUExecutionProvider"],
+        )
+        self.input_width = inference_resolution
+        self.input_height = inference_resolution
+        self.input_name = self.onnx_session.get_inputs()[0].name
+
+
 class NudeNetPrimaryDetector:
     """Initialize NudeNet 640m with 320n fallback and standardize outputs."""
 
@@ -32,7 +59,7 @@ class NudeNetPrimaryDetector:
         self,
         model: DetectionModel | None = None,
         *,
-        model_factory: Callable[..., DetectionModel] = NudeDetector,
+        model_factory: Callable[..., DetectionModel] = BoundedNudeDetector,
         model_path: str | Path | None = None,
         data_dir: str | Path | None = None,
     ) -> None:
