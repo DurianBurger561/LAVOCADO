@@ -2,6 +2,12 @@
 
 // English is the source language. Product and protocol names stay unchanged.
 const ZH = Object.freeze({
+  "License and source code": "许可与源代码",
+  "LAVOCADO 1.0.4 · AGPL-3.0 · Personal and commercial use permitted. No warranty.": "LAVOCADO 1.0.4 · AGPL-3.0 · 允许个人及商业使用，不提供担保。",
+  "AGPL-3.0 license": "AGPL-3.0 许可协议",
+  "Third-party notices": "第三方声明",
+  "Source code": "源代码",
+  "Redistribution and modifications must comply with AGPL-3.0.": "再分发及修改须遵守 AGPL-3.0。",
   "AI INTERVENTION": "智能干预",
   "AI meditation": "智能冥想",
   "AI settings saved. They apply to the next intervention.": "智能设置已保存，将在下一次干预时生效。",

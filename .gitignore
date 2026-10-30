@@ -14,3 +14,8 @@ __pycache__/
 /models/yolo11.pt
 /models/viddexa_nano/
 /models/viddexa_mini/
+/release-sources/
+/LAVOCADO-*.zip
+/app/ui/web/legal/dependencies/
+/app/ui/web/legal/dependencies.json
+/app/ui/web/legal/*-model-card.md

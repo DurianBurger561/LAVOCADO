@@ -25,3 +25,19 @@ def configure_opencv_threads() -> None:
     import cv2
 
     cv2.setNumThreads(1)
+
+
+def configure_torch_threads() -> None:
+    """Bound CPU inference even when a model loader changes Torch defaults."""
+    import torch
+
+    limit = configure_cpu_threads()
+    if torch.get_num_threads() != limit:
+        torch.set_num_threads(limit)
+    # Inter-op can only be set before parallel work starts. Repeated model
+    # initialization must not fail once Torch has initialized its executor.
+    if torch.get_num_interop_threads() != 1:
+        try:
+            torch.set_num_interop_threads(1)
+        except RuntimeError:
+            pass

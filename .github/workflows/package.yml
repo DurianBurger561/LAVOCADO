@@ -70,6 +70,9 @@ jobs:
           HF_HUB_OFFLINE: "1"
         run: python scripts/verify_model_runtime.py
 
+      - name: Collect licenses and dependency sources
+        run: python scripts/collect_release_legal.py
+
       - name: Build native application
         run: python -m PyInstaller --noconfirm --clean ${{ matrix.spec }}
 
@@ -131,7 +134,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
-          path: LAVOCADO-*
+          path: |
+            LAVOCADO-*
           if-no-files-found: error
           retention-days: 7
 
@@ -143,6 +147,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out release source
+        uses: actions/checkout@v7
+
       - name: Download packaged applications
         uses: actions/download-artifact@v7
         with:
@@ -155,11 +162,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
+          git archive --format=zip --prefix=LAVOCADO/ HEAD -o release/LAVOCADO-Source.zip
+          sha256sum release/* > release/SHA256SUMS.txt
           ls -l release
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release/* --clobber
           else
             PRE=""
             case "$TAG" in *-*) PRE="--prerelease" ;; esac
-            gh release create "$TAG" release/* --title "LAVOCADO $TAG" --generate-notes $PRE
+            gh release create "$TAG" release/* --title "LAVOCADO $TAG" --notes-file docs/releases/v1.0.4.md $PRE
           fi

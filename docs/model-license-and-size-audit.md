@@ -48,3 +48,10 @@ weights or runtime remain inside it.
 - [EraX model card](https://huggingface.co/erax-ai/EraX-NSFW-V1.0)
 - [Viddexa Nano](https://huggingface.co/viddexa/nsfw-detection-2-nano) and [Mini](https://huggingface.co/viddexa/nsfw-detection-2-mini) model cards
 - [Owen Elliott XS model card](https://huggingface.co/OwenElliott/image-safety-classifier-xs)
+
+## v1.0.4 resolution (2026-10-30)
+
+The application is now AGPL-3.0-only, with the existing models retained, rather
+than a purported BSL-compatible model replacement. Personal and commercial use
+are allowed under AGPL. This does not provide a closed-source commercial license.
+Exact runtime notices and AGPL dependency sources accompany the release.

@@ -42,6 +42,8 @@ class BoundedNudeDetector(NudeDetector):
         options.intra_op_num_threads = configure_cpu_threads()
         options.inter_op_num_threads = 1
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        options.add_session_config_entry("session.inter_op.allow_spinning", "0")
         self.onnx_session = ort.InferenceSession(
             path,
             sess_options=options,

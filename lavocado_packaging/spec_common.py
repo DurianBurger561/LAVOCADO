@@ -127,6 +127,8 @@ def user_datas(specpath: Path) -> list[tuple[str, str]]:
 def macos_plist() -> dict[str, object]:
     return {
         "NSHighResolutionCapable": True,
+        "CFBundleShortVersionString": "1.0.4",
+        "CFBundleVersion": "1.0.4",
         "NSScreenCaptureUsageDescription": (
             "LAVOCADO processes the screen locally to detect explicit content."
         ),

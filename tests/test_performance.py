@@ -43,3 +43,28 @@ class CpuThreadsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TorchThreadsTests(unittest.TestCase):
+    def test_restores_limit_after_backend_initialization(self):
+        import sys
+        from unittest.mock import Mock
+        from app.performance import configure_torch_threads
+        torch = Mock()
+        torch.get_num_threads.return_value = 8
+        torch.get_num_interop_threads.return_value = 4
+        with patch.dict(sys.modules, {"torch": torch}), patch.dict(os.environ, {"LAVOCADO_CPU_THREADS": "2"}):
+            configure_torch_threads()
+        torch.set_num_threads.assert_called_once_with(2)
+        torch.set_num_interop_threads.assert_called_once_with(1)
+
+    def test_loaded_interop_executor_does_not_break_model_load(self):
+        import sys
+        from unittest.mock import Mock
+        from app.performance import configure_torch_threads
+        torch = Mock()
+        torch.get_num_threads.return_value = 2
+        torch.get_num_interop_threads.return_value = 4
+        torch.set_num_interop_threads.side_effect = RuntimeError("already started")
+        with patch.dict(sys.modules, {"torch": torch}):
+            configure_torch_threads()
+        torch.set_num_threads.assert_not_called()
