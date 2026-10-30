@@ -90,7 +90,7 @@ class UILanguageTests(unittest.TestCase):
         self.assertFalse(HAN.search(html))
         self.assertFalse(HAN.search(script))
         technical_terms = re.compile(
-            r"\b(?:LAVOCADO|NudeNet|YOLO11|YOLO|NSFW|Viddexa|Nano|Mini|Small|CPU|ROI|HTTPS|URL|MSS|\d+[a-z])\b"
+            r"\b(?:AGPL|LAVOCADO|NudeNet|YOLO11|YOLO|NSFW|Viddexa|Nano|Mini|Small|CPU|ROI|HTTPS|URL|MSS|\d+[a-z])\b"
         )
         for source, translation in dictionary.items():
             with self.subTest(source=source):

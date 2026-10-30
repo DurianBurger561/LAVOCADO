@@ -15,6 +15,9 @@ from app.vision.model_manifest import CATALOG, ModelSpec
 def verify_model(spec: ModelSpec, root: Path) -> None:
     """Require the pinned bundled files, then initialize the model locally."""
 
+    import numpy as np
+
+    sample = np.zeros((64, 64, 3), dtype=np.uint8)
     location = root / spec.bundled_path
     directory = location if location.is_dir() else location.parent
     for item in spec.required_files:
@@ -30,6 +33,7 @@ def verify_model(spec: ModelSpec, root: Path) -> None:
         detector = NudeNetPrimaryDetector(model_path=location)
         if detector.model_variant != "640m":
             raise RuntimeError("NudeNet 640m could not initialize")
+        detector.model.detect(sample)
     elif spec.id == "yolo11_nsfw_small":
         from app.vision.yolo_adapter import load_yolo_adapter
 
@@ -38,12 +42,15 @@ def verify_model(spec: ModelSpec, root: Path) -> None:
         )
         if adapter is None:
             raise RuntimeError("YOLO11 NSFW Small could not initialize")
+        adapter.model.detect(sample)
     elif spec.id in {"viddexa_nano", "viddexa_mini"}:
         from app.vision.context.factory import load_context_ranker
 
         ranker = load_context_ranker(spec.id, data_dir=root)
         if ranker.name != spec.id:
             raise RuntimeError(f"{spec.label} could not initialize offline")
+        if ranker.classify(sample) is None:
+            raise RuntimeError(f"{spec.label} could not infer offline")
     else:
         raise ValueError(f"Unknown required model: {spec.id}")
 

@@ -541,3 +541,26 @@ LAVOCADO/
 > Sensitive screen data stays local.**
 
 LAVOCADO turns a user's chosen digital boundary into a practical, privacy-conscious desktop protection system.
+
+## License and commercial use
+
+LAVOCADO v1.0.4 and later are licensed under **AGPL-3.0-only**.
+Copyright (c) 2026 Sixuan Liu and Luran Wang.
+Personal and commercial use are permitted. You may charge for copies, support,
+and services while meeting the license's source-sharing and redistribution
+requirements. Recipients retain their AGPL rights; there is no commercial-use fee
+or closed-source license for this bundled application.
+
+See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY_NOTICES.md), and
+[release notes](docs/releases/v1.0.4.md). Third-party components retain their own
+licenses. The LAVOCADO name/logo do not grant permission to imply endorsement.
+Paid support and partnerships: x12468xl@outlook.com.
+
+### CPU and package changes in v1.0.4
+
+All four pinned models and detection thresholds are retained. Native capture now
+runs at up to 10 FPS instead of 30; model inference keeps its existing scan cadence.
+ONNX and PyTorch use two CPU threads by default, OpenCV one, and ONNX worker
+spinning is disabled. Set `LAVOCADO_CPU_THREADS` (1–8) before launch to override
+the inference thread budget. The unused Polars runtime is excluded from builds.
+Actual CPU use depends on hardware, screen changes, and enabled models.

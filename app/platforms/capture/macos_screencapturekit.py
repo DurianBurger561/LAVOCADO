@@ -193,7 +193,7 @@ class _PyObjCScreenCaptureKitBridge:
         self,
         *,
         module_loader: Callable[[str], Any] = importlib.import_module,
-        target_fps: int = 30,
+        target_fps: int = 10,
         operation_timeout: float = 15.0,
     ) -> None:
         self._module_loader = module_loader

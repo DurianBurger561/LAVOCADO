@@ -2,6 +2,12 @@ name: Package
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Publish this exact build after both platforms pass (leave empty for validation only)'
+        type: string
+        required: false
+        default: ''
   push:
     tags:
       - "v*"
@@ -70,8 +76,20 @@ jobs:
           HF_HUB_OFFLINE: "1"
         run: python scripts/verify_model_runtime.py
 
+      - name: Measure synthetic CPU inference workload
+        run: python scripts/benchmark_inference_cpu.py
+
+      - name: Collect licenses and dependency sources
+        run: python scripts/collect_release_legal.py
+
       - name: Build native application
         run: python -m PyInstaller --noconfirm --clean ${{ matrix.spec }}
+
+      - name: Verify unused Polars runtime was excluded
+        run: >-
+          python -c "from pathlib import Path;
+          hits=[str(path) for path in Path('dist').rglob('*') if 'polars' in path.name.lower() and 'legal' not in path.parts];
+          assert not hits, f'Unexpected Polars files: {hits[:10]}'"
 
       - name: Run frozen offline self-check
         shell: bash
@@ -125,18 +143,22 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
-          path: LAVOCADO-*
+          path: |
+            LAVOCADO-*
           if-no-files-found: error
           retention-days: 7
 
   release:
     name: Publish GitHub Release
     needs: package
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Check out release source
+        uses: actions/checkout@v7
+
       - name: Download packaged applications
         uses: actions/download-artifact@v7
         with:
@@ -147,13 +169,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
+          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "Invalid release tag"; exit 1 ;; esac
+          git archive --format=zip --prefix=LAVOCADO/ HEAD -o release/LAVOCADO-Source.zip
+          sha256sum release/* > release/SHA256SUMS.txt
           ls -l release
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release/* --clobber
           else
             PRE=""
             case "$TAG" in *-*) PRE="--prerelease" ;; esac
-            gh release create "$TAG" release/* --title "LAVOCADO $TAG" --generate-notes $PRE
+            gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "LAVOCADO $TAG" --notes-file docs/releases/v1.0.4.md $PRE
           fi
