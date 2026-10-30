@@ -42,7 +42,14 @@ def main() -> None:
     target = ROOT / 'release-sources'
     target.mkdir(exist_ok=True)
     manifest = []
-    for name in ('nudenet', 'ultralytics'):
+    copyleft = {'nudenet', 'ultralytics'}
+    for dist in metadata.distributions():
+        terms = ' '.join((str(dist.metadata.get('License', '')),
+                          str(dist.metadata.get('License-Expression', '')),
+                          *dist.metadata.get_all('Classifier', [])))
+        if 'AGPL' in terms or 'Affero' in terms:
+            copyleft.add(dist.metadata['Name'])
+    for name in sorted(copyleft):
         version = metadata.version(name)
         info = json.loads(download(f'https://pypi.org/pypi/{name}/{version}/json'))
         source = next(f for f in info['urls'] if f['packagetype'] == 'sdist')

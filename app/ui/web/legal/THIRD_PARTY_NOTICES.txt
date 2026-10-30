@@ -41,7 +41,7 @@ Third-party components retain their original licenses. The packaged legal folder
 contains the installed distributions' license/notice files, model cards, and an
 inventory with exact versions. Key components include:
 
-- Ultralytics: AGPL-3.0, https://github.com/ultralytics/ultralytics
+- Ultralytics, ultralytics-thop and ultralytics-platform: AGPL-3.0 family, https://github.com/ultralytics/ultralytics
 - PyTorch / torchvision: BSD-style licenses, https://github.com/pytorch
 - Transformers / Hugging Face Hub / tokenizers / safetensors: Apache-2.0
 - ONNX Runtime: MIT, https://github.com/microsoft/onnxruntime
