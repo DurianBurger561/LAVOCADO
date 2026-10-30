@@ -19,3 +19,5 @@ __pycache__/
 /app/ui/web/legal/dependencies/
 /app/ui/web/legal/dependencies.json
 /app/ui/web/legal/*-model-card.md
+
+/LAVOCADO-*-CPU-benchmark.json

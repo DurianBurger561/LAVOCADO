@@ -70,6 +70,9 @@ jobs:
           HF_HUB_OFFLINE: "1"
         run: python scripts/verify_model_runtime.py
 
+      - name: Measure synthetic CPU inference workload
+        run: python scripts/benchmark_inference_cpu.py
+
       - name: Collect licenses and dependency sources
         run: python scripts/collect_release_legal.py
 
