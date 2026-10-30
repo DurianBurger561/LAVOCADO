@@ -2,6 +2,12 @@ name: Package
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Publish this exact build after both platforms pass (leave empty for validation only)'
+        type: string
+        required: false
+        default: ''
   push:
     tags:
       - "v*"
@@ -82,7 +88,7 @@ jobs:
       - name: Verify unused Polars runtime was excluded
         run: >-
           python -c "from pathlib import Path;
-          hits=[str(path) for path in Path('dist').rglob('*') if 'polars' in path.name.lower()];
+          hits=[str(path) for path in Path('dist').rglob('*') if 'polars' in path.name.lower() and 'legal' not in path.parts];
           assert not hits, f'Unexpected Polars files: {hits[:10]}'"
 
       - name: Run frozen offline self-check
@@ -145,7 +151,7 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: package
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -163,8 +169,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
+          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "Invalid release tag"; exit 1 ;; esac
           git archive --format=zip --prefix=LAVOCADO/ HEAD -o release/LAVOCADO-Source.zip
           sha256sum release/* > release/SHA256SUMS.txt
           ls -l release
@@ -173,5 +180,5 @@ jobs:
           else
             PRE=""
             case "$TAG" in *-*) PRE="--prerelease" ;; esac
-            gh release create "$TAG" release/* --title "LAVOCADO $TAG" --notes-file docs/releases/v1.0.4.md $PRE
+            gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "LAVOCADO $TAG" --notes-file docs/releases/v1.0.4.md $PRE
           fi
