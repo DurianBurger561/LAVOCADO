@@ -85,7 +85,7 @@ class WindowsDXGICaptureTests(unittest.TestCase):
         self.assertIsNone(frame.changed_regions)
         self.assertEqual(module.create_calls[1]["output_idx"], 1)
         self.assertEqual(module.create_calls[1]["backend"], "dxgi")
-        self.assertEqual(cameras[1].started_with["target_fps"], 30)
+        self.assertEqual(cameras[1].started_with["target_fps"], 10)
         self.assertTrue(status.healthy)
         self.assertEqual(status.monitor_count, 2)
         self.assertEqual(status.frame_age_ms, 0.00001)

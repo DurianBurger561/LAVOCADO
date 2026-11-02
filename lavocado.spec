@@ -26,7 +26,9 @@ analysis = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # No application code imports Polars. PyInstaller otherwise collects its
+    # large native runtime through optional transitive package hooks.
+    excludes=["polars", "_polars_runtime_32", "polars_runtime_32"],
     noarchive=False,
     optimize=0,
 )

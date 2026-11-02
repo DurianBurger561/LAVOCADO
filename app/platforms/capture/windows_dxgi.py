@@ -63,7 +63,7 @@ class WindowsDXGICapture:
         module_loader: Callable[[str], Any] = importlib.import_module,
         monitor_provider: Callable[[], list[MonitorInfo]] | None = None,
         clock_ns: Callable[[], int] = time.monotonic_ns,
-        target_fps: int = 30,
+        target_fps: int = 10,
     ) -> None:
         self._module_loader = module_loader
         self._monitor_provider = monitor_provider or _enumerate_windows_monitors

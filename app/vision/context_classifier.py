@@ -44,7 +44,9 @@ def _create_transformers_pipeline(
     # Import the concrete module: the top-level ``transformers.pipeline`` is
     # supplied by a lazy import that PyInstaller cannot reliably trace.
     from transformers.pipelines import pipeline
+    from app.performance import configure_torch_threads
 
+    configure_torch_threads()
     return pipeline(task, **kwargs)
 
 

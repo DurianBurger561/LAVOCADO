@@ -4,7 +4,7 @@ dxcam>=0.3,<0.4; sys_platform == "win32"
 numpy
 opencv-python-headless>=4.10,<6
 Pillow
-nudenet>=3.4.2,<4
+nudenet==3.4.2
 pywebview>=6.2,<7
 pyobjc-framework-CoreMedia>=10,<13; sys_platform == "darwin"
 pyobjc-framework-ApplicationServices>=10,<13; sys_platform == "darwin"

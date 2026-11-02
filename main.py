@@ -10,6 +10,10 @@ import sys
 import threading
 from pathlib import Path
 
+from app.performance import configure_cpu_threads, configure_opencv_threads
+
+configure_cpu_threads()
+
 from app.platforms import PlatformAdapter, create_platform_adapter
 from app.platforms.capture import MonitorInfo
 from app.ui.controller import DIAGNOSTICS_PREFIX
@@ -137,6 +141,8 @@ def run_protection(
     input_stream=None,
 ) -> None:
     """Run the existing protection loop on the process main thread."""
+
+    configure_opencv_threads()
 
     control_input = input_stream if input_stream is not None else sys.stdin
     control_output = sys.stdout

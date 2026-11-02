@@ -186,8 +186,14 @@ class Yolo11Adapter:
 
 def _load_ultralytics_model(model_path: str) -> YoloDetectionModel:
     from ultralytics import YOLO
+    from app.performance import configure_torch_threads
 
-    return UltralyticsYoloModel(YOLO(model_path))
+    model = YOLO(model_path)
+    # Initialize AutoBackend before applying the limit; its CPU setup otherwise
+    # overwrites Torch thread limits at the first user-frame prediction.
+    model.predict(np.zeros((64, 64, 3), dtype=np.uint8), imgsz=640, verbose=False)
+    configure_torch_threads()
+    return UltralyticsYoloModel(model)
 
 
 def load_yolo_adapter(

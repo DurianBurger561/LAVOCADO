@@ -12,6 +12,7 @@ AppName=LAVOCADO
 AppVersion={#AppVersion}
 AppVerName=LAVOCADO {#AppVersion}
 AppPublisher=LAVOCADO
+LicenseFile=..\LICENSE
 AppPublisherURL=https://durianburger561.github.io/LAVOCADO/
 AppSupportURL=https://github.com/DurianBurger561/LAVOCADO
 ; Per-user install: no administrator prompt.
