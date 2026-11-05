@@ -165,6 +165,13 @@
   .final .box>*{position:relative}
   .final img{width:76px;margin-bottom:24px;filter:drop-shadow(0 10px 24px rgba(0,0,0,.4))}
 
+  .community{padding:30px 0 70px}
+  .community-card{display:flex;align-items:center;justify-content:space-between;gap:36px;padding:clamp(24px,5vw,52px);border:1px solid var(--card-brd);border-radius:28px;background:linear-gradient(130deg,rgba(127,194,74,.12),rgba(88,101,242,.12))}
+  .community-card .sec-title{font-size:clamp(28px,4vw,42px)}
+  .community-card .sec-lead{max-width:620px}
+  .community-join{flex-shrink:0;white-space:normal;text-align:center;justify-content:center}
+  .community-join:focus-visible{outline:3px solid var(--cream);outline-offset:5px}
+  @media(max-width:900px){.community-card{flex-direction:column;align-items:flex-start}.community-join{max-width:100%}}
   footer{position:relative;padding:50px clamp(20px,5vw,40px) 60px;border-top:1px solid var(--card-brd);text-align:center;color:rgba(244,247,236,.5);font-size:14px}
   footer .flinks{display:flex;gap:26px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
   footer a{color:var(--mist);text-decoration:none;font-weight:500;transition:color .2s}
@@ -403,6 +410,19 @@
   </div>
 </section>
 
+<section id="community" class="community">
+  <div class="wrap">
+    <div class="community-card reveal">
+      <div>
+        <p class="eyebrow">Discord</p>
+        <h2 class="sec-title" data-i18n="community_title">来社区聊聊</h2>
+        <p class="sec-lead" data-i18n="community_desc">分享使用感受、反馈问题，或聊聊你希望 LAVOCADO 加入什么功能。我们在 Discord 等你。</p>
+      </div>
+      <a href="https://discord.gg/eJykb8pZx" target="_blank" rel="noopener noreferrer" class="btn btn-primary community-join"><span data-i18n="community_join">加入 Discord 社区</span><span aria-hidden="true">↗</span></a>
+    </div>
+  </div>
+</section>
+
 <section class="team">
   <div class="wrap">
     <div class="reveal"><p class="eyebrow" data-i18n="team_eyebrow">团队</p></div>
@@ -477,6 +497,7 @@
 
 <footer>
   <div class="flinks">
+    <a href="#community">Discord</a>
     <a href="https://github.com/DurianBurger561/LAVOCADO" target="_blank" rel="noopener" data-i18n="foot_gh">GitHub</a>
     <a href="https://github.com/DurianBurger561/LAVOCADO/releases/tag/v1.0.4" target="_blank" rel="noopener">v1.0.4</a>
     <a href="https://github.com/DurianBurger561/LAVOCADO/blob/main/LICENSE" target="_blank" rel="noopener" data-i18n="foot_lic">许可协议</a>
@@ -959,6 +980,82 @@ const I18N={
   foot_gh:"GitHub",foot_lic:"الرخصة",foot_doc:"الوثائق",foot_contact:"تواصل معنا",
   foot_license:"مرخّص بموجب AGPL-3.0 للاستخدام الشخصي والتجاري مع الالتزام بمتطلبات مشاركة الشيفرة المصدرية. للدعم المدفوع والشراكات: x12468xl@outlook.com."}
 };
+
+const COMMUNITY_I18N={
+  "zh": [
+    "来社区聊聊",
+    "分享使用感受、反馈问题，或聊聊你希望 LAVOCADO 加入什么功能。我们在 Discord 等你。",
+    "加入 Discord 社区"
+  ],
+  "zh-Hant": [
+    "來社群聊聊",
+    "分享使用感受、回報問題，或聊聊你希望 LAVOCADO 加入什麼功能。我們在 Discord 等你。",
+    "加入 Discord 社群"
+  ],
+  "en": [
+    "Come hang out",
+    "Tell us how LAVOCADO is working for you, report a bug, or share an idea for what we should build next. See you on Discord.",
+    "Join us on Discord"
+  ],
+  "ja": [
+    "コミュニティで話そう",
+    "LAVOCADO の使い心地や不具合、追加してほしい機能について気軽に話してください。Discord でお待ちしています。",
+    "Discord に参加"
+  ],
+  "ko": [
+    "커뮤니티에서 만나요",
+    "LAVOCADO 사용 후기, 버그, 추가되었으면 하는 기능을 편하게 이야기해 주세요. Discord에서 만나요.",
+    "Discord 커뮤니티 참여"
+  ],
+  "fr": [
+    "Venez discuter avec nous",
+    "Partagez votre expérience avec LAVOCADO, signalez un bug ou proposez une idée pour la suite. À bientôt sur Discord.",
+    "Rejoindre notre Discord"
+  ],
+  "de": [
+    "Redet mit uns",
+    "Erzählt uns, wie LAVOCADO bei euch läuft, meldet Fehler oder schlagt neue Funktionen vor. Wir sehen uns auf Discord.",
+    "Unserem Discord beitreten"
+  ],
+  "it": [
+    "Parliamone insieme",
+    "Raccontaci come ti trovi con LAVOCADO, segnala un problema o proponi una nuova funzione. Ci vediamo su Discord.",
+    "Unisciti a noi su Discord"
+  ],
+  "es": [
+    "Ven a charlar",
+    "Cuéntanos qué tal te va con LAVOCADO, avisa de un error o propone una función. Nos vemos en Discord.",
+    "Únete a nuestro Discord"
+  ],
+  "pt": [
+    "Vem conversar connosco",
+    "Conta-nos como está a correr com o LAVOCADO, comunica um erro ou sugere uma funcionalidade. Vemo-nos no Discord.",
+    "Junta-te a nós no Discord"
+  ],
+  "ru": [
+    "Давайте общаться",
+    "Расскажите, как вам LAVOCADO, сообщите об ошибке или предложите новую функцию. До встречи в Discord.",
+    "Присоединиться к Discord"
+  ],
+  "ar": [
+    "لنتحدث معًا",
+    "شاركنا تجربتك مع LAVOCADO، أو أبلغ عن مشكلة، أو اقترح ميزة جديدة. نراك على Discord.",
+    "انضم إلينا على Discord"
+  ],
+  "hi": [
+    "आइए, बात करें",
+    "बताएँ कि LAVOCADO का अनुभव कैसा रहा, किसी समस्या की जानकारी दें या नई सुविधा सुझाएँ। Discord पर मिलते हैं।",
+    "Discord पर हमसे जुड़ें"
+  ],
+  "th": [
+    "มาคุยกันในชุมชน",
+    "แบ่งปันประสบการณ์ใช้ LAVOCADO แจ้งปัญหา หรือเสนอฟีเจอร์ที่อยากให้เราเพิ่ม แล้วเจอกันบน Discord",
+    "เข้าร่วมชุมชน Discord"
+  ]
+};
+for(const [code,copy] of Object.entries(COMMUNITY_I18N)){
+  Object.assign(I18N[code],{community_title:copy[0],community_desc:copy[1],community_join:copy[2]});
+}
 
 const DEMO_I18N={
   "zh":{"title":"看看 LAVOCADO 如何工作","lead":"25 秒演示：从识别画面到帮你停下冲动。","captions":["浏览普通信息流","出现可能触发冲动的内容","在本机识别后，立即遮挡画面","短暂停顿，然后由你决定下一步","可选的 AI 对话：离线可用，不保存内容","接着是一分钟的打字冥想","LAVOCADO：在你的设备上识别并遮挡色情内容"]},
